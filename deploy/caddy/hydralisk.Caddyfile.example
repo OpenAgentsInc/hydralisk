@@ -1,0 +1,14 @@
+hydralisk-gpt-oss-20b.openagents.com {
+  encode zstd gzip
+
+  header {
+    -Server
+    X-Content-Type-Options nosniff
+  }
+
+  reverse_proxy 127.0.0.1:8080 {
+    transport http {
+      versions h1 h2c
+    }
+  }
+}

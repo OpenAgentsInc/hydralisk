@@ -45,6 +45,7 @@ logs/
 tmp/
 temp/
 .cache/
+.hydralisk/
 
 # Model/data artifacts
 models/

@@ -21,7 +21,10 @@ customer routing, or public product promises.
 
 ## Status
 
-Scaffold only. No runtime has landed yet.
+The first runtime scaffold has landed: an authenticated Hydralisk proxy for
+`openai/gpt-oss-20b`, systemd units for a one-L4 vLLM host, and a GCE runbook.
+Live host promotion still requires installing the repo on a fresh or explicitly
+reused L4 VM and publishing the HTTPS origin to OpenAgents.
 
 The design anchor lives in the OpenAgents inference docs:
 
@@ -30,6 +33,7 @@ The design anchor lives in the OpenAgents inference docs:
 First execution roadmap:
 
 - [`docs/gpt-oss-20b-khala-live-roadmap.md`](docs/gpt-oss-20b-khala-live-roadmap.md)
+- [`docs/gce-l4-vllm-runbook.md`](docs/gce-l4-vllm-runbook.md)
 
 ## Early shape
 

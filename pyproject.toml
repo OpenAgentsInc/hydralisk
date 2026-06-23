@@ -1,0 +1,24 @@
+[project]
+name = "hydralisk"
+version = "0.1.0"
+description = "OpenAgents Python/NVIDIA inference lane"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115.0,<1",
+  "httpx>=0.28.0,<1",
+  "pydantic>=2.10.0,<3",
+  "uvicorn[standard]>=0.34.0,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0,<9",
+]
+
+[project.scripts]
+hydralisk-proxy = "hydralisk.serve.proxy:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
