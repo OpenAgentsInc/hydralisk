@@ -27,6 +27,10 @@ The design anchor lives in the OpenAgents inference docs:
 
 - `openagents/docs/inference/2026-06-23-hydralisk-python-nvidia-inference-stack.md`
 
+First execution roadmap:
+
+- [`docs/gpt-oss-20b-khala-live-roadmap.md`](docs/gpt-oss-20b-khala-live-roadmap.md)
+
 ## Early shape
 
 ```text
