@@ -1,0 +1,74 @@
+# macOS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.python-version
+.venv/
+venv/
+env/
+.uv/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.pyre/
+.coverage
+coverage.xml
+htmlcov/
+
+# Packaging / build
+build/
+dist/
+site/
+*.egg-info/
+*.whl
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+.secrets/
+
+# Logs and local runtime state
+*.log
+logs/
+tmp/
+temp/
+.cache/
+
+# Model/data artifacts
+models/
+weights/
+checkpoints/
+datasets/
+data/
+artifacts/
+runs/
+benchmarks/results/
+*.safetensors
+*.gguf
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+
+# NVIDIA / profiling artifacts
+*.nsys-rep
+*.qdrep
+*.sqlite
+
+# Node tooling, if docs or small UIs appear later
+node_modules/
+bun.lockb
