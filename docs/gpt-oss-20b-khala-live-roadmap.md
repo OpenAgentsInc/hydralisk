@@ -3,9 +3,9 @@
 Date: 2026-06-23
 
 Status: implementation in progress. The Hydralisk repo now contains the
-authenticated proxy scaffold, systemd units, and a GCE L4 runbook. The service
-is not yet promoted behind OpenAgents until the live host smoke and receipt
-gate pass.
+authenticated proxy scaffold, public-safe capabilities/receipts, systemd units,
+smoke script, and a GCE L4 runbook. The service is not yet promoted behind
+OpenAgents until the live host smoke and receipt gate pass.
 
 ## Goal
 

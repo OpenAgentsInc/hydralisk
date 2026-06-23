@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from pathlib import Path
 from typing import Any
 
 
@@ -44,6 +45,8 @@ class HydraliskSettings:
     gpu_name: str = "NVIDIA L4"
     gpu_count: int = 1
     model_revision: str = "unknown_model_revision"
+    quantization_weights: str = "MXFP4"
+    receipt_dir: Path = Path(".hydralisk/receipts")
     request_timeout_seconds: float = 600.0
 
     @property
@@ -82,6 +85,12 @@ def load_settings() -> HydraliskSettings:
         gpu_count=int(_env("HYDRALISK_GPU_COUNT", "1") or "1"),
         model_revision=_env("HYDRALISK_MODEL_REVISION", "unknown_model_revision")
         or "unknown_model_revision",
+        quantization_weights=_env("HYDRALISK_QUANTIZATION_WEIGHTS", "MXFP4")
+        or "MXFP4",
+        receipt_dir=Path(
+            _env("HYDRALISK_RECEIPT_DIR", ".hydralisk/receipts")
+            or ".hydralisk/receipts"
+        ),
         request_timeout_seconds=float(
             _env("HYDRALISK_REQUEST_TIMEOUT_SECONDS", "600") or "600"
         ),
