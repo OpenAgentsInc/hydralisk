@@ -40,7 +40,7 @@ class HydraliskSettings:
     bearer_token: str | None = None
     allow_insecure_dev: bool = False
     engine: str = "vllm"
-    engine_version: str = "0.10.1+gptoss"
+    engine_version: str = "unknown_engine_version"
     gpu_class: str = "l4"
     gpu_name: str = "NVIDIA L4"
     gpu_count: int = 1
@@ -78,8 +78,8 @@ def load_settings() -> HydraliskSettings:
         bearer_token=_env("HYDRALISK_BEARER_TOKEN"),
         allow_insecure_dev=_env_flag("HYDRALISK_ALLOW_INSECURE_DEV"),
         engine=_env("HYDRALISK_ENGINE", "vllm") or "vllm",
-        engine_version=_env("HYDRALISK_ENGINE_VERSION", "0.10.1+gptoss")
-        or "0.10.1+gptoss",
+        engine_version=_env("HYDRALISK_ENGINE_VERSION", "unknown_engine_version")
+        or "unknown_engine_version",
         gpu_class=_env("HYDRALISK_GPU_CLASS", "l4") or "l4",
         gpu_name=_env("HYDRALISK_GPU_NAME", "NVIDIA L4") or "NVIDIA L4",
         gpu_count=int(_env("HYDRALISK_GPU_COUNT", "1") or "1"),

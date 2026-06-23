@@ -82,16 +82,15 @@ cd /opt/hydralisk
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 uv venv --python 3.12 --seed
+uv pip install vllm --torch-backend=auto
 uv pip install -e .
-uv pip install --pre vllm==0.10.1+gptoss \
-  --extra-index-url https://wheels.vllm.ai/gpt-oss/ \
-  --extra-index-url https://download.pytorch.org/whl/nightly/cu128 \
-  --index-strategy unsafe-best-match
 ```
 
 Create `/etc/hydralisk/hydralisk.env` from
 `deploy/systemd/hydralisk.env.example`. Set a real `HYDRALISK_BEARER_TOKEN`;
-do not commit it.
+do not commit it. Set `HYDRALISK_ENGINE_VERSION` to the output of
+`vllm --version`; the helper installer does this automatically for new env
+files.
 
 ```bash
 sudo install -m 0644 deploy/systemd/vllm-gpt-oss-20b.service /etc/systemd/system/

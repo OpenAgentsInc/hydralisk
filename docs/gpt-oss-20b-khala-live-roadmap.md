@@ -93,10 +93,7 @@ Runtime:
 ```bash
 uv venv --python 3.12 --seed
 source .venv/bin/activate
-uv pip install --pre vllm==0.10.1+gptoss \
-  --extra-index-url https://wheels.vllm.ai/gpt-oss/ \
-  --extra-index-url https://download.pytorch.org/whl/nightly/cu128 \
-  --index-strategy unsafe-best-match
+uv pip install vllm --torch-backend=auto
 
 vllm serve openai/gpt-oss-20b --host 127.0.0.1 --port 8000
 ```
@@ -145,7 +142,7 @@ Day-zero receipt schema can be small:
   "model": "openai/gpt-oss-20b",
   "servedAlias": "openagents/khala-oss-20b",
   "engine": "vllm",
-  "engineVersion": "0.10.1+gptoss",
+  "engineVersion": "<output of vllm --version>",
   "gpu": { "name": "NVIDIA L4", "count": 1 },
   "quantization": { "weights": "MXFP4" },
   "usage": {

@@ -32,26 +32,28 @@ else
 fi
 
 cd "${REPO_DIR}"
+export UV_PYTHON_INSTALL_DIR="${UV_PYTHON_INSTALL_DIR:-/opt/uv-python}"
 uv python install 3.12
 uv venv --python 3.12 --seed
-uv pip install --pre vllm==0.10.1+gptoss \
-  --extra-index-url https://wheels.vllm.ai/gpt-oss/ \
-  --extra-index-url https://download.pytorch.org/whl/nightly/cu128 \
-  --index-strategy unsafe-best-match
+uv pip install vllm --torch-backend=auto
 uv pip install .
+chmod -R a+rX "${UV_PYTHON_INSTALL_DIR}" "${REPO_DIR}/.venv"
+nvidia_lib_path="$(find "${REPO_DIR}/.venv/lib" -path '*/site-packages/nvidia/*/lib' -type d | paste -sd: -)"
+engine_version="$(LD_LIBRARY_PATH="${nvidia_lib_path}:${LD_LIBRARY_PATH:-}" "${REPO_DIR}/.venv/bin/vllm" --version | awk '{print $NF}')"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   install -o root -g hydralisk -m 0640 /dev/null "${ENV_FILE}"
-  cat >"${ENV_FILE}" <<'ENV'
+  cat >"${ENV_FILE}" <<ENV
 HYDRALISK_SERVED_MODEL=openai/gpt-oss-20b
 HYDRALISK_PUBLIC_MODEL_ALIASES=openagents/khala-oss-20b,gpt-oss-20b
 HYDRALISK_VLLM_BASE_URL=http://127.0.0.1:8000
 HYDRALISK_RECEIPT_DIR=/var/lib/hydralisk/receipts
-HYDRALISK_ENGINE_VERSION=0.10.1+gptoss
+HYDRALISK_ENGINE_VERSION=${engine_version}
 HYDRALISK_GPU_NAME=NVIDIA L4
 HYDRALISK_GPU_COUNT=1
 HYDRALISK_QUANTIZATION_WEIGHTS=MXFP4
 HYDRALISK_MAX_OUTPUT_TOKENS=1024
+LD_LIBRARY_PATH=${nvidia_lib_path}
 # Set this out-of-band before enabling the proxy:
 # HYDRALISK_BEARER_TOKEN=
 ENV

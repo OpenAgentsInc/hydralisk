@@ -8,6 +8,7 @@ Type=simple
 User=hydralisk
 Group=hydralisk
 WorkingDirectory=/opt/hydralisk
+EnvironmentFile=/etc/hydralisk/hydralisk.env
 Environment=HF_HOME=/var/lib/hydralisk/huggingface
 Environment=VLLM_USAGE_SOURCE=production
 ExecStart=/opt/hydralisk/.venv/bin/vllm serve openai/gpt-oss-20b --host 127.0.0.1 --port 8000
