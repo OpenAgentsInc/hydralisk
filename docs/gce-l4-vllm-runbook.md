@@ -25,6 +25,27 @@ Existing L4 VMs observed:
 Do not repurpose the running Psion contributor without an explicit operator
 decision. Hydralisk has enough L4 quota for a fresh `g2-standard-8` lane.
 
+The terminated coordinator-shaped L4 VM can be repurposed if the operator wants
+to reuse existing infrastructure instead of creating a fresh host. Clear the old
+startup script before starting it so the historical Psion bootstrap does not
+resume:
+
+```bash
+gcloud compute instances remove-metadata \
+  gswarm508-clean2-20260325044551-coord \
+  --zone us-central1-a \
+  --keys startup-script
+
+gcloud compute instances add-tags \
+  gswarm508-clean2-20260325044551-coord \
+  --zone us-central1-a \
+  --tags hydralisk-host,gpt-oss-20b,l4
+
+gcloud compute instances start \
+  gswarm508-clean2-20260325044551-coord \
+  --zone us-central1-a
+```
+
 ## Provision a fresh L4 host
 
 ```bash
@@ -162,6 +183,16 @@ smoke:
 - `HYDRALISK_GPT_OSS_20B_RECEIPT_REF`: the public-safe smoke receipt id or
   durable evidence URI proving at least one non-streaming and one streaming run,
   for example `receipt.hydralisk.gpt_oss_20b.l4.smoke.v1`.
+
+For a smaller local CLI smoke that checks health, non-streaming, and streaming
+byte flow from the installed console script:
+
+```bash
+hydralisk-smoke \
+  --base-url http://127.0.0.1:8080 \
+  --bearer-token "$HYDRALISK_BEARER_TOKEN" \
+  --model openai/gpt-oss-20b
+```
 
 ## Start, stop, restart, logs
 

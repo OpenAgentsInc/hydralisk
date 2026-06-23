@@ -1,12 +1,59 @@
-# hydralisk
+# Hydralisk
 
-Hydralisk is the OpenAgents Python/NVIDIA inference lane.
+Hydralisk is the standalone OpenAgents Python/NVIDIA inference lane. It owns
+conventional serving work such as vLLM, SGLang, TensorRT-LLM, CUDA host
+runbooks, model profiles, smoke tests, and public-safe receipts.
 
-It exists beside Psionic, not inside it. Psionic is the Rust-native ML substrate
-where we build the runtime ourselves. Hydralisk is the pragmatic Python stack
-for environments where conventional NVIDIA-serving practice is the fastest
-honest path: vLLM, SGLang, TensorRT-LLM, Triton, NVIDIA Dynamo, CUDA containers,
-and model-specific production recipes.
+Current Khala lane:
+
+- served model: `openai/gpt-oss-20b`
+- public aliases: `openagents/khala-oss-20b`, `gpt-oss-20b`
+- engine: vLLM
+- first host class: one NVIDIA L4
+- proxy port: `127.0.0.1:8012`
+- raw vLLM port: `127.0.0.1:8000`
+
+The proxy exposes public-safe health, capabilities, receipt lookup, and
+bearer-authenticated Chat Completions forwarding. Raw vLLM stays localhost-only.
+
+## Local Development
+
+```bash
+uv sync --extra test
+uv run pytest
+```
+
+Run the proxy against a local vLLM server:
+
+```bash
+export HYDRALISK_BEARER_TOKEN=local-dev-token
+uv run hydralisk-proxy --host 127.0.0.1 --port 8012
+```
+
+Smoke it:
+
+```bash
+uv run hydralisk-smoke \
+  --base-url http://127.0.0.1:8012 \
+  --bearer-token "$HYDRALISK_BEARER_TOKEN" \
+  --model openai/gpt-oss-20b
+```
+
+## Host Runbook
+
+Use [docs/gce-l4-host-runbook.md](docs/gce-l4-host-runbook.md) for the GCE L4
+setup, systemd services, start/stop, rollback, and public-safe evidence rules.
+
+## Boundaries
+
+Hydralisk exists beside Psionic, not inside it. Psionic is the Rust-native ML
+substrate where we build the runtime ourselves. Hydralisk is the pragmatic
+Python stack for environments where conventional NVIDIA-serving practice is the
+fastest honest path.
+
+Hydralisk must not claim to be Psionic-native, an admitted Pylon payout lane, or
+OpenAgents product authority. Pricing, credits, routing, settlement, payout,
+public copy, and product-promise promotion remain in the product repos.
 
 Initial targets:
 
@@ -24,7 +71,8 @@ customer routing, or public product promises.
 The first runtime scaffold has landed: an authenticated Hydralisk proxy for
 `openai/gpt-oss-20b`, systemd units for a one-L4 vLLM host, and a GCE runbook.
 Live host promotion still requires installing the repo on a fresh or explicitly
-reused L4 VM and publishing the HTTPS origin to OpenAgents.
+reused L4 VM, setting the bearer token out-of-band, smoking the proxy, and
+publishing the HTTPS origin to OpenAgents.
 
 The design anchor lives in the OpenAgents inference docs:
 
