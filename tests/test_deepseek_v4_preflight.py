@@ -207,6 +207,70 @@ def test_scaled_mm_probe_script_is_public_safe_and_target_scoped(tmp_path: Path)
     assert "fresh hydralisk-deepseek-v4" in rejected.stderr
 
 
+def test_provider_stack_probe_script_is_public_safe_and_target_scoped(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-deepseek-v4-provider-stack-gce.sh"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path),
+            "TARGET_INSTANCE": "hydralisk-deepseek-v4-g4-2g-b-test",
+            "TARGET_ZONE": "us-central1-b",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "provider-stack-probe.md").read_text()
+
+    assert "Wrote" in result.stdout
+    assert "hydralisk-deepseek-v4-g4-2g-b-test" in evidence
+    assert "vllm/vllm-openai:latest" in evidence
+    assert "install_deepgemm.sh" in evidence
+    assert "--enable-expert-parallel" in evidence
+    assert "Contains weights: false" in evidence
+
+    rejected = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path / "rejected"),
+            "TARGET_INSTANCE": "hydralisk-gptoss20b-l4-prod",
+            "TARGET_ZONE": "us-central1-a",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert rejected.returncode == 2
+    assert "fresh hydralisk-deepseek-v4" in rejected.stderr
+
+
+def test_provider_stack_probe_uses_clean_container_lane() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = (repo_root / "scripts" / "probe-deepseek-v4-provider-stack-gce.sh").read_text()
+
+    assert 'BASE_IMAGE="${BASE_IMAGE:-vllm/vllm-openai:latest}"' in script
+    assert "tools/install_deepgemm.sh" in script
+    assert "cuda-libraries-dev-13-0" in script
+    assert "UV_SYSTEM_PYTHON=1 bash /tmp/install_deepgemm.sh" in script
+    assert "LOCAL_SITE_PACKAGES_PATCHES\\tfalse" in script
+    assert "--kv-cache-dtype fp8" in script
+    assert "--block-size 256" in script
+    assert "--enable-expert-parallel" in script
+    assert "--tensor-parallel-size \"$gpu_count\"" in script
+    assert "HYDRALISK_DEEPSEEK_O_PROJ" not in script
+
+
 def test_e8m0_upcast_patch_script_is_public_safe_and_target_scoped(
     tmp_path: Path,
 ) -> None:

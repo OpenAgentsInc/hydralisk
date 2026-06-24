@@ -68,9 +68,11 @@ Initial targets:
   past the original vLLM `0.23.0` Blackwell FP8 scaled-mm failure: direct
   CUTLASS FP8 cases still fail, Triton block FP8 works after E8M0 scales are
   upcast, and local `o_proj` RHS rank/scale hotpatches still stop in DeepGEMM
-  before `/v1/models`. The next honest lane is a clean known-good
-  DeepSeek-vLLM/DeepGEMM build pin that matches the published H200-class
-  recipe, not more ad hoc site-packages patching.
+  before `/v1/models`. A clean provider-guided vLLM/DeepGEMM container also
+  builds and imports successfully on the G4 host, then fails before readiness
+  on the original CUTLASS `dispatch_scaled_mm` path. The next honest lane is
+  an 8-GPU H100/H200/B200 published-recipe allocation or a custom
+  RTX PRO 6000 Triton/offload kernel path.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -101,6 +103,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "load_smoke_blocked_known_good_deepgemm_build_needed",
+  "status": "load_smoke_blocked_cutlass_scaled_mm_on_g4_provider_stack",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -126,7 +126,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/9",
       "https://github.com/OpenAgentsInc/hydralisk/issues/10",
       "https://github.com/OpenAgentsInc/hydralisk/issues/11",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/12"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/12",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/13"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -135,7 +136,8 @@
       "docs/evidence/2026-06-24-deepseek-v4-flash-e8m0-upcast-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md",
-      "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md"
+      "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md",
+      "docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -161,10 +163,10 @@
     },
     "blocker": {
       "stage": "engine_startup_determine_available_memory",
-      "site": "vllm/models/deepseek_v4/nvidia/ops/o_proj.py deep_gemm_fp8_o_proj",
-      "message": "The grouped RHS scale-mode probe tested raw E8M0, fp32 upcast, DeepGEMM transform on E8M0, and DeepGEMM transform after fp32 upcast. None reached /v1/models: the transform-on-E8M0 path fails DeepGEMM's dtype assertion and the fp32 variants still fail layout.hpp:59 Unknown SF transformation.",
+      "site": "vllm/model_executor/kernels/linear/scaled_mm/cutlass.py cutlass_scaled_mm",
+      "message": "A clean provider-guided container derived from vllm/vllm-openai:latest built DeepGEMM via the vLLM helper and imported vLLM 0.23.0, Torch 2.11.0+cu130, CUDA 13.0, and DeepGEMM on both RTX PRO 6000 GPUs. The provider-style serve command still failed before /v1/models with dispatch_scaled_mm at c3x/scaled_mm_helper.hpp:17.",
       "defaultAndFallbacksAffected": true,
-      "nextProbe": "pin or build a clean known-good DeepSeek-V4 vLLM/DeepGEMM stack from provider guidance before more G4-specific hotpatches"
+      "nextProbe": "either run the published recipe on an 8-GPU H100/H200/B200-class node or start the custom RTX PRO 6000 Triton/offload lane"
     }
   },
   "promotionGates": [
@@ -177,8 +179,8 @@
     "public-safe Hydralisk receipt is emitted"
   ],
   "recommendation": {
-    "nextLane": "pin_known_good_deepseek_v4_vllm_deepgemm_build",
-    "why": "Google admitted the two-card G4 lane, the host has enough memory and disk for a low-context smoke, and vLLM reached model selection/kernel compile. The local CUTLASS, Triton E8M0, o_proj RHS rank, and o_proj RHS scale probes have exhausted the useful ad hoc patch path. Provider guidance points to vLLM 0.20.0+, DeepGEMM installed from the vLLM helper, FP8 KV, expert parallel, and TP equal to the GPU count on H200-class published-recipe hardware.",
+    "nextLane": "choose_published_recipe_gpu_or_custom_g4_kernel_path",
+    "why": "Google admitted the two-card G4 lane, the host has enough memory and disk for a low-context smoke, and a clean provider-guided vLLM/DeepGEMM container now builds and imports on RTX PRO 6000. Stock vLLM still fails on CUTLASS dispatch_scaled_mm before readiness. Serving DeepSeek-V4-Flash now requires an 8-GPU H100/H200/B200-class node that matches the published recipe, or custom RTX PRO 6000 work around Triton FP8, expert offload/prefetch, and replacement/owned kernel behavior.",
     "publicClaim": "none"
   },
   "publicSafety": {

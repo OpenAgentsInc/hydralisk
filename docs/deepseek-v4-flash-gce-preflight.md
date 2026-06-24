@@ -31,6 +31,9 @@ Grouped o_proj RHS evidence:
 Grouped o_proj RHS scale-mode evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md`](evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md)
 
+Provider-stack evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md`](evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -139,11 +142,26 @@ reached `/v1/models`. `deepgemm_transform` fails on DeepGEMM's dtype assertion,
 while `fp32` and `deepgemm_transform_fp32` still fail with
 `layout.hpp:59: Unknown SF transformation`.
 
-The next issue should pin or build the known-good DeepSeek-V4 vLLM/DeepGEMM
-stack described by provider guidance: vLLM `0.20.0+`, DeepGEMM installed from
-the vLLM helper, FP8 KV, tensor parallel size equal to the GPU count, expert
-parallel enabled, and H200-class published-recipe parity before returning to
-G4-specific patches.
+The provider-stack probe then built a clean container derived from
+`vllm/vllm-openai:latest`, installed CUDA development libraries, ran vLLM's
+`tools/install_deepgemm.sh` helper with `UV_SYSTEM_PYTHON=1`, and confirmed
+that vLLM `0.23.0`, Torch `2.11.0+cu130`, and DeepGEMM import successfully on
+both RTX PRO 6000 GPUs. That removed the patched Python venv as the explanation
+for failure.
+
+The clean provider stack still failed before `/v1/models`, now back at the
+original stock vLLM CUTLASS block-scaled FP8 error:
+
+```text
+RuntimeError: dispatch_scaled_mm,
+/workspace/csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_helper.hpp:17
+```
+
+The next issue should stop treating the two-card G4 stock-vLLM path as a
+near-serving lane. Pick one branch: secure an 8-GPU H100/H200/B200-class node
+that matches the published recipe, or start a custom G4 implementation lane
+that owns Triton FP8, expert offload/prefetch, and the remaining DeepGEMM or
+replacement-kernel behavior.
 
 The first viable lanes are:
 
@@ -221,9 +239,9 @@ Stop and record a blocker if:
 
 The 2026-06-24 G4 smoke is currently stopped on the CUDA/kernel support
 condition above. More random flag trials on the same host are not the next
-useful step; the useful split is now a known-good DeepSeek vLLM/DeepGEMM
-image/build pin, an 8-GPU H100/H200/B200 allocation that matches the published
-recipe, or a custom expert-prefetch/offload route.
+useful step; the useful split is now an 8-GPU H100/H200/B200 allocation that
+matches the published recipe, or a custom expert-prefetch/offload route for
+RTX PRO 6000.
 
 ## Promotion boundary
 
