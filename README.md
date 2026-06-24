@@ -138,7 +138,12 @@ Initial targets:
   unchanged for our blocker: no `local_expert_offset`, no `swiglu_limit`, and
   the direct `256 / 32` expert-parallel call still rejects before launch. The
   next G4 issue should therefore build the Hydralisk-local dispatcher/clamp
-  shim against the reference fixture.
+  shim against the reference fixture. Hydralisk now has the dispatcher half of
+  that shim: fixed-shape global-to-local expert remap, zero-scale masking for
+  nonlocal/out-of-range routes, reference-equivalence tests on nonzero inputs,
+  and a fail-closed gate for missing DeepSeek `swiglu_limit` support. The
+  remaining B12x work is clamp-capable GPU integration or a kernel-side clamp
+  patch.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -188,6 +193,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md`](docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md)
 - [`docs/evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md)
 - [`docs/evidence/2026-06-24-flashinfer-b12x-nightly-wrapper-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-nightly-wrapper-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-b12x-local-dispatcher-shim.md`](docs/evidence/2026-06-24-deepseek-b12x-local-dispatcher-shim.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

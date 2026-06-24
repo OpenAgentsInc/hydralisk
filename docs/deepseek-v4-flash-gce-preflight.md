@@ -88,6 +88,9 @@ B12x wrapper-surface evidence:
 B12x nightly wrapper evidence:
 [`docs/evidence/2026-06-24-flashinfer-b12x-nightly-wrapper-g4.md`](evidence/2026-06-24-flashinfer-b12x-nightly-wrapper-g4.md)
 
+B12x local dispatcher shim evidence:
+[`docs/evidence/2026-06-24-deepseek-b12x-local-dispatcher-shim.md`](evidence/2026-06-24-deepseek-b12x-local-dispatcher-shim.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -719,6 +722,15 @@ local-shard remap control: ok, outShape=[512,4096]
 So the next implementation issue should stop waiting for wrapper discovery and
 build the Hydralisk-local dispatcher/clamp shim against the reference fixture.
 Package upgrade alone is not a credible full-model retry path on this image.
+
+Hydralisk now owns the dispatcher half of that shim. The admission module can
+remap global expert IDs into a fixed-shape local B12x domain, mask nonlocal or
+out-of-range routes by zeroing their route scales, and prove that the remapped
+local-domain fixture matches the original global-reference output on nonzero
+inputs. It also fails closed when DeepSeek needs `swiglu_limit=10.0` and the
+target B12x surface lacks that clamp. This moves the blocker again: local-route
+remap is now implemented in Hydralisk; the remaining B12x work is clamp-capable
+GPU integration or a kernel-side clamp patch.
 
 ## Promotion boundary
 
