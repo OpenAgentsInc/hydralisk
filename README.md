@@ -152,9 +152,12 @@ Initial targets:
   compile/runtime fixture. A disposable G4 container then converted the static
   marker into real CuTe/CUTLASS clamp ops and ran both zero and nonzero tiny
   B12x fixtures with `swiglu_limit=10.0` on RTX PRO 6000. The static clamp path
-  is now a real GPU proof; the remaining B12x work is the dynamic DeepSeek-shape
-  path, exact FP4/reference correctness, and integration with the
-  dispatcher/offload lane.
+  is now a real GPU proof. The follow-up dynamic fixture then patched
+  `moe_dynamic_kernel.py` and ran the 512-token DeepSeek-shaped masked
+  local-shard case (`kernelNumExperts=32`, `globalNumExperts=256`, `topK=6`)
+  with finite nonzero output. The remaining B12x work is full-model vLLM
+  integration, exact FP4/reference correctness, and any decode/micro-path
+  clamp coverage needed for generation.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -209,6 +212,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-b12x-clamp-patch-points.md`](docs/evidence/2026-06-24-deepseek-b12x-clamp-patch-points.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-clamp-overlay.md`](docs/evidence/2026-06-24-deepseek-b12x-clamp-overlay.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

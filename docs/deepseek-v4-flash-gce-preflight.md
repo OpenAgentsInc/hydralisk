@@ -103,6 +103,9 @@ B12x clamp overlay evidence:
 B12x static clamp G4 evidence:
 [`docs/evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md`](evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md)
 
+B12x dynamic clamp G4 evidence:
+[`docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md`](evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -796,6 +799,36 @@ is still the static backend only. The runtime selects static for tiny token
 counts and dynamic for the DeepSeek-shaped 512-token local-shard case. The next
 issue should apply the real clamp operation to the dynamic backend and run the
 masked local-shard DeepSeek-shape fixture before any full-model retry.
+
+The dynamic B12x clamp fixture then patched `moe_dynamic_kernel.py` with the
+same clamp operations and ran the 512-token DeepSeek-shaped masked local-shard
+case on RTX PRO 6000:
+
+```text
+backendExpected=dynamic
+seqLen=512
+hiddenSize=4096
+intermediateSize=2048
+globalNumExperts=256
+kernelNumExperts=32
+localNumExperts=32
+topK=6
+maskedRouteCount=1536
+swigluLimit=10.0
+outShape=[512,4096]
+outDtype=torch.bfloat16
+zeroOutAbsSum=0.0
+nonzeroOutAbsSum=4375609344.0
+nonzeroOutMaxAbs=10688.0
+finite=true
+```
+
+That removes the immediate synthetic B12x clamp blocker for the custom G4 lane.
+The next executable issue should build a derived vLLM/FlashInfer image with the
+static and dynamic clamp patches and retry a private full-model B12x load smoke
+on the same 8 x G4 host. That run must still prove model weight load,
+`/v1/models` readiness, and eventually a public-safe generation receipt before
+any serving claim.
 
 ## Promotion boundary
 
