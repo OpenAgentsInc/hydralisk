@@ -29,6 +29,13 @@ def _env_csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
     return items or default
 
 
+def _env_int(name: str, default: int | None = None) -> int | None:
+    value = _env(name)
+    if value is None:
+        return default
+    return int(value)
+
+
 @dataclass(frozen=True)
 class HydraliskSettings:
     served_model: str = "openai/gpt-oss-20b"
@@ -46,6 +53,22 @@ class HydraliskSettings:
     gpu_count: int = 1
     model_revision: str = "unknown_model_revision"
     quantization_weights: str = "MXFP4"
+    model_profile_ref: str | None = None
+    container_image: str | None = None
+    context_window_tokens: int | None = None
+    admitted_context_tokens: int | None = None
+    tensor_parallel_size: int | None = None
+    pipeline_parallel_size: int | None = None
+    data_parallel_size: int | None = None
+    expert_parallel_size: int | None = None
+    reasoning_parser: str | None = None
+    tool_call_parser: str | None = None
+    cache_policy: str | None = None
+    kv_cache_dtype: str | None = None
+    dynamo_mode: str | None = None
+    speculative_decoding: str | None = None
+    admission_ref: str | None = None
+    evidence_ref: str | None = None
     receipt_dir: Path = Path(".hydralisk/receipts")
     request_timeout_seconds: float = 600.0
 
@@ -87,6 +110,22 @@ def load_settings() -> HydraliskSettings:
         or "unknown_model_revision",
         quantization_weights=_env("HYDRALISK_QUANTIZATION_WEIGHTS", "MXFP4")
         or "MXFP4",
+        model_profile_ref=_env("HYDRALISK_MODEL_PROFILE_REF"),
+        container_image=_env("HYDRALISK_CONTAINER_IMAGE"),
+        context_window_tokens=_env_int("HYDRALISK_CONTEXT_WINDOW_TOKENS"),
+        admitted_context_tokens=_env_int("HYDRALISK_ADMITTED_CONTEXT_TOKENS"),
+        tensor_parallel_size=_env_int("HYDRALISK_TENSOR_PARALLEL_SIZE"),
+        pipeline_parallel_size=_env_int("HYDRALISK_PIPELINE_PARALLEL_SIZE"),
+        data_parallel_size=_env_int("HYDRALISK_DATA_PARALLEL_SIZE"),
+        expert_parallel_size=_env_int("HYDRALISK_EXPERT_PARALLEL_SIZE"),
+        reasoning_parser=_env("HYDRALISK_REASONING_PARSER"),
+        tool_call_parser=_env("HYDRALISK_TOOL_CALL_PARSER"),
+        cache_policy=_env("HYDRALISK_CACHE_POLICY"),
+        kv_cache_dtype=_env("HYDRALISK_KV_CACHE_DTYPE"),
+        dynamo_mode=_env("HYDRALISK_DYNAMO_MODE"),
+        speculative_decoding=_env("HYDRALISK_SPECULATIVE_DECODING"),
+        admission_ref=_env("HYDRALISK_ADMISSION_REF"),
+        evidence_ref=_env("HYDRALISK_EVIDENCE_REF"),
         receipt_dir=Path(
             _env("HYDRALISK_RECEIPT_DIR", ".hydralisk/receipts")
             or ".hydralisk/receipts"

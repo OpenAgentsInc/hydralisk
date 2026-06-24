@@ -82,6 +82,8 @@ First execution roadmap:
 
 - [`docs/gpt-oss-20b-khala-live-roadmap.md`](docs/gpt-oss-20b-khala-live-roadmap.md)
 - [`docs/gce-l4-vllm-runbook.md`](docs/gce-l4-vllm-runbook.md)
+- [`docs/glm-5.2-sglang-preflight-runbook.md`](docs/glm-5.2-sglang-preflight-runbook.md)
+- [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 
 ## Early shape
 

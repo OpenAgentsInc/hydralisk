@@ -39,7 +39,7 @@ class ReceiptStore:
 
 def build_capabilities(config: HydraliskSettings) -> dict[str, Any]:
     blockers = _model_revision_blockers(config)
-    return {
+    capabilities = {
         "schema": CAPABILITIES_SCHEMA,
         "servedModel": config.served_model,
         "publicModelAliases": list(config.public_model_aliases),
@@ -62,6 +62,10 @@ def build_capabilities(config: HydraliskSettings) -> dict[str, Any]:
         "publicSafe": True,
         "blockers": blockers,
     }
+    profile = _profile_evidence(config)
+    if profile:
+        capabilities["profile"] = profile
+    return capabilities
 
 
 def build_receipt(
@@ -74,7 +78,7 @@ def build_receipt(
     blockers: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     all_blockers = [*_model_revision_blockers(config), *(blockers or [])]
-    return {
+    receipt = {
         "schema": RECEIPT_SCHEMA,
         "runRef": run_ref,
         "createdAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -95,6 +99,10 @@ def build_receipt(
         "publicSafe": True,
         "blockers": all_blockers,
     }
+    profile = _profile_evidence(config)
+    if profile:
+        receipt["profile"] = profile
+    return receipt
 
 
 def normalize_usage(usage: dict[str, Any] | None) -> dict[str, int] | None:
@@ -138,3 +146,69 @@ def _model_revision_blockers(config: HydraliskSettings) -> list[dict[str, str]]:
             "message": "HYDRALISK_MODEL_REVISION has not been pinned for this lane.",
         }
     ]
+
+
+def _profile_evidence(config: HydraliskSettings) -> dict[str, Any]:
+    profile: dict[str, Any] = {}
+    if config.model_profile_ref:
+        profile["profileRef"] = config.model_profile_ref
+    if config.container_image:
+        profile["containerImage"] = config.container_image
+
+    context = _compact(
+        {
+            "windowTokens": config.context_window_tokens,
+            "admittedMaxTokens": config.admitted_context_tokens,
+        }
+    )
+    if context:
+        profile["context"] = context
+
+    parallelism = _compact(
+        {
+            "tensor": config.tensor_parallel_size,
+            "pipeline": config.pipeline_parallel_size,
+            "data": config.data_parallel_size,
+            "expert": config.expert_parallel_size,
+        }
+    )
+    if parallelism:
+        profile["parallelism"] = parallelism
+
+    parsers = _compact(
+        {
+            "reasoning": config.reasoning_parser,
+            "toolCalls": config.tool_call_parser,
+        }
+    )
+    if parsers:
+        profile["parsers"] = parsers
+
+    cache = _compact(
+        {
+            "policy": config.cache_policy,
+            "kvCacheDtype": config.kv_cache_dtype,
+        }
+    )
+    if cache:
+        profile["cache"] = cache
+
+    if config.dynamo_mode:
+        profile["dynamo"] = {"mode": config.dynamo_mode}
+    if config.speculative_decoding:
+        profile["speculation"] = {"mode": config.speculative_decoding}
+
+    evidence = _compact(
+        {
+            "admissionRef": config.admission_ref,
+            "evidenceRef": config.evidence_ref,
+        }
+    )
+    if evidence:
+        profile["evidence"] = evidence
+
+    return profile
+
+
+def _compact(source: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in source.items() if value is not None}

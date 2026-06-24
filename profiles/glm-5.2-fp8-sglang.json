@@ -1,0 +1,175 @@
+{
+  "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
+  "profileId": "glm-5.2-fp8-sglang-g4-rtx-pro-6000-8g-preflight-20260624",
+  "status": "admission_only",
+  "servedModel": "zai-org/GLM-5.2-FP8",
+  "publicModelAliases": [],
+  "model": {
+    "publisher": "zai-org",
+    "repository": "zai-org/GLM-5.2-FP8",
+    "revision": "70311cfa0158cce7dd2cf5d2e04f68e3fdc3efc1",
+    "revisionRef": "zai-org/GLM-5.2-FP8@70311cfa0158cce7dd2cf5d2e04f68e3fdc3efc1",
+    "architecture": "GlmMoeDsaForCausalLM",
+    "modelType": "glm_moe_dsa",
+    "precision": "FP8",
+    "license": "MIT",
+    "contextWindowTokens": 1048576,
+    "layers": 78,
+    "experts": 256,
+    "expertsPerToken": 8,
+    "reportedParameters": {
+      "total": "744B to 753B, depending on source rounding",
+      "active": "about 40B"
+    },
+    "modelCardReadAt": "2026-06-24T03:20:00Z"
+  },
+  "engine": {
+    "name": "sglang",
+    "version": "0.5.13.post1",
+    "containerImage": "lmsysorg/sglang:v0.5.13.post1@sha256:74084d80c3b7e5649f4b3433b1169db3da26c9b1e31752a43045a34cc26ba5d5",
+    "containerPlatform": "linux/amd64",
+    "containerDigestReadAt": "2026-06-24T03:22:00Z",
+    "openaiCompatibleBaseUrl": "http://127.0.0.1:30000/v1"
+  },
+  "targetHardware": {
+    "provider": "gce",
+    "project": "openagentsgemini",
+    "zone": "us-central1-b",
+    "machineType": "g4-standard-384",
+    "accelerator": "nvidia-rtx-pro-6000",
+    "gpuName": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "gpuCount": 8,
+    "gpuMemoryMiBEach": 97887,
+    "gpuMemoryMiBTotal": 783096,
+    "driverVersion": "580.159.03",
+    "cudaRuntimeVersion": "13.0",
+    "ncclEvidence": "host library not present on base image; container smoke must record container NCCL",
+    "topologySummary": "two NUMA sockets; GPUs form four PIX pairs; cross-pair traffic is NODE or SYS"
+  },
+  "admission": {
+    "status": "admitted",
+    "ref": "admission.hydralisk.glm52.g4.rtxpro6000.20260624T034345Z",
+    "attemptedAt": "2026-06-24T03:43:45Z",
+    "instance": "hydralisk-glm52-rtx-pro-6000-20260624034345",
+    "provisioningModel": "SPOT",
+    "maxRunDurationSeconds": 600,
+    "cleanup": "deleted after hardware evidence capture",
+    "precedingAttempts": [
+      {
+        "accelerator": "nvidia-b200",
+        "machineType": "a4-highgpu-8g",
+        "zone": "us-central1-b",
+        "status": "blocked",
+        "blockerCode": "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS"
+      }
+    ]
+  },
+  "runtimePlan": {
+    "mode": "monolithic_sglang_load_smoke_first",
+    "launchCommand": [
+      "docker",
+      "run",
+      "--gpus",
+      "all",
+      "--ipc=host",
+      "--shm-size",
+      "64g",
+      "-p",
+      "30000:30000",
+      "-v",
+      "/var/lib/hydralisk/huggingface:/root/.cache/huggingface",
+      "-e",
+      "HF_TOKEN",
+      "lmsysorg/sglang:v0.5.13.post1@sha256:74084d80c3b7e5649f4b3433b1169db3da26c9b1e31752a43045a34cc26ba5d5",
+      "python3",
+      "-m",
+      "sglang.launch_server",
+      "--model-path",
+      "zai-org/GLM-5.2-FP8",
+      "--revision",
+      "70311cfa0158cce7dd2cf5d2e04f68e3fdc3efc1",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "30000",
+      "--tp",
+      "8",
+      "--mem-fraction-static",
+      "0.80",
+      "--reasoning-parser",
+      "glm45",
+      "--tool-call-parser",
+      "glm47",
+      "--speculative-algorithm",
+      "EAGLE",
+      "--speculative-num-steps",
+      "5",
+      "--speculative-eagle-topk",
+      "1",
+      "--speculative-num-draft-tokens",
+      "6"
+    ]
+  },
+  "sglang": {
+    "attention": {
+      "dsa": "auto",
+      "expectedBackends": [
+        "flashmla_sparse prefill",
+        "fa3 decode",
+        "sgl-kernel indexer topk"
+      ],
+      "blackwellKvCacheDtype": "auto fp8_e4m3 per SGLang docs",
+      "contextParallelism": "off for Blackwell preflight; SGLang docs mark DSA-CP as Hopper-verified"
+    },
+    "parallelism": {
+      "tensor": 8,
+      "pipeline": 1,
+      "data": 1,
+      "expert": 1
+    },
+    "context": {
+      "advertisedWindowTokens": 1048576,
+      "admittedSmokeCeilingTokens": 32768,
+      "fullWindowStatus": "not_admitted_on_g4_preflight"
+    },
+    "parsers": {
+      "reasoning": "glm45",
+      "toolCalls": "glm47"
+    },
+    "cache": {
+      "radixPrefixCache": "enabled_by_sglang_default",
+      "hiCache": "planned_after_load_smoke",
+      "chunkedPrefill": "default for first load; evaluate 32768 for 8K+ balanced runs"
+    },
+    "speculation": {
+      "algorithm": "EAGLE",
+      "numSteps": 5,
+      "topK": 1,
+      "draftTokens": 6,
+      "status": "planned_for_first_completion_smoke"
+    },
+    "dynamo": {
+      "state": "disabled_preflight",
+      "kvAwareRouting": "planned_after_monolithic_baseline",
+      "prefillDecodeDisaggregation": "planned_after_kv_aware_routing"
+    }
+  },
+  "smoke": {
+    "status": "not_run",
+    "blockerCode": "load_smoke_pending",
+    "reason": "The issue scope admitted and measured the G4 node, then deleted it before model download/load. Next step is a short-lived monolithic SGLang load smoke using this profile.",
+    "publicSafePromptPolicy": "tiny synthetic prompts only; no private source, customer data, hidden reasoning traces, or raw prompt/response storage"
+  },
+  "recommendation": {
+    "nextLane": "monolithic_sglang_load_smoke_on_g4_then_supported_h200_or_b200_benchmark",
+    "why": "G4/RTX PRO 6000 admitted and has 783096 MiB aggregate HBM, but SGLang's GLM-5.2 verified matrix names H200/B200/B300/GB300. Treat G4 as a quick load-risk probe, not a production routing lane.",
+    "publicClaim": "no_public_khala_or_model_selector_claim_until_load_generation_eval_and_capacity_receipts_pass"
+  },
+  "publicSafety": {
+    "containsSecrets": false,
+    "containsPrompts": false,
+    "containsResponses": false,
+    "containsWeights": false,
+    "containsHiddenReasoning": false
+  }
+}
