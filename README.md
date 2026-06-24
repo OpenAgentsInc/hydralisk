@@ -21,7 +21,7 @@ bearer-authenticated Chat Completions forwarding. Raw vLLM stays localhost-only.
 ## Local Development
 
 ```bash
-uv sync --extra test
+uv sync --extra dev
 uv run pytest
 ```
 
@@ -61,8 +61,11 @@ Initial targets:
 
 - `gpt-oss-20b` on L4 with vLLM for the first cheap internal dogfood lane.
 - `gpt-oss-120b` on H100/H200/B200/G4-class high-memory GPUs with vLLM.
-- GLM-5.2 first as a hosted baseline, then as a high-memory SGLang/Dynamo
-  self-hosting campaign.
+- GLM-5.2 first as a hosted baseline, then as a high-memory self-hosting
+  campaign. The current accessible-hardware target is
+  `0xSero/GLM-5.2-504B` REAP/NVFP4 on 4 x GCE G4 RTX PRO 6000 with the
+  b12x/vLLM SM120 recipe; the older `zai-org/GLM-5.2-FP8` SGLang G4 profile
+  remains a blocked FP8 evidence lane, not the REAP serving plan.
 - DeepSeek-V4-Flash as a Google GPU admission experiment: G4 capacity was
   admitted on 2026-06-24 with 2 x RTX PRO 6000. The current blocker is now
   past the original vLLM `0.23.0` Blackwell FP8 scaled-mm failure: direct

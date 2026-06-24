@@ -1,0 +1,166 @@
+{
+  "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
+  "profileId": "glm-5.2-reap-504b-nvfp4-b12x-g4-rtx-pro-6000-4g-20260624",
+  "status": "admission_pending",
+  "servedModel": "0xSero/GLM-5.2-504B",
+  "internalModelAlias": "glm-5.2-reap-504b-g4",
+  "publicModelAliases": [],
+  "model": {
+    "publisher": "0xSero",
+    "repository": "0xSero/GLM-5.2-504B",
+    "revision": "cb6b1e0451b9d560cda864f84187869c9a679712",
+    "revisionRef": "0xSero/GLM-5.2-504B@cb6b1e0451b9d560cda864f84187869c9a679712",
+    "architecture": "GlmMoeDsaForCausalLM",
+    "modelType": "glm_moe_dsa",
+    "license": "MIT",
+    "profileSourceReadAt": "2026-06-24T18:40:00Z",
+    "precision": {
+      "primary": "NVFP4",
+      "implementation": "ModelOpt FP4 / modelopt_fp4",
+      "routedExperts": "NVFP4",
+      "routerAttentionAndSharedExpert": "BF16 or mixed precision as stored by upstream"
+    },
+    "pruning": {
+      "method": "REAP",
+      "recovery": "Router-KD",
+      "routedExpertsKeptPerLayer": 168,
+      "primaryLane": true,
+      "fallbackModels": [
+        {
+          "repository": "0xSero/GLM-5.2-NVFP4-REAP-469B",
+          "useOnlyAfter": "504B 4x G4 admission, load, or smoke gate fails"
+        }
+      ]
+    },
+    "contextWindowTokens": 1048576,
+    "layers": 78,
+    "denseLayers": 3,
+    "moeLayers": 75,
+    "mtpLayers": 1,
+    "routedExperts": 168,
+    "expertsPerToken": 8,
+    "sharedExperts": 1,
+    "indexTopkFreq": 4,
+    "indexTopkPattern": "FFFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSS",
+    "safetensors": {
+      "indexMetadataTotalSizeBytes": 318247808128,
+      "expectedShardCount": 63,
+      "weightsCommittedToGit": false
+    },
+    "generationDefaults": {
+      "temperature": 1.0,
+      "topP": 0.95,
+      "eosTokenIds": [
+        154820,
+        154827,
+        154829
+      ],
+      "padTokenId": 154820
+    },
+    "samplerGuardrails": {
+      "minP": 0.05,
+      "repetitionPenaltyCandidates": [
+        1.05,
+        1.1
+      ],
+      "source": "0xSero report loop-abatement recommendation"
+    },
+    "externalReferences": {
+      "modelCard": "https://huggingface.co/0xSero/GLM-5.2-504B",
+      "report": "https://huggingface.co/0xSero/GLM-5.2-504B/blob/main/REPORT.md",
+      "sm120ServingReference": "https://github.com/0xSero/glm-5.2-sm120"
+    }
+  },
+  "engine": {
+    "name": "vllm",
+    "distribution": "b12x SM120 recipe",
+    "status": "image_digest_pending",
+    "containerImageTag": "voipmonitor/vllm:black-benediction-b12xpr11-vllmbb6c5b7-b12xd90d89c-fi3395b41aa8d-dg324aced12c-cu132-20260608",
+    "containerImageDigest": null,
+    "containerPlatform": "linux/amd64",
+    "quantizationFlag": "modelopt_fp4",
+    "kvCacheDtype": "fp8",
+    "attentionBackend": "B12X_MLA_SPARSE",
+    "moeBackend": "b12x",
+    "toolCallParser": "glm47",
+    "reasoningParser": "glm45",
+    "openaiCompatibleBaseUrl": "http://127.0.0.1:8000/v1"
+  },
+  "targetHardware": {
+    "provider": "gce",
+    "project": "openagentsgemini",
+    "primaryZones": [
+      "us-central1-b",
+      "us-central1-f"
+    ],
+    "primaryMachineType": "g4-standard-192",
+    "primaryAccelerator": "nvidia-rtx-pro-6000",
+    "gpuName": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "gpuCount": 4,
+    "gpuMemoryMiBEachExpected": 97887,
+    "gpuMemoryMiBTotalExpected": 391548,
+    "fallbackMachineTypes": [
+      "g4-standard-384"
+    ],
+    "fallbackPolicy": "Use 8x G4 only after 4x G4 admission, load, or smoke evidence fails; do not rewrite the 4x accessibility claim."
+  },
+  "admission": {
+    "status": "pending",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/83",
+    "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-g4-admission.md"
+  },
+  "staging": {
+    "status": "pending",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/84",
+    "localModelPath": "/opt/hydralisk/models/glm-5.2-504b",
+    "manifestRef": "docs/evidence/2026-06-24-glm-52-reap-504b-staging.md"
+  },
+  "runtimePlan": {
+    "status": "planned",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/85",
+    "firstLoad": {
+      "tensorParallelSize": 4,
+      "decodeContextParallelSize": 4,
+      "maxModelLenTokens": 32768,
+      "maxNumSeqs": 1,
+      "maxNumBatchedTokens": 4096,
+      "gpuMemoryUtilization": 0.95,
+      "mtp": "disabled until first load passes"
+    },
+    "targetAfterSmoke": {
+      "maxModelLenTokens": 250000,
+      "maxNumSeqs": 2,
+      "mtp": "enabled with num_speculative_tokens=3 if quality and stability gates pass"
+    }
+  },
+  "smoke": {
+    "status": "pending",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/86",
+    "publicSafePromptPolicy": "synthetic prompts only; store hashes and aggregate metrics, never raw private prompts, private source, responses, or hidden reasoning traces",
+    "successCriteria": [
+      "service reaches health endpoint",
+      "OpenAI-compatible completion returns at least one token",
+      "receipt records image digest, model revision, launch flags, sampler params, token counts, timing, and GPU memory envelope"
+    ]
+  },
+  "evals": {
+    "terminalBench20": {
+      "status": "planned",
+      "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/89",
+      "receiptPolicy": "task IDs, statuses, timings, aggregate metrics, and sanitized error classes only"
+    }
+  },
+  "publicSafety": {
+    "containsSecrets": false,
+    "containsPrompts": false,
+    "containsResponses": false,
+    "containsWeights": false,
+    "containsCompiledEngines": false,
+    "containsHiddenReasoning": false,
+    "redactionPolicy": "Do not commit model weights, checkpoints, compiled engines, generated benchmark dumps, GPU profiler dumps, raw prompts, raw responses, hidden reasoning traces, private source, model-provider credentials, bearer tokens, or cloud credentials."
+  },
+  "claimBoundary": {
+    "currentClaim": "planned profile only; no serving claim",
+    "publicClaimRequirement": "A public claim must name exact model revision, runtime image digest, GCE shape, GPU count, context/concurrency ceiling, sampler settings, and eval denominator."
+  }
+}
