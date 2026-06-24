@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "blocked_gcloud_auth_before_flashinfer_dsv4_g4_smoke",
+  "status": "blocked_no_local_gcloud_runner_or_grant_authority",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -162,7 +162,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/45",
       "https://github.com/OpenAgentsInc/hydralisk/issues/46",
       "https://github.com/OpenAgentsInc/hydralisk/issues/47",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/48"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/48",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/49"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -206,7 +207,8 @@
       "docs/evidence/2026-06-24-deepseek-gcloud-account-override.md",
       "docs/evidence/2026-06-24-deepseek-g4-iam-preflight.md",
       "docs/evidence/2026-06-24-deepseek-g4-iam-grant-helper.md",
-      "docs/evidence/2026-06-24-deepseek-g4-grant-authority-preflight.md"
+      "docs/evidence/2026-06-24-deepseek-g4-grant-authority-preflight.md",
+      "docs/evidence/2026-06-24-deepseek-gcloud-credential-authority-probe.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -2169,6 +2171,49 @@
     },
     "mutatedIam": false,
     "plainEnglishNext": "Run APPLY=1 bash scripts/plan-deepseek-v4-g4-iam-grant.sh from an IAM-capable account, then rerun the canonical DeepSeek G4 wrapper.",
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekGcloudCredentialAuthorityProbe": {
+    "status": "blocked_no_local_gcloud_runner_or_grant_authority",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/49",
+    "script": "scripts/probe-deepseek-v4-gcloud-credentials.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-gcloud-credential-authority-probe.md",
+    "accountCount": 3,
+    "tokensWrittenToEvidence": false,
+    "configuredAccounts": [
+      {
+        "account": "chris@openagents.com",
+        "authStatus": "failed",
+        "runnerStatus": "skipped",
+        "grantStatus": "skipped",
+        "recommendation": "refresh this account with gcloud auth login or choose a working service account"
+      },
+      {
+        "account": "nexus-mainnet@openagentsgemini.iam.gserviceaccount.com",
+        "authStatus": "ok",
+        "runnerStatus": "missing_permissions",
+        "grantStatus": "missing_permissions",
+        "recommendation": "use an IAM-capable account to grant runner permissions, or grant this account the missing runner and grant-authority permissions"
+      },
+      {
+        "account": "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com",
+        "authStatus": "ok",
+        "runnerStatus": "missing_permissions",
+        "grantStatus": "missing_permissions",
+        "recommendation": "use an IAM-capable account to grant runner permissions, or grant this account the missing runner and grant-authority permissions"
+      }
+    ],
+    "providerCardSignal": {
+      "helps": "confirms the ordinary target recipe: vLLM 0.20+, DeepGEMM helper, FP8 KV cache, block size 256, expert parallelism, DeepSeek parser flags, and tensor parallel size equal to GPU count",
+      "doesNotHelp": "does not fix the current Google IAM/auth blocker and still points at H100/H200/B200/GB200-class capacity that is not quota-visible in the sampled Google project"
+    },
+    "plainEnglishNext": "Use an IAM-capable account to grant runner permissions to oa-vertex-inference, or refresh chris@openagents.com interactively, then rerun the canonical issue #41 DeepSeek G4 wrapper.",
     "publicSafety": {
       "containsSecrets": false,
       "containsPrompts": false,

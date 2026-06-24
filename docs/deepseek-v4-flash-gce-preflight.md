@@ -1005,6 +1005,18 @@ requires interactive reauth. The `oa-vertex-inference` service account stops at
 `blocked_grant_iam` because it lacks role/update and policy-binding authority.
 No IAM mutation happened in either check.
 
+Issue #49 added a credential-authority inventory for every configured local
+gcloud account. The probe writes only public-safe account status, missing
+permission names, and recommendations:
+[`docs/evidence/2026-06-24-deepseek-gcloud-credential-authority-probe.md`](evidence/2026-06-24-deepseek-gcloud-credential-authority-probe.md).
+The result is clear: `chris@openagents.com` needs interactive reauth, while
+both configured service accounts can mint tokens but lack the runner
+permissions and the grant-authority permissions needed to repair themselves.
+The pasted provider card is useful target-shape evidence for the ordinary vLLM
+path, but it does not change this Google blocker: the repo still needs either
+interactive user reauth or an IAM-capable account before issue #41 can create a
+fresh G4 host.
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this

@@ -756,6 +756,70 @@ exit 99
     assert "reauth required" in result.stderr
 
 
+def test_deepseek_gcloud_credentials_probe_reports_auth_and_iam_without_tokens(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-deepseek-v4-gcloud-credentials.sh"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    gcloud = fake_bin / "gcloud"
+    gcloud.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1 $2" == "auth print-access-token" ]]; then
+  if [[ "${CLOUDSDK_CORE_ACCOUNT:-}" == "chris@openagents.com" ]]; then
+    echo "reauth required" >&2
+    exit 1
+  fi
+  echo "fake-token"
+  exit 0
+fi
+if [[ "$1 $2" == "projects describe" ]]; then
+  echo "123456789"
+  exit 0
+fi
+echo "unexpected gcloud command: $*" >&2
+exit 99
+""",
+    )
+    gcloud.chmod(0o755)
+    curl = fake_bin / "curl"
+    curl.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf '{"permissions":[]}'
+""",
+    )
+    curl.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            **os.environ,
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "OUTPUT_DIR": str(tmp_path / "out"),
+            "ACCOUNTS": "chris@openagents.com,oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "out" / "gcloud-credentials.md").read_text()
+    tsv = (tmp_path / "out" / "gcloud-credentials.tsv").read_text()
+
+    assert "Wrote" in result.stdout
+    assert "Tokens written to evidence: `false`" in evidence
+    assert "chris@openagents.com\tauth failed" not in tsv
+    assert "chris@openagents.com\tfailed" in tsv
+    assert "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com\tok\tmissing_permissions" in tsv
+    assert "compute.instances.create" in evidence
+    assert "resourcemanager.projects.setIamPolicy" in evidence
+    assert not list((tmp_path / "out").glob("token-*"))
+
+
 def test_flashinfer_dsv4_g4_wrapper_sets_issue_41_defaults(
     tmp_path: Path,
 ) -> None:
