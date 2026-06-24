@@ -14,6 +14,8 @@ Source:
   <https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash>
 - Current Hydralisk DeepSeek V4 evidence:
   [`docs/deepseek-v4-flash-gce-preflight.md`](deepseek-v4-flash-gce-preflight.md)
+- Adapter compatibility evidence:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md`](evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md)
 
 ## Summary
 
@@ -215,12 +217,31 @@ Acceptance criteria:
 - If target-module matching or adapter load fails, mark the profile
   `rejected_adapter_incompatible` and stop.
 
+## Issue #67 result
+
+Issue #67 added a fail-closed Fable adapter compatibility probe and ran it
+against the live cached Hydralisk DeepSeek V4 G4 image. The result is
+`rejected_adapter_incompatible`: the patched vLLM runtime exposes packed or
+renamed module surfaces such as `fused_wqa_wkv` and `gate_up_proj`, while the
+Fable adapter targets `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`,
+`up_proj`, and `down_proj`.
+
+Only `down_proj` matched the inspected runtime inventory by exact suffix. The
+adapter load path therefore stops before any private load smoke until there is
+an explicit adapter-to-runtime mapping or a different base/runtime path.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md`](evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
-The next useful step is a private adapter compatibility probe. Even if that
-probe succeeds, Fable should remain an authorized-security research capability,
-not a general Khala model and not a public inference product.
+The adapter compatibility probe now rejects the current G4 runtime path before
+load. The next useful technical step is an explicit adapter-to-packed-runtime
+mapping, or a different base/runtime path that exposes the Fable target module
+names. Even if a future probe succeeds, Fable should remain an
+authorized-security research capability, not a general Khala model and not a
+public inference product.
 
 ## Public safety
 

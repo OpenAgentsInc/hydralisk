@@ -1,0 +1,58 @@
+{
+  "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
+  "profileId": "deepseek-v4-fable-adapter-g4-20260624",
+  "status": "rejected_adapter_incompatible",
+  "servedModel": "Chunjiang-Intelligence/DeepSeek-v4-Fable",
+  "publicModelAliases": [],
+  "model": {
+    "publisher": "Chunjiang-Intelligence",
+    "repository": "Chunjiang-Intelligence/DeepSeek-v4-Fable",
+    "revision": "999909137c15e0b5539fee887431824fa7cb5b10",
+    "baseModel": "deepseek-ai/DeepSeek-V4-Flash",
+    "architecture": "deepseek_v4",
+    "modelType": "mixture_of_experts_lora_adapter",
+    "license": "openrail",
+    "contextWindowTokens": 1048576,
+    "experts": 256,
+    "expertsPerToken": 6,
+    "riskClass": "authorized_security_research_only"
+  },
+  "adapter": {
+    "format": "peft_lora",
+    "rank": 16,
+    "alpha": 32,
+    "targetModules": [
+      "v_proj",
+      "q_proj",
+      "up_proj",
+      "o_proj",
+      "k_proj",
+      "gate_proj",
+      "down_proj"
+    ],
+    "adapterFileBytes": 69409832,
+    "payloadCommitted": false
+  },
+  "targetRuntime": {
+    "provider": "gce",
+    "project": "openagentsgemini",
+    "machineType": "g4-standard-384",
+    "accelerator": "nvidia-rtx-pro-6000",
+    "gpuCount": 8,
+    "baseRuntime": "nvidia/DeepSeek-V4-Flash-NVFP4",
+    "containerImage": "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:20260624v3vector2"
+  },
+  "admission": {
+    "status": "rejected_adapter_incompatible",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/67",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md",
+    "reason": "The admitted patched DeepSeek V4 runtime packs or renames most Fable LoRA target modules; only down_proj maps by exact suffix in the inspected runtime inventory.",
+    "nextStep": "stop_before_load_until_adapter_runtime_mapping_exists"
+  },
+  "policy": {
+    "publicSharedServing": false,
+    "khalaGeneralRouteAllowed": false,
+    "mppPublicSaleAllowed": false,
+    "authorizedSecurityLabOnly": true
+  }
+}

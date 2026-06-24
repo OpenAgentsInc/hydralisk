@@ -26,6 +26,7 @@ hydralisk-deepseek-v4-b12x-clamp-patch = "hydralisk.admission.deepseek_v4_b12x_c
 hydralisk-deepseek-v4-flashmla-sparse-audit = "hydralisk.admission.deepseek_v4_flashmla_sparse_audit:main"
 hydralisk-deepseek-v4-sparse-mla-smoke = "hydralisk.admission.deepseek_v4_sparse_mla_smoke:main"
 hydralisk-deepseek-v4-sparse-mla-vllm-patch = "hydralisk.admission.deepseek_v4_sparse_mla_vllm_patch:main"
+hydralisk-deepseek-v4-fable-adapter-probe = "hydralisk.admission.deepseek_v4_fable:main"
 
 [build-system]
 requires = ["hatchling"]
