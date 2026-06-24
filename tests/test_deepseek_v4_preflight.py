@@ -599,6 +599,52 @@ printf '{"permissions":[]}'
     assert "missing permissions:" in attempts
 
 
+def test_deepseek_g4_iam_grant_helper_is_plan_only_by_default(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "plan-deepseek-v4-g4-iam-grant.sh"
+    role = repo_root / "deploy" / "gce" / "deepseek-v4-g4-runner-role.yaml"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    gcloud_called = tmp_path / "gcloud-called"
+    gcloud = fake_bin / "gcloud"
+    gcloud.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+echo called > {gcloud_called}
+exit 99
+""",
+    )
+    gcloud.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            **os.environ,
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    output = result.stdout
+    role_text = role.read_text()
+
+    assert not gcloud_called.exists()
+    assert "Hydralisk DeepSeek-V4-Flash G4 IAM grant plan" in output
+    assert "gcloud iam roles create" in output
+    assert "roles/compute.osAdminLogin" in output
+    assert "roles/iam.serviceAccountUser" in output
+    assert "probe-deepseek-v4-flashinfer-dsv4-g4-gce.sh" in output
+    assert "compute.instances.create" in role_text
+    assert "compute.instances.get" in role_text
+    assert "compute.disks.create" in role_text
+    assert "compute.subnetworks.use" in role_text
+
+
 def test_flashinfer_dsv4_g4_wrapper_sets_issue_41_defaults(
     tmp_path: Path,
 ) -> None:

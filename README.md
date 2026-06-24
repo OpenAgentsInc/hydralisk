@@ -237,6 +237,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-tailnet-executor-check.md`](docs/evidence/2026-06-24-deepseek-tailnet-executor-check.md)
 - [`docs/evidence/2026-06-24-deepseek-gcloud-account-override.md`](docs/evidence/2026-06-24-deepseek-gcloud-account-override.md)
 - [`docs/evidence/2026-06-24-deepseek-g4-iam-preflight.md`](docs/evidence/2026-06-24-deepseek-g4-iam-preflight.md)
+- [`docs/evidence/2026-06-24-deepseek-g4-iam-grant-helper.md`](docs/evidence/2026-06-24-deepseek-g4-iam-grant-helper.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

@@ -986,6 +986,18 @@ compute.subnetworks.use
 The `oa-vertex-inference` retry passed auth preflight and failed IAM preflight
 with all of those permissions missing. This is still before GCE admission.
 
+Issue #47 added `deploy/gce/deepseek-v4-g4-runner-role.yaml` and
+`scripts/plan-deepseek-v4-g4-iam-grant.sh` so an IAM-capable operator can grant
+the service-account path without reconstructing commands from the issue thread.
+The helper prints the plan by default and only mutates IAM with `APPLY=1`:
+
+```bash
+bash scripts/plan-deepseek-v4-g4-iam-grant.sh
+APPLY=1 bash scripts/plan-deepseek-v4-g4-iam-grant.sh
+GCLOUD_ACCOUNT=oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com \
+bash scripts/probe-deepseek-v4-flashinfer-dsv4-g4-gce.sh
+```
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this

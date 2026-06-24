@@ -1,0 +1,26 @@
+title: Hydralisk DeepSeek V4 G4 Runner
+description: Minimal project-level Compute permissions for the Hydralisk DeepSeek-V4-Flash private G4 probe wrapper.
+stage: ALPHA
+includedPermissions:
+  - compute.acceleratorTypes.get
+  - compute.disks.create
+  - compute.disks.delete
+  - compute.globalOperations.get
+  - compute.images.get
+  - compute.images.useReadOnly
+  - compute.instances.create
+  - compute.instances.delete
+  - compute.instances.get
+  - compute.instances.list
+  - compute.instances.setLabels
+  - compute.instances.setMetadata
+  - compute.instances.setServiceAccount
+  - compute.instances.setTags
+  - compute.machineTypes.get
+  - compute.networks.get
+  - compute.projects.get
+  - compute.subnetworks.get
+  - compute.subnetworks.use
+  - compute.zoneOperations.get
+  - compute.zoneOperations.list
+  - compute.zones.get
