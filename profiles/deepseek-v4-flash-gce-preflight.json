@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "flashinfer_dsv4_fmha_sm120_requires_attention_fallback",
+  "status": "deepseek_v4_sm120_attention_fallback_reference_ready",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -167,7 +167,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/50",
       "https://github.com/OpenAgentsInc/hydralisk/issues/51",
       "https://github.com/OpenAgentsInc/hydralisk/issues/52",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/53"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/53",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/54"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -217,7 +218,8 @@
       "docs/evidence/2026-06-24-deepseek-gcloud-credential-authority-probe.md",
       "docs/evidence/2026-06-24-deepseek-google-alt-credential-probe.md",
       "docs/evidence/2026-06-24-deepseek-service-account-key-probe.md",
-      "docs/evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-source-audit.md"
+      "docs/evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-source-audit.md",
+      "docs/evidence/2026-06-24-deepseek-v4-sm120-sparse-mla-fallback.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -242,12 +244,12 @@
       "maxModelLen": 4096
     },
     "blocker": {
-      "stage": "generation_attention",
-      "site": "flashinfer.mla._core.trtllm_batch_decode_sparse_mla_dsv4 / TllmGenFmhaRunner",
-      "message": "The corrected issue #41 DSV4 smoke reached /v1/models on the 8 x G4 host, and issue #52 reproduced the generation failure with a direct one-token synthetic FlashInfer call. Issue #53 then inspected the installed FlashInfer 0.6.12 TRTLLM-gen FMHA source: the runner guard admits only SM100/SM103, the compatibility helper has no SM120 special case for SM100-family kernels, and the installed TRTLLM-gen FMHA cubin inventory has zero SM120 cubins.",
+      "stage": "generation_attention_vllm_integration",
+      "site": "DeepSeek V4 sparse MLA attention fallback / vLLM DeepseekV4FlashInferMLAAttention replacement path",
+      "message": "Issue #53 proved the installed FlashInfer DSV4 TRTLLM-gen FMHA path is not a safe SM120 allowlist patch because it ships no SM120 cubins. Issue #54 added a deterministic Hydralisk sparse MLA fallback reference for the same tensor shape family, covering HND KV cache handling, sparse top-k truncation, sequence-length masking, single-KV-head broadcast, per-head KV mode, empty-route zero output, finite nonzero routed output, and stable softmax.",
       "ready": true,
       "completion": false,
-      "nextProbe": "build or source an SM120-capable DeepSeek V4 attention path: either SM120 TRTLLM-gen DSV4 FMHA cubins plus dispatch metadata, or a correctness-first sparse MLA attention fallback for RTX PRO 6000/G4"
+      "nextProbe": "wire reference_sparse_mla_decode semantics into a derived vLLM/container DeepSeek V4 attention fallback and run the synthetic issue #52 shape in-container before another full 8 x G4 model smoke"
     }
   },
   "publishedRecipeAdmission": {
@@ -2434,6 +2436,42 @@
       ]
     },
     "plainEnglishNext": "Do not ship a guard-only derived image. Build or source the actual SM120 attention kernel path, or make the SM120 fallback attention path work before retrying the full model.",
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekV4Sm120SparseMlaFallback": {
+    "status": "reference_ready_vllm_wiring_needed",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/54",
+    "module": "hydralisk/admission/deepseek_v4_sparse_mla.py",
+    "tests": "tests/test_deepseek_v4_sparse_mla.py",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-sm120-sparse-mla-fallback.md",
+    "scope": {
+      "loadsModelWeights": false,
+      "requiresGpu": false,
+      "queryShape": "[query, head, dim]",
+      "kvLayout": "HND [page, kv_head, page_token, dim]",
+      "supportsSingleKvHeadBroadcast": true,
+      "supportsPerHeadKvCache": true,
+      "usesSameCompressedVectorAsKeyAndValue": true
+    },
+    "coveredSemantics": [
+      "sparse top-k truncation",
+      "sequence-length masking for sparse indices",
+      "sliding-window route truncation",
+      "empty-route zero output",
+      "finite nonzero routed output",
+      "stable softmax for large logits"
+    ],
+    "validation": {
+      "command": "uv run pytest tests/test_deepseek_v4_sparse_mla.py",
+      "result": "9 passed"
+    },
+    "plainEnglishNext": "Patch the in-container vLLM DeepSeek V4 attention path to use this fallback for the failing SM120 sparse MLA decode shape, then rerun the synthetic repro before a full model smoke.",
     "publicSafety": {
       "containsSecrets": false,
       "containsPrompts": false,

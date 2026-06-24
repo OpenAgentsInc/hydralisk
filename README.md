@@ -187,7 +187,12 @@ Initial targets:
   SM120 cubins. This is not a safe one-line allowlist bug. The next useful G4
   step is either SM120-built DSV4 FMHA cubins plus dispatch metadata or a
   correctness-first DeepSeek V4 attention fallback for SM120, not another
-  full-model flag trial.
+  full-model flag trial. Hydralisk now has that fallback's local oracle:
+  `reference_sparse_mla_decode` covers the issue #52 sparse MLA shape family
+  with deterministic top-k masking, sequence-length truncation, HND KV cache
+  handling, empty-route zero output, and stable softmax. The remaining step is
+  wiring that contract into a derived vLLM/container fallback and rerunning the
+  synthetic shape before another full-model smoke.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,

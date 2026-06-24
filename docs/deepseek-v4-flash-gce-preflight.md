@@ -115,6 +115,9 @@ FlashInfer DSV4 FMHA SM120 repro evidence:
 FlashInfer DSV4 FMHA SM120 source-audit evidence:
 [`docs/evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-source-audit.md`](evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-source-audit.md)
 
+DeepSeek V4 SM120 sparse MLA fallback evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-sm120-sparse-mla-fallback.md`](evidence/2026-06-24-deepseek-v4-sm120-sparse-mla-fallback.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -1004,6 +1007,17 @@ allowlist patch for RTX PRO 6000. The next implementation issue should either
 provide SM120-built TRTLLM-gen DSV4 FMHA cubins plus dispatch metadata, or build
 a correctness-first DeepSeek V4 attention fallback for SM120/G4 and then rerun
 the direct repro before attempting another full-model smoke.
+
+Issue #54 added the first correctness-first DeepSeek V4 sparse MLA fallback
+reference in Hydralisk. It is deliberately CPU/local and small: it covers the
+issue #52 tensor family with query shape `[query, head, dim]`, HND KV caches,
+SWA/compressed KV cache inputs, sparse indices, top-k truncation, sequence
+length masking, single-KV-head broadcast, per-head KV cache mode, empty-route
+zero output, and stable softmax. This gives the G4 lane a concrete oracle for
+the replacement attention path. It is not yet a vLLM runtime patch. The next
+implementation issue should wire this contract into a derived DeepSeek V4
+attention fallback inside the container, run the same synthetic shape there,
+and only then attempt another full 8 x G4 model smoke.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable
