@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "glm-5.2-reap-504b-nvfp4-b12x-g4-rtx-pro-6000-4g-20260624",
-  "status": "admission_pending",
+  "status": "fallback_admitted_staging_pending",
   "servedModel": "0xSero/GLM-5.2-504B",
   "internalModelAlias": "glm-5.2-reap-504b-g4",
   "publicModelAliases": [],
@@ -105,9 +105,64 @@
     "fallbackPolicy": "Use 8x G4 only after 4x G4 admission, load, or smoke evidence fails; do not rewrite the 4x accessibility claim."
   },
   "admission": {
-    "status": "pending",
+    "status": "primary_4x_capacity_blocked_8x_fallback_admitted",
     "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/83",
-    "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-g4-admission.md"
+    "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-g4-admission.md",
+    "attemptedAt": "2026-06-24T21:45:00Z",
+    "primary4x": {
+      "status": "capacity_blocked",
+      "attempts": [
+        {
+          "zone": "us-central1-b",
+          "machineType": "g4-standard-192",
+          "accelerator": "nvidia-rtx-pro-6000",
+          "gpuCount": 4,
+          "provisioningModel": "SPOT",
+          "blockerCode": "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS"
+        },
+        {
+          "zone": "us-central1-f",
+          "machineType": "g4-standard-192",
+          "accelerator": "nvidia-rtx-pro-6000",
+          "gpuCount": 4,
+          "provisioningModel": "SPOT",
+          "blockerCode": "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS"
+        },
+        {
+          "zone": "us-central1-b",
+          "machineType": "g4-standard-192",
+          "accelerator": "nvidia-rtx-pro-6000",
+          "gpuCount": 4,
+          "provisioningModel": "STANDARD",
+          "blockerCode": "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS"
+        },
+        {
+          "zone": "us-central1-f",
+          "machineType": "g4-standard-192",
+          "accelerator": "nvidia-rtx-pro-6000",
+          "gpuCount": 4,
+          "provisioningModel": "STANDARD",
+          "blockerCode": "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS"
+        }
+      ]
+    },
+    "activeFallback": {
+      "status": "admitted",
+      "instance": "hydralisk-glm52-reap-504b-g4-8g-b-20260624214500",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-384",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 8,
+      "gpuMemoryMiBEach": 97887,
+      "gpuMemoryMiBTotal": 783096,
+      "provisioningModel": "SPOT",
+      "instanceTerminationAction": "STOP",
+      "maxRunDurationSeconds": 21600,
+      "bootDiskSizeGb": 1500,
+      "bootDiskType": "hyperdisk-balanced",
+      "bootDiskAutoDelete": false,
+      "networkIp": "10.128.0.38"
+    }
   },
   "staging": {
     "status": "pending",
