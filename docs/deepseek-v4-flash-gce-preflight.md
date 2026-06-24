@@ -1159,6 +1159,16 @@ long-output/context candidate," still not a Khala serving claim because
 concurrency, sparse-indexer correctness, broader quality, and context above
 the current `max_model_len=2048` remain ungated.
 
+Issue #65 added measured concurrent streaming requests and ran the first
+`max_num_seqs=2` live probe. The server reached readiness and completed two
+concurrent 96-token streams, but failed the concurrency gate: TTFT p95 was
+13.078 s, decode p50 was 2.985 tok/s, and end-to-end p50 was 2.509 tok/s.
+The same shape's uncounted single-stream warmup decoded at 11.211 tok/s, so
+the problem is concurrent scheduling/throughput, not basic generation. The
+honest boundary is now single-flight, resident, explicitly prewarmed canary
+traffic only unless we add a queueing envelope or make `max_num_seqs > 1`
+viable.
+
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable
 alternate executor was reachable noninteractively from this shell: local

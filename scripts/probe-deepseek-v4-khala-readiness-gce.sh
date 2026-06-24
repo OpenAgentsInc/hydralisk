@@ -16,6 +16,7 @@ BENCH_PROMPT_B64="${BENCH_PROMPT_B64:-}"
 QUALITY_CASES_FILE="${QUALITY_CASES_FILE:-}"
 QUALITY_CASES_B64="${QUALITY_CASES_B64:-}"
 STREAM_REQUESTS="${STREAM_REQUESTS:-5}"
+CONCURRENT_STREAM_REQUESTS="${CONCURRENT_STREAM_REQUESTS:-1}"
 WARMUP_REQUESTS="${WARMUP_REQUESTS:-1}"
 STREAM_WARMUP_REQUESTS="${STREAM_WARMUP_REQUESTS:-0}"
 MAX_TOKENS="${MAX_TOKENS:-32}"
@@ -172,6 +173,7 @@ PY
 else
   python3 - <<'PY' > "$REMOTE_LOG_DIR/readiness-public.json"
 import base64
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -187,6 +189,7 @@ request_timeout = float(os.environ["REQUEST_TIMEOUT_SECONDS"])
 start_epoch = int(os.environ["start_epoch"])
 ready_epoch = int(os.environ["ready_epoch"])
 stream_requests = int(os.environ["STREAM_REQUESTS"])
+concurrent_stream_requests = int(os.environ["CONCURRENT_STREAM_REQUESTS"])
 warmup_requests = int(os.environ["WARMUP_REQUESTS"])
 stream_warmup_requests = int(os.environ["STREAM_WARMUP_REQUESTS"])
 max_tokens = int(os.environ["MAX_TOKENS"])
@@ -337,7 +340,18 @@ warmups = [warmup(i) for i in range(warmup_requests)]
 stream_warmups = [
     stream_once(f"stream-warmup-{i}") for i in range(stream_warmup_requests)
 ]
-streams = [stream_once(i) for i in range(stream_requests)]
+if concurrent_stream_requests > 1:
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=concurrent_stream_requests,
+    ) as executor:
+        futures = [
+            executor.submit(stream_once, i)
+            for i in range(stream_requests)
+        ]
+        streams = [future.result() for future in concurrent.futures.as_completed(futures)]
+    streams = sorted(streams, key=lambda item: item["index"])
+else:
+    streams = [stream_once(i) for i in range(stream_requests)]
 successful = [
     run
     for run in streams
@@ -369,11 +383,13 @@ thresholds = {
     "minEndToEndTokensPerSecondP50": float(os.environ["MIN_E2E_TPS_P50"]),
     "minStreamCompletionTokens": min_stream_completion_tokens,
     "minPromptTokens": min_prompt_tokens,
+    "concurrentStreamRequests": concurrent_stream_requests,
     "minSuccessfulRequests": stream_requests,
 }
 summary = {
     "serverStartToReadyWallSeconds": ready_epoch - start_epoch,
     "successfulRequests": len(successful),
+    "concurrentStreamRequests": concurrent_stream_requests,
     "streamWarmupRequests": len(stream_warmups),
     "streamCompletionTokensMin": (
         min(stream_completion_tokens) if stream_completion_tokens else None
@@ -524,6 +540,7 @@ remote_env=(
   "REMOTE_LOG_DIR=$REMOTE_LOG_DIR"
   "BENCH_PROMPT_B64=$BENCH_PROMPT_B64"
   "STREAM_REQUESTS=$STREAM_REQUESTS"
+  "CONCURRENT_STREAM_REQUESTS=$CONCURRENT_STREAM_REQUESTS"
   "WARMUP_REQUESTS=$WARMUP_REQUESTS"
   "STREAM_WARMUP_REQUESTS=$STREAM_WARMUP_REQUESTS"
   "MAX_TOKENS=$MAX_TOKENS"
@@ -623,6 +640,7 @@ target.write_text(
             "",
             f"- Start to ready seconds: `{value('serverStartToReadyWallSeconds')}`",
             f"- Successful requests: `{value('successfulRequests')}`",
+            f"- Concurrent stream requests: `{value('concurrentStreamRequests')}`",
             f"- Stream warmup requests: `{value('streamWarmupRequests')}`",
             f"- Minimum stream prompt tokens: `{value('streamPromptTokensMin')}`",
             f"- Minimum stream completion tokens: `{value('streamCompletionTokensMin')}`",

@@ -1742,6 +1742,9 @@ def test_khala_readiness_probe_is_public_safe_and_metric_bearing() -> None:
     assert "decodeTokensPerSecondP50" in script
     assert "MIN_STREAM_COMPLETION_TOKENS" in script
     assert "MIN_PROMPT_TOKENS" in script
+    assert "CONCURRENT_STREAM_REQUESTS" in script
+    assert "ThreadPoolExecutor" in script
+    assert "concurrentStreamRequests" in script
     assert "STREAM_WARMUP_REQUESTS" in script
     assert "streamWarmups" in script
     assert "streamWarmupRequests" in script

@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "deepseek_v4_nvfp4_8x_g4_long_context_gate_passed_concurrency_sparse_indexer_pending",
+  "status": "deepseek_v4_nvfp4_8x_g4_concurrency_failed_singleflight_canary_only",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -3182,6 +3182,116 @@
       "khalaIntegrationCandidate": true,
       "khalaReadyToServe": false,
       "why": "Long prompt and long streamed output now pass on the resident G4 path only after an explicit long streaming prewarm. Concurrency, sparse-indexer correctness, broader quality, and context beyond 2048 remain ungated."
+    },
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekV4Issue65ConcurrencyGate": {
+    "status": "failed_concurrent_streaming_gate_singleflight_only",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/65",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-concurrency-g4-gate.md",
+    "script": "scripts/probe-deepseek-v4-khala-readiness-gce.sh",
+    "generatedReport": ".hydralisk/deepseek-v4-concurrency-20260624issue65concurrency1/readiness-report.md",
+    "generatedJson": ".hydralisk/deepseek-v4-concurrency-20260624issue65concurrency1/readiness-public.json",
+    "remoteLogDir": "/var/log/hydralisk/deepseek-khala-readiness-20260624issue65concurrency1",
+    "target": {
+      "instance": "hydralisk-deepseek-v4-b12x-g4-8g-b-20260624155352",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-384",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 8,
+      "provisioningModel": "SPOT",
+      "externalIp": null
+    },
+    "container": {
+      "derivedImage": "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:20260624v3vector2",
+      "derivedImageDigest": "sha256:a43653081fe01ab53901ecdff7415d2d8c40a6ea76b5c923aaff1b0e0e661451"
+    },
+    "promptEvidence": {
+      "promptBytes": 173,
+      "promptSha256": "2b50023e27447e6db8ed8af9d87d3bd91e05fce23847f55682fa903634323e57",
+      "promptTextTracked": false,
+      "responseTextTracked": false
+    },
+    "settings": {
+      "maxNumSeqs": 2,
+      "maxNumBatchedTokens": 1024,
+      "streamRequests": 2,
+      "concurrentStreamRequests": 2,
+      "streamWarmupRequests": 1,
+      "maxTokens": 96,
+      "minPromptTokens": 20,
+      "minStreamCompletionTokens": 48
+    },
+    "thresholds": {
+      "maxReadySeconds": 180.0,
+      "maxWarmupSeconds": 45.0,
+      "maxTtftP95Seconds": 5.0,
+      "minDecodeTokensPerSecondP50": 6.0,
+      "minEndToEndTokensPerSecondP50": 5.0,
+      "minPromptTokens": 20,
+      "minStreamCompletionTokens": 48,
+      "minSuccessfulRequests": 2,
+      "concurrentStreamRequests": 2
+    },
+    "summary": {
+      "khalaReadinessGatePassed": false,
+      "serverStartToReadyWallSeconds": 116,
+      "warmupMaxSeconds": 30.454614,
+      "successfulRequests": 2,
+      "concurrentStreamRequests": 2,
+      "streamWarmupRequests": 1,
+      "streamPromptTokensMin": 41,
+      "streamCompletionTokensMin": 96,
+      "ttftP50Seconds": 7.07212,
+      "ttftP95Seconds": 13.0776319,
+      "decodeTokensPerSecondP50": 2.9847005,
+      "decodeTokensPerSecondP95": 3.10661135,
+      "endToEndTokensPerSecondP50": 2.5087415,
+      "endToEndTokensPerSecondP95": 2.81151185
+    },
+    "streamWarmup": {
+      "timeToFirstDeltaSeconds": 0.413299,
+      "completionTokens": 96,
+      "outputTokensPerSecondAfterFirstDelta": 11.210684,
+      "outputTokensPerSecondFullElapsed": 10.801779
+    },
+    "measuredStreams": [
+      {
+        "index": 0,
+        "promptTokens": 41,
+        "completionTokens": 96,
+        "timeToFirstDeltaSeconds": 0.399329,
+        "outputTokensPerSecondAfterFirstDelta": 2.849244,
+        "outputTokensPerSecondFullElapsed": 2.845153,
+        "finishReason": "length"
+      },
+      {
+        "index": 1,
+        "promptTokens": 41,
+        "completionTokens": 96,
+        "timeToFirstDeltaSeconds": 13.744911,
+        "outputTokensPerSecondAfterFirstDelta": 3.120157,
+        "outputTokensPerSecondFullElapsed": 2.17233,
+        "finishReason": "length"
+      }
+    ],
+    "remainingGatesBeforeKhalaServingClaim": [
+      "make max_num_seqs greater than 1 viable or add an explicit single-flight queueing envelope",
+      "restore or explicitly qualify the SWA-only sparse-indexer bypass",
+      "broader public-safe quality eval",
+      "context above current max_model_len=2048"
+    ],
+    "servingBoundary": {
+      "khalaIntegrationCandidate": true,
+      "khalaReadyToServe": false,
+      "singleFlightCanaryOnly": true,
+      "why": "The lane completes concurrent requests but fails TTFT and throughput at max_num_seqs=2. It is currently credible only as resident, prewarmed, single-flight canary traffic."
     },
     "publicSafety": {
       "containsSecrets": false,

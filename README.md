@@ -245,6 +245,12 @@ Initial targets:
   outputs passes after one long streaming prewarm: TTFT p95 `0.207s`, decode
   p50 `11.1 tok/s`, and end-to-end p50 `11.0 tok/s`. Without that streaming
   prewarm, the first long stream still pays roughly `10.8s` TTFT.
+  Issue #65 added a measured concurrency mode and ran `max_num_seqs=2` with
+  two concurrent streamed requests. The server admitted the configuration and
+  completed both requests, but the gate failed: decode p50 fell to
+  `3.0 tok/s`, end-to-end p50 to `2.5 tok/s`, and one request waited `13.7s`
+  for first token. The current G4 lane is therefore single-flight/prewarmed
+  canary material only, not a shared Khala serving lane.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
