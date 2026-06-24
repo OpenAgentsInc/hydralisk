@@ -956,6 +956,17 @@ for the Mac hosts did not resolve. Therefore the immediate live path remains
 interactive gcloud reauth on this Mac, or bringing a Tailnet host online with
 SSH plus valid gcloud auth and then running the same wrapper there.
 
+Issue #45 added a `GCLOUD_ACCOUNT` override to the G4 wrappers and tried the
+locally configured service accounts without changing the active gcloud config.
+Both `oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com` and
+`nexus-mainnet@openagentsgemini.iam.gserviceaccount.com` can mint access tokens
+noninteractively, so this route does get past the user-account reauth blocker.
+Both accounts then fail the issue #41 G4 create step with missing
+`compute.instances.create` on the target project/zone. The current blocker for
+the service-account route is therefore IAM, not GPU capacity and not DeepSeek:
+grant a compute-capable role to one of those accounts or refresh the user
+account interactively, then rerun the dedicated wrapper.
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this

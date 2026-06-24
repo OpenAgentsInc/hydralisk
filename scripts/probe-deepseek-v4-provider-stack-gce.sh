@@ -5,6 +5,7 @@ PROJECT_ID="${PROJECT_ID:-openagentsgemini}"
 TARGET_INSTANCE="${TARGET_INSTANCE:-}"
 TARGET_ZONE="${TARGET_ZONE:-}"
 ISSUE_NUMBER="${ISSUE_NUMBER:-13}"
+GCLOUD_ACCOUNT="${GCLOUD_ACCOUNT:-${CLOUDSDK_CORE_ACCOUNT:-}}"
 MODEL_ID="${MODEL_ID:-deepseek-ai/DeepSeek-V4-Flash}"
 MODEL_REVISION="${MODEL_REVISION:-}"
 MOE_BACKEND="${MOE_BACKEND:-auto}"
@@ -56,6 +57,14 @@ if [[ "$TARGET_INSTANCE" != hydralisk-deepseek-v4-* ]]; then
   exit 2
 fi
 
+run_gcloud() {
+  if [[ -n "$GCLOUD_ACCOUNT" ]]; then
+    CLOUDSDK_CORE_ACCOUNT="$GCLOUD_ACCOUNT" gcloud "$@"
+  else
+    gcloud "$@"
+  fi
+}
+
 render_markdown() {
   local md="$OUTPUT_DIR/provider-stack-probe.md"
   {
@@ -64,6 +73,7 @@ render_markdown() {
     echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo
     echo "- Issue: https://github.com/OpenAgentsInc/hydralisk/issues/$ISSUE_NUMBER"
+    echo "- gcloud account override: \`${GCLOUD_ACCOUNT:-default}\`"
     echo "- Target instance: \`$TARGET_INSTANCE\`"
     echo "- Target zone: \`$TARGET_ZONE\`"
     echo "- Model: \`$MODEL_ID\`"
@@ -1111,7 +1121,7 @@ REMOTE
 } > "$remote_script_file"
 remote_script="$(cat "$remote_script_file")"
 
-gcloud compute ssh "$TARGET_INSTANCE" \
+run_gcloud compute ssh "$TARGET_INSTANCE" \
   --project "$PROJECT_ID" \
   --zone "$TARGET_ZONE" \
   --quiet \
@@ -1134,7 +1144,7 @@ for file in \
   provider-stack-models.json \
   provider-stack-models.stderr \
   provider-stack-vllm-tail-public.txt; do
-  gcloud compute scp \
+  run_gcloud compute scp \
     "$TARGET_INSTANCE:$remote_dir/$file" \
     "$OUTPUT_DIR/$file" \
     --project "$PROJECT_ID" \

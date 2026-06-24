@@ -261,6 +261,8 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     script = (repo_root / "scripts" / "probe-deepseek-v4-provider-stack-gce.sh").read_text()
 
     assert 'ISSUE_NUMBER="${ISSUE_NUMBER:-13}"' in script
+    assert 'GCLOUD_ACCOUNT="${GCLOUD_ACCOUNT:-${CLOUDSDK_CORE_ACCOUNT:-}}"' in script
+    assert 'CLOUDSDK_CORE_ACCOUNT="$GCLOUD_ACCOUNT" gcloud "$@"' in script
     assert 'MODEL_REVISION="${MODEL_REVISION:-}"' in script
     assert 'MOE_BACKEND="${MOE_BACKEND:-auto}"' in script
     assert 'ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"' in script
@@ -334,6 +336,8 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'expert_parallel_flags+=(--enable-expert-parallel)' in script
     assert 'eager_args+=(--enforce-eager)' in script
     assert 'attention_config_args+=(--attention-config "{\\"backend\\":\\"$VLLM_ATTENTION_BACKEND\\"}")' in script
+    assert "run_gcloud compute ssh" in script
+    assert "run_gcloud compute scp" in script
     assert "sudo docker inspect -f '{{.State.Status}}'" in script
     assert "container_start_deadline" in script
     assert "container_seen=0" in script
@@ -423,6 +427,7 @@ def test_b12x_g4_probe_script_is_public_safe_in_dry_run(
     assert "g4-standard-384" in plan
     assert "g4-standard-192" in plan
     assert "flashinfer_b12x" in evidence
+    assert "gcloud account override: `default`" in evidence
     assert "vLLM expert parallel: `0`" in evidence
     assert "vLLM enforce eager: `0`" in evidence
     assert "vLLM attention backend: `auto`" in evidence
@@ -467,10 +472,12 @@ def test_b12x_g4_probe_blocks_before_create_when_gcloud_auth_fails(
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     compute_called = tmp_path / "compute-called"
+    account_seen = tmp_path / "account-seen"
     gcloud = fake_bin / "gcloud"
     gcloud.write_text(
         f"""#!/usr/bin/env bash
 set -euo pipefail
+printf '%s' "${{CLOUDSDK_CORE_ACCOUNT:-}}" > {account_seen}
 if [[ "$1 $2" == "auth print-access-token" ]]; then
   echo "ERROR: reauth required" >&2
   exit 1
@@ -493,6 +500,7 @@ exit 99
             "OUTPUT_DIR": str(tmp_path / "out"),
             "TS": "20260624000000",
             "ISSUE_NUMBER": "42",
+            "GCLOUD_ACCOUNT": "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com",
             "VLLM_ATTENTION_BACKEND": "FLASHINFER_MLA_SPARSE_DSV4",
             "VLLM_ENFORCE_EAGER": "1",
             "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK": "bf16_einsum",
@@ -507,7 +515,12 @@ exit 99
 
     assert "Wrote" in result.stdout
     assert not compute_called.exists()
+    assert account_seen.read_text() == "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com"
     assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/42" in evidence
+    assert (
+        "gcloud account override: `oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com`"
+        in evidence
+    )
     assert "gcloud Auth Preflight" in evidence
     assert "Status: `blocked_auth`" in evidence
     assert "gcloud auth login" in evidence
@@ -531,6 +544,7 @@ def test_flashinfer_dsv4_g4_wrapper_sets_issue_41_defaults(
             "DRY_RUN": "1",
             "OUTPUT_DIR": str(tmp_path),
             "TS": "20260624000000",
+            "GCLOUD_ACCOUNT": "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com",
         },
         text=True,
         stdout=subprocess.PIPE,
@@ -542,6 +556,10 @@ def test_flashinfer_dsv4_g4_wrapper_sets_issue_41_defaults(
 
     assert "Wrote" in result.stdout
     assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/41" in evidence
+    assert (
+        "gcloud account override: `oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com`"
+        in evidence
+    )
     assert "vLLM enforce eager: `1`" in evidence
     assert "vLLM attention backend: `FLASHINFER_MLA_SPARSE_DSV4`" in evidence
     assert "DeepSeek o_proj fallback: `bf16_einsum`" in evidence
@@ -551,6 +569,7 @@ def test_flashinfer_dsv4_g4_wrapper_sets_issue_41_defaults(
     assert "Max batched tokens: `512`" in evidence
     assert "GPU memory utilization: `0.95`" in evidence
     assert "ISSUE_NUMBER=\"${ISSUE_NUMBER:-41}\"" in script_text
+    assert 'GCLOUD_ACCOUNT="${GCLOUD_ACCOUNT:-${CLOUDSDK_CORE_ACCOUNT:-}}"' in script_text
     assert "FLASHINFER_MLA_SPARSE_DSV4" in script_text
     assert "probe-deepseek-v4-b12x-g4-gce.sh" in script_text
 
@@ -563,10 +582,12 @@ def test_flashinfer_dsv4_g4_wrapper_keeps_auth_preflight(
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     compute_called = tmp_path / "compute-called"
+    account_seen = tmp_path / "account-seen"
     gcloud = fake_bin / "gcloud"
     gcloud.write_text(
         f"""#!/usr/bin/env bash
 set -euo pipefail
+printf '%s' "${{CLOUDSDK_CORE_ACCOUNT:-}}" > {account_seen}
 if [[ "$1 $2" == "auth print-access-token" ]]; then
   echo "ERROR: reauth required" >&2
   exit 1
@@ -588,6 +609,7 @@ exit 99
             "PATH": f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
             "OUTPUT_DIR": str(tmp_path / "out"),
             "TS": "20260624000000",
+            "GCLOUD_ACCOUNT": "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com",
         },
         text=True,
         stdout=subprocess.PIPE,
@@ -598,6 +620,7 @@ exit 99
 
     assert "Wrote" in result.stdout
     assert not compute_called.exists()
+    assert account_seen.read_text() == "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com"
     assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/41" in evidence
     assert "Status: `blocked_auth`" in evidence
     assert "FLASHINFER_MLA_SPARSE_DSV4" in evidence

@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:-openagentsgemini}"
 ISSUE_NUMBER="${ISSUE_NUMBER:-23}"
+GCLOUD_ACCOUNT="${GCLOUD_ACCOUNT:-${CLOUDSDK_CORE_ACCOUNT:-}}"
 GCLOUD_AUTH_PREFLIGHT="${GCLOUD_AUTH_PREFLIGHT:-1}"
 MODEL_ID="${MODEL_ID:-nvidia/DeepSeek-V4-Flash-NVFP4}"
 MODEL_REVISION="${MODEL_REVISION:-e3cd60e7de98e9867116860d522499a728de1cf9}"
@@ -78,6 +79,14 @@ refuse_unsafe_target() {
   fi
 }
 
+run_gcloud() {
+  if [[ -n "$GCLOUD_ACCOUNT" ]]; then
+    CLOUDSDK_CORE_ACCOUNT="$GCLOUD_ACCOUNT" gcloud "$@"
+  else
+    gcloud "$@"
+  fi
+}
+
 sanitize_blocker() {
   tr '\n\t' '  ' | sed 's/  */ /g' | cut -c1-1800
 }
@@ -89,7 +98,7 @@ check_gcloud_auth() {
     return 0
   fi
 
-  if gcloud auth print-access-token > /dev/null 2> "$log"; then
+  if run_gcloud auth print-access-token > /dev/null 2> "$log"; then
     echo "ok" > "$OUTPUT_DIR/gcloud-auth-preflight-status.txt"
     return 0
   fi
@@ -128,7 +137,7 @@ attempt_create() {
     return 1
   fi
 
-  if gcloud compute instances create "$instance" \
+  if run_gcloud compute instances create "$instance" \
     --project "$PROJECT_ID" \
     --zone "$zone" \
     --machine-type "$machine" \
@@ -162,7 +171,7 @@ attempt_create() {
 
 wait_for_ssh() {
   for _ in $(seq 1 90); do
-    if gcloud compute ssh "$TARGET_INSTANCE" \
+    if run_gcloud compute ssh "$TARGET_INSTANCE" \
       --project "$PROJECT_ID" \
       --zone "$TARGET_ZONE" \
       --quiet \
@@ -176,6 +185,7 @@ wait_for_ssh() {
 
 run_provider_probe() {
   ISSUE_NUMBER="$ISSUE_NUMBER" \
+  GCLOUD_ACCOUNT="$GCLOUD_ACCOUNT" \
   MODEL_ID="$MODEL_ID" \
   MODEL_REVISION="$MODEL_REVISION" \
   MOE_BACKEND="$MOE_BACKEND" \
@@ -227,6 +237,7 @@ render_markdown() {
     echo
     echo "- Issue: https://github.com/OpenAgentsInc/hydralisk/issues/$ISSUE_NUMBER"
     echo "- Project: \`$PROJECT_ID\`"
+    echo "- gcloud account override: \`${GCLOUD_ACCOUNT:-default}\`"
     echo "- gcloud auth preflight: \`$GCLOUD_AUTH_PREFLIGHT\`"
     echo "- Model: \`$MODEL_ID\`"
     echo "- Model revision: \`$MODEL_REVISION\`"
