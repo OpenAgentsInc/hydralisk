@@ -109,6 +109,9 @@ B12x dynamic clamp G4 evidence:
 FlashInfer DSV4 G4 live-smoke evidence:
 [`docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-live-smoke.md`](evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-live-smoke.md)
 
+FlashInfer DSV4 FMHA SM120 repro evidence:
+[`docs/evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-repro.md`](evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-repro.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -971,6 +974,19 @@ That means the existing DSV4 backend avoids the earlier
 not admit SM120. The next useful issue is not another full-model smoke; it is a
 tiny FlashInfer TRTLLM DSV4 sparse MLA FMHA repro on RTX PRO 6000, followed by
 an SM120-capable patch or a correctness-first fallback attention implementation.
+
+Issue #52 added that direct repro and ran it on the same G4 host and derived
+image. The repro uses one synthetic BF16 query token, 64 heads, 512 hidden
+dimension, BF16 SWA/compressed KV pools, 128 sparse indices, and no model
+weights or prompts. It fails with the same root error:
+
+```text
+Error in function 'TllmGenFmhaRunner' at /workspace/include/flashinfer/trtllm/fmha/fmhaRunner.cuh:37: Unsupported architecture
+```
+
+The blocker is now isolated to FlashInfer/TRTLLM FMHA architecture admission.
+The next issue should inspect and patch `TllmGenFmhaRunner` for SM120 support,
+or build a correctness-first replacement attention path for DeepSeek V4 on G4.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable

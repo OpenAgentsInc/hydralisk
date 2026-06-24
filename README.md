@@ -179,9 +179,11 @@ Initial targets:
   that recipe. The corrected run reached `/v1/models`, then the tiny
   generation smoke failed in `flashinfer.mla._core.trtllm_batch_decode_sparse_mla_dsv4`
   with `TllmGenFmhaRunner` reporting `Unsupported architecture` from
-  FlashInfer's TRTLLM FMHA runner. The next useful G4 step is a tiny DSV4 FMHA
-  repro and SM120 attention patch or fallback, not another full-model flag
-  trial.
+  FlashInfer's TRTLLM FMHA runner. A direct one-token synthetic DSV4 FMHA repro
+  now confirms the same guard without model weights, prompts, vLLM scheduling,
+  B12x MoE, or `o_proj`. The next useful G4 step is inspecting and patching
+  `TllmGenFmhaRunner` for SM120, or building a correctness-first attention
+  fallback, not another full-model flag trial.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
