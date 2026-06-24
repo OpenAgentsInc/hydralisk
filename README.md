@@ -192,7 +192,11 @@ Initial targets:
   with deterministic top-k masking, sequence-length truncation, HND KV cache
   handling, empty-route zero output, and stable softmax. The remaining step is
   wiring that contract into a derived vLLM/container fallback and rerunning the
-  synthetic shape before another full-model smoke.
+  synthetic shape before another full-model smoke. The
+  `hydralisk-deepseek-v4-sparse-mla-smoke` entry point now runs the exact
+  issue #52-sized fallback shape locally with finite nonzero output, and the
+  GCE wrapper can inject that smoke into a target Docker image; the latest run
+  recorded `target_missing` because there is no live DeepSeek G4 host.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,

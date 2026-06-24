@@ -118,6 +118,9 @@ FlashInfer DSV4 FMHA SM120 source-audit evidence:
 DeepSeek V4 SM120 sparse MLA fallback evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-sm120-sparse-mla-fallback.md`](evidence/2026-06-24-deepseek-v4-sm120-sparse-mla-fallback.md)
 
+DeepSeek V4 sparse MLA fallback smoke evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-fallback-smoke.md`](evidence/2026-06-24-deepseek-v4-sparse-mla-fallback-smoke.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -1018,6 +1021,18 @@ the replacement attention path. It is not yet a vLLM runtime patch. The next
 implementation issue should wire this contract into a derived DeepSeek V4
 attention fallback inside the container, run the same synthetic shape there,
 and only then attempt another full 8 x G4 model smoke.
+
+Issue #55 made that contract runnable as a public-safe smoke. The new
+`hydralisk-deepseek-v4-sparse-mla-smoke` entry point ran the exact issue #52
+shape locally and returned finite, nonzero output with shape `[1,64,512]`,
+`sparse_route_count=128`, and `swa_route_count=128`. The GCE/container wrapper
+is also in place and injects Hydralisk into a target Docker image before running
+the same smoke. The current wrapper run recorded `target_missing` because there
+is no live DeepSeek G4 host; only the L4 GPT-OSS 20B host and single-H100
+GPT-OSS 120B host are running, and neither should be disturbed for this probe.
+The next implementation issue should patch vLLM's
+`DeepseekV4FlashInferMLAAttention._forward` path under a fail-closed probe flag
+and run the synthetic container smoke on a fresh or explicitly provided G4 host.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable
