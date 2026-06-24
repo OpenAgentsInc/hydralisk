@@ -236,6 +236,8 @@ def test_provider_stack_probe_script_is_public_safe_and_target_scoped(
     assert "hydralisk-deepseek-v4-g4-2g-b-test" in evidence
     assert "vllm/vllm-openai:latest" in evidence
     assert "install_deepgemm.sh" in evidence
+    assert "DeepSeek sparse MLA fallback patch: `0`" in evidence
+    assert "DeepSeek sparse MLA fallback runtime: `0`" in evidence
     assert "--enable-expert-parallel" in evidence
     assert "Contains weights: false" in evidence
 
@@ -290,6 +292,14 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
         'HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK="${HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK:-off}"'
         in script
     )
+    assert (
+        'HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK="${HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK:-0}"'
+        in script
+    )
+    assert (
+        'HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH="${HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH:-$HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK}"'
+        in script
+    )
     assert 'HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-0}"' in script
     assert 'HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-0}"' in script
     assert 'HF_XET_NUM_CONCURRENT_RANGE_GETS="${HF_XET_NUM_CONCURRENT_RANGE_GETS:-}"' in script
@@ -307,10 +317,16 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
         "--build-arg \"HYDRALISK_DEEPSEEK_O_PROJ_PATCH=$HYDRALISK_DEEPSEEK_O_PROJ_PATCH\""
         in script
     )
+    assert (
+        "--build-arg \"HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH=$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH\""
+        in script
+    )
     assert "pull_args+=(--pull)" in script
     assert "p.is_device_capability_family(120)" in script
     assert "Hydralisk issue #19 E8M0 CUDA Triton upcast" in script
     assert "Hydralisk issue #20 DeepSeek NVFP4 o_proj provider patch" in script
+    assert "patch_sparse_mla.py" in script
+    assert "patched {path} for Hydralisk sparse MLA fallback" in script
     assert "HYDRALISK_O_PROJ_SHAPE_TRACE" in script
     assert "HYDRALISK_O_PROJ_RHS_TRACE" in script
     assert "HYDRALISK_O_PROJ_BYPASS_TRACE" in script
@@ -332,6 +348,13 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\\t%s' in script
+    assert 'HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH\\t%s' in script
+    assert 'HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK\\t%s' in script
+    assert 'record["sparseMlaFallbackPatched"]' in script
+    assert (
+        '-e "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=$HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"'
+        in script
+    )
     assert '"${hf_env_args[@]}"' in script
     assert 'linear_backend_args+=(--linear-backend "$VLLM_LINEAR_BACKEND")' in script
     assert 'expert_parallel_flags+=(--enable-expert-parallel)' in script
@@ -433,6 +456,8 @@ def test_b12x_g4_probe_script_is_public_safe_in_dry_run(
     assert "vLLM expert parallel: `0`" in evidence
     assert "vLLM enforce eager: `0`" in evidence
     assert "vLLM attention backend: `auto`" in evidence
+    assert "DeepSeek sparse MLA fallback patch: `0`" in evidence
+    assert "DeepSeek sparse MLA fallback runtime: `0`" in evidence
     assert "gcloud auth preflight: `1`" in evidence
     assert "Completion timeout seconds: `180`" in evidence
     assert "Container start timeout seconds: `180`" in evidence
@@ -446,6 +471,14 @@ def test_b12x_g4_probe_script_is_public_safe_in_dry_run(
     assert "VLLM_ENABLE_EXPERT_PARALLEL=\"$VLLM_ENABLE_EXPERT_PARALLEL\"" in script_text
     assert "VLLM_ENFORCE_EAGER=\"$VLLM_ENFORCE_EAGER\"" in script_text
     assert "VLLM_ATTENTION_BACKEND=\"$VLLM_ATTENTION_BACKEND\"" in script_text
+    assert (
+        "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=\"$HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK\""
+        in script_text
+    )
+    assert (
+        "HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH=\"$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH\""
+        in script_text
+    )
     assert "COMPLETION_TIMEOUT_SECONDS=\"$COMPLETION_TIMEOUT_SECONDS\"" in script_text
     assert "CONTAINER_START_TIMEOUT_SECONDS=\"$CONTAINER_START_TIMEOUT_SECONDS\"" in script_text
     assert "hydralisk-gptoss" not in plan
@@ -1019,7 +1052,7 @@ printf '{"permissions":[]}'
     assert not list((tmp_path / "out").glob("token-*"))
 
 
-def test_flashinfer_dsv4_g4_wrapper_sets_issue_41_defaults(
+def test_flashinfer_dsv4_g4_wrapper_sets_issue_59_defaults(
     tmp_path: Path,
 ) -> None:
     repo_root = Path(__file__).resolve().parents[1]
@@ -1044,7 +1077,7 @@ def test_flashinfer_dsv4_g4_wrapper_sets_issue_41_defaults(
     script_text = script.read_text()
 
     assert "Wrote" in result.stdout
-    assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/41" in evidence
+    assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/59" in evidence
     assert (
         "gcloud account override: `oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com`"
         in evidence
@@ -1053,14 +1086,24 @@ def test_flashinfer_dsv4_g4_wrapper_sets_issue_41_defaults(
     assert "vLLM enforce eager: `1`" in evidence
     assert "vLLM attention backend: `FLASHINFER_MLA_SPARSE_DSV4`" in evidence
     assert "DeepSeek o_proj fallback: `bf16_einsum`" in evidence
+    assert "DeepSeek sparse MLA fallback patch: `1`" in evidence
+    assert "DeepSeek sparse MLA fallback runtime: `1`" in evidence
     assert "B12x clamp patch: `1`" in evidence
     assert "B12x clamp limit: `10.0`" in evidence
     assert "Max model length: `2048`" in evidence
     assert "Max batched tokens: `512`" in evidence
     assert "GPU memory utilization: `0.95`" in evidence
-    assert "ISSUE_NUMBER=\"${ISSUE_NUMBER:-41}\"" in script_text
+    assert "ISSUE_NUMBER=\"${ISSUE_NUMBER:-59}\"" in script_text
     assert 'GCLOUD_ACCOUNT="${GCLOUD_ACCOUNT:-${CLOUDSDK_CORE_ACCOUNT:-}}"' in script_text
     assert "FLASHINFER_MLA_SPARSE_DSV4" in script_text
+    assert (
+        'HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK="${HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK:-1}"'
+        in script_text
+    )
+    assert (
+        'HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH="${HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH:-1}"'
+        in script_text
+    )
     assert "probe-deepseek-v4-b12x-g4-gce.sh" in script_text
 
 
@@ -1111,10 +1154,11 @@ exit 99
     assert "Wrote" in result.stdout
     assert not compute_called.exists()
     assert account_seen.read_text() == "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com"
-    assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/41" in evidence
+    assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/59" in evidence
     assert "Status: `blocked_auth`" in evidence
     assert "FLASHINFER_MLA_SPARSE_DSV4" in evidence
     assert "bf16_einsum" in evidence
+    assert "DeepSeek sparse MLA fallback runtime: `1`" in evidence
 
 
 def test_clamp_backends_g4_probe_script_is_public_safe_in_dry_run(

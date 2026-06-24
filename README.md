@@ -207,7 +207,15 @@ Initial targets:
   the patched-vLLM synthetic smoke on real RTX PRO 6000 hardware with
   `HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1`, vLLM `0.23.0`, Torch
   `2.11.0+cu130`, CUDA `13.0`, finite nonzero `[1,64,512]` output, and GPU
-  memory back to `0 MiB` after the run.
+  memory back to `0 MiB` after the run. The full 8 x G4 retry then built the
+  derived provider image, confirmed all eight SM120 GPUs, and loaded the full
+  model far enough to enter vLLM memory/profile initialization. That moved past
+  the earlier B12x clamp, `o_proj`, and DSV4 FMHA blockers. It still did not
+  reach `/v1/models`: the current blocker is tensor-parallel logits all-gather
+  failing through NCCL with CUDA failure 800 `operation not permitted` on the
+  PCIe-only G4 topology. The next useful issue is an 8-rank Torch/NCCL
+  all-gather fixture under the same Docker/runtime envelope, then safe NCCL
+  transport toggles if the fixture reproduces the error.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -265,6 +273,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-full-model-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-full-model-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-eager-mla-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-eager-mla-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md`](docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md`](docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md)
 - [`docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md`](docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md`](docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md)

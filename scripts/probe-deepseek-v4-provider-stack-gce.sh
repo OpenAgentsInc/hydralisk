@@ -23,6 +23,8 @@ HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS="${HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS:-0}"
 HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE="${HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE:-raw_e8m0}"
 HYDRALISK_DEEPSEEK_O_PROJ_BYPASS="${HYDRALISK_DEEPSEEK_O_PROJ_BYPASS:-off}"
 HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK="${HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK:-off}"
+HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK="${HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK:-0}"
+HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH="${HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH:-$HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK}"
 HYDRALISK_B12X_CLAMP_PATCH="${HYDRALISK_B12X_CLAMP_PATCH:-0}"
 HYDRALISK_B12X_CLAMP_LIMIT="${HYDRALISK_B12X_CLAMP_LIMIT:-10.0}"
 HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-0}"
@@ -95,6 +97,8 @@ render_markdown() {
     echo "- DeepSeek o_proj RHS scale mode: \`$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE\`"
     echo "- DeepSeek o_proj bypass: \`$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\`"
     echo "- DeepSeek o_proj fallback: \`$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\`"
+    echo "- DeepSeek sparse MLA fallback patch: \`$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH\`"
+    echo "- DeepSeek sparse MLA fallback runtime: \`$HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK\`"
     echo "- B12x clamp patch: \`$HYDRALISK_B12X_CLAMP_PATCH\`"
     echo "- B12x clamp limit: \`$HYDRALISK_B12X_CLAMP_LIMIT\`"
     echo "- HF Hub disable Xet: \`$HF_HUB_DISABLE_XET\`"
@@ -218,6 +222,8 @@ remote_script_file="$OUTPUT_DIR/provider-stack-remote-script.sh"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK"
+  printf 'HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=%q\n' "$HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"
+  printf 'HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH=%q\n' "$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH"
   printf 'HYDRALISK_B12X_CLAMP_PATCH=%q\n' "$HYDRALISK_B12X_CLAMP_PATCH"
   printf 'HYDRALISK_B12X_CLAMP_LIMIT=%q\n' "$HYDRALISK_B12X_CLAMP_LIMIT"
   printf 'HF_HUB_DISABLE_XET=%q\n' "$HF_HUB_DISABLE_XET"
@@ -772,6 +778,223 @@ else:
     raise RuntimeError(f"SM120 guard patch target not found in {path}")
 PY
 
+cat > "$build_ctx/patch_sparse_mla.py" <<'PY'
+import py_compile
+from pathlib import Path
+
+import vllm.models.deepseek_v4.nvidia.flashinfer_sparse as flashinfer_sparse
+
+
+path = Path(flashinfer_sparse.__file__)
+source = path.read_text()
+sentinel = "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"
+if sentinel in source:
+    print(f"{path} already has Hydralisk sparse MLA fallback")
+    raise SystemExit(0)
+
+helper = r'''
+
+_HYDRALISK_SPARSE_MLA_FALLBACK_ENV = "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"
+
+
+def _hydralisk_sparse_mla_fallback_enabled() -> bool:
+    return os.getenv(_HYDRALISK_SPARSE_MLA_FALLBACK_ENV) == "1"
+
+
+def _hydralisk_sparse_mla_fallback(
+    *,
+    query: torch.Tensor,
+    swa_kv_cache: torch.Tensor,
+    compressed_kv_cache: torch.Tensor,
+    sparse_indices: torch.Tensor,
+    sparse_topk_lens: torch.Tensor,
+    seq_lens: torch.Tensor,
+    out: torch.Tensor,
+    window_size: int,
+) -> None:
+    """Correctness-first SM120 sparse MLA fallback for Hydralisk probes."""
+
+    if query.dtype != torch.bfloat16:
+        raise RuntimeError(
+            f"{_HYDRALISK_SPARSE_MLA_FALLBACK_ENV}=1 only supports bf16 query"
+        )
+    if swa_kv_cache.dtype != torch.bfloat16 or compressed_kv_cache.dtype != torch.bfloat16:
+        raise RuntimeError(
+            f"{_HYDRALISK_SPARSE_MLA_FALLBACK_ENV}=1 only supports bf16 KV caches"
+        )
+    if query.dim() != 3:
+        raise RuntimeError("Hydralisk sparse MLA fallback expects query [tokens, heads, dim]")
+    if swa_kv_cache.dim() != 4 or compressed_kv_cache.dim() != 4:
+        raise RuntimeError(
+            "Hydralisk sparse MLA fallback expects KV caches [pages, kv_heads, page, dim]"
+        )
+    if swa_kv_cache.shape != compressed_kv_cache.shape:
+        raise RuntimeError("SWA and compressed KV caches must share shape")
+    if sparse_indices.dim() != 2 or sparse_topk_lens.dim() != 1 or seq_lens.dim() != 1:
+        raise RuntimeError("Hydralisk sparse MLA fallback expects 2D sparse indices and 1D lens")
+
+    num_tokens, num_heads, dim = query.shape
+    pages, kv_heads, page_size, kv_dim = swa_kv_cache.shape
+    if dim != kv_dim:
+        raise RuntimeError("query dim must match KV dim")
+    if kv_heads not in (1, num_heads):
+        raise RuntimeError("KV heads must broadcast from 1 or match query heads")
+    if sparse_indices.shape[0] != num_tokens or sparse_topk_lens.shape[0] != num_tokens:
+        raise RuntimeError("sparse metadata must have one row/value per query token")
+    if seq_lens.numel() not in (1, num_tokens):
+        raise RuntimeError(
+            "Hydralisk sparse MLA fallback currently supports one-token decode "
+            "or one sequence length per query token"
+        )
+    if out.shape[0] != num_tokens or out.shape[1] < num_heads or out.shape[-1] != dim:
+        raise RuntimeError("output shape is incompatible with query shape")
+
+    total_tokens = pages * page_size
+    scale = dim ** -0.5
+    out.zero_()
+
+    for token_idx in range(num_tokens):
+        seq_idx = 0 if seq_lens.numel() == 1 else token_idx
+        seq_len = int(seq_lens[seq_idx].item())
+        seq_len = max(0, min(seq_len, total_tokens))
+        candidates: list[tuple[torch.Tensor, int]] = []
+
+        if window_size > 0 and seq_len > 0:
+            for position in range(max(0, seq_len - window_size), seq_len):
+                candidates.append((swa_kv_cache, position))
+
+        topk_len = min(
+            max(0, int(sparse_topk_lens[token_idx].item())),
+            sparse_indices.shape[1],
+        )
+        for raw_position in sparse_indices[token_idx, :topk_len]:
+            position = int(raw_position.item())
+            if 0 <= position < seq_len:
+                candidates.append((compressed_kv_cache, position))
+
+        if not candidates:
+            continue
+
+        for head_idx in range(num_heads):
+            kv_head = 0 if kv_heads == 1 else head_idx
+            keys = []
+            for cache, position in candidates:
+                keys.append(cache[position // page_size, kv_head, position % page_size])
+            key_tensor = torch.stack(keys, dim=0).to(dtype=torch.float32)
+            query_vec = query[token_idx, head_idx].to(dtype=torch.float32)
+            weights = torch.softmax(torch.matmul(key_tensor, query_vec) * scale, dim=0)
+            out[token_idx, head_idx] = torch.sum(
+                weights[:, None] * key_tensor,
+                dim=0,
+            ).to(dtype=out.dtype)
+'''
+
+decode_call = '''            flashinfer_trtllm_batch_decode_sparse_mla_dsv4(
+                query=query[:num_decode_tokens],
+                swa_kv_cache=swa_k_cache,
+                workspace_buffer=workspace,
+                sparse_indices=sparse_indices[:num_decode_tokens],
+                compressed_kv_cache=compressed_kv_cache,
+                sparse_topk_lens=sparse_topk_lens[:num_decode_tokens],
+                seq_lens=seq_lens[:num_decodes],
+                out=output[:num_decode_tokens],
+                bmm1_scale=bmm1_scale,
+                bmm2_scale=bmm2_scale,
+                sinks=self.attn_sink,
+                cum_seq_lens_q=decode_cu,
+                max_q_len=int(decode_lens_cpu.max().item()),
+            )'''
+decode_branch = '''            if _hydralisk_sparse_mla_fallback_enabled():
+                _hydralisk_sparse_mla_fallback(
+                    query=query[:num_decode_tokens],
+                    swa_kv_cache=swa_k_cache,
+                    compressed_kv_cache=compressed_kv_cache,
+                    sparse_indices=sparse_indices[:num_decode_tokens],
+                    sparse_topk_lens=sparse_topk_lens[:num_decode_tokens],
+                    seq_lens=seq_lens[:num_decodes],
+                    out=output[:num_decode_tokens],
+                    window_size=self.window_size,
+                )
+            else:
+                flashinfer_trtllm_batch_decode_sparse_mla_dsv4(
+                    query=query[:num_decode_tokens],
+                    swa_kv_cache=swa_k_cache,
+                    workspace_buffer=workspace,
+                    sparse_indices=sparse_indices[:num_decode_tokens],
+                    compressed_kv_cache=compressed_kv_cache,
+                    sparse_topk_lens=sparse_topk_lens[:num_decode_tokens],
+                    seq_lens=seq_lens[:num_decodes],
+                    out=output[:num_decode_tokens],
+                    bmm1_scale=bmm1_scale,
+                    bmm2_scale=bmm2_scale,
+                    sinks=self.attn_sink,
+                    cum_seq_lens_q=decode_cu,
+                    max_q_len=int(decode_lens_cpu.max().item()),
+                )'''
+prefill_call = '''            flashinfer_trtllm_batch_decode_sparse_mla_dsv4(
+                query=query[num_decode_tokens:num_tokens],
+                swa_kv_cache=swa_k_cache,
+                workspace_buffer=workspace,
+                sparse_indices=sparse_indices[num_decode_tokens:num_tokens],
+                compressed_kv_cache=compressed_kv_cache,
+                sparse_topk_lens=sparse_topk_lens[num_decode_tokens:num_tokens],
+                seq_lens=seq_lens[num_decodes:num_reqs],
+                out=output[num_decode_tokens:num_tokens],
+                bmm1_scale=bmm1_scale,
+                bmm2_scale=bmm2_scale,
+                sinks=self.attn_sink,
+                cum_seq_lens_q=prefill_cu,
+                max_q_len=int(prefill_lens_cpu.max().item()),
+            )'''
+prefill_branch = '''            if _hydralisk_sparse_mla_fallback_enabled():
+                _hydralisk_sparse_mla_fallback(
+                    query=query[num_decode_tokens:num_tokens],
+                    swa_kv_cache=swa_k_cache,
+                    compressed_kv_cache=compressed_kv_cache,
+                    sparse_indices=sparse_indices[num_decode_tokens:num_tokens],
+                    sparse_topk_lens=sparse_topk_lens[num_decode_tokens:num_tokens],
+                    seq_lens=seq_lens[num_decodes:num_reqs],
+                    out=output[num_decode_tokens:num_tokens],
+                    window_size=self.window_size,
+                )
+            else:
+                flashinfer_trtllm_batch_decode_sparse_mla_dsv4(
+                    query=query[num_decode_tokens:num_tokens],
+                    swa_kv_cache=swa_k_cache,
+                    workspace_buffer=workspace,
+                    sparse_indices=sparse_indices[num_decode_tokens:num_tokens],
+                    compressed_kv_cache=compressed_kv_cache,
+                    sparse_topk_lens=sparse_topk_lens[num_decode_tokens:num_tokens],
+                    seq_lens=seq_lens[num_decodes:num_reqs],
+                    out=output[num_decode_tokens:num_tokens],
+                    bmm1_scale=bmm1_scale,
+                    bmm2_scale=bmm2_scale,
+                    sinks=self.attn_sink,
+                    cum_seq_lens_q=prefill_cu,
+                    max_q_len=int(prefill_lens_cpu.max().item()),
+                )'''
+
+if "import os\n" not in source:
+    source = source.replace(
+        "from typing import TYPE_CHECKING, ClassVar, cast\n",
+        "import os\nfrom typing import TYPE_CHECKING, ClassVar, cast\n",
+        1,
+    )
+workspace_anchor = "_flashinfer_dsv4_workspace_by_device: dict[torch.device, torch.Tensor] = {}\n"
+if workspace_anchor not in source:
+    raise RuntimeError(f"sparse MLA workspace anchor not found in {path}")
+source = source.replace(workspace_anchor, workspace_anchor + helper, 1)
+if decode_call not in source:
+    raise RuntimeError(f"sparse MLA decode call not found in {path}")
+source = source.replace(decode_call, decode_branch, 1)
+if prefill_call not in source:
+    raise RuntimeError(f"sparse MLA prefill call not found in {path}")
+source = source.replace(prefill_call, prefill_branch, 1)
+path.write_text(source)
+py_compile.compile(str(path), doraise=True)
+print(f"patched {path} for Hydralisk sparse MLA fallback")
+PY
+
 cat > "$build_ctx/Dockerfile" <<'DOCKERFILE'
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
@@ -780,11 +1003,13 @@ ARG INSTALL_DEEPGEMM=1
 ARG ALLOW_NVFP4_SM120=0
 ARG VLLM_E8M0_TRITON_UPCAST=0
 ARG HYDRALISK_DEEPSEEK_O_PROJ_PATCH=0
+ARG HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH=0
 ARG HYDRALISK_B12X_CLAMP_PATCH=0
 ARG HYDRALISK_B12X_CLAMP_LIMIT=10.0
 COPY patch_o_proj.py /tmp/patch_o_proj.py
 COPY patch_b12x_clamp.py /tmp/patch_b12x_clamp.py
 COPY patch_nvfp4_sm120.py /tmp/patch_nvfp4_sm120.py
+COPY patch_sparse_mla.py /tmp/patch_sparse_mla.py
 RUN if [[ "$INSTALL_DEEPGEMM" == "1" ]]; then \
       apt-get update && \
       apt-get install -y --no-install-recommends ca-certificates git cuda-libraries-dev-13-0 && \
@@ -803,6 +1028,9 @@ RUN if [[ "$VLLM_E8M0_TRITON_UPCAST" == "1" ]]; then \
 RUN if [[ "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH" == "1" ]]; then \
       python3 /tmp/patch_o_proj.py; \
     fi
+RUN if [[ "$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH" == "1" ]]; then \
+      python3 /tmp/patch_sparse_mla.py; \
+    fi
 RUN if [[ "$HYDRALISK_B12X_CLAMP_PATCH" == "1" ]]; then \
       HYDRALISK_B12X_CLAMP_LIMIT="$HYDRALISK_B12X_CLAMP_LIMIT" python3 /tmp/patch_b12x_clamp.py; \
     fi
@@ -820,6 +1048,7 @@ timeout "$STACK_BUILD_TIMEOUT_SECONDS"s sudo docker build \
   --build-arg "ALLOW_NVFP4_SM120=$ALLOW_NVFP4_SM120" \
   --build-arg "VLLM_E8M0_TRITON_UPCAST=$VLLM_E8M0_TRITON_UPCAST" \
   --build-arg "HYDRALISK_DEEPSEEK_O_PROJ_PATCH=$HYDRALISK_DEEPSEEK_O_PROJ_PATCH" \
+  --build-arg "HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH=$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH" \
   --build-arg "HYDRALISK_B12X_CLAMP_PATCH=$HYDRALISK_B12X_CLAMP_PATCH" \
   --build-arg "HYDRALISK_B12X_CLAMP_LIMIT=$HYDRALISK_B12X_CLAMP_LIMIT" \
   -t "$DERIVED_IMAGE" \
@@ -834,6 +1063,8 @@ rm -rf "$build_ctx"
   printf "VLLM_E8M0_TRITON_UPCAST\t%s\n" "$VLLM_E8M0_TRITON_UPCAST"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_PATCH\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK"
+  printf "HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH\t%s\n" "$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH"
+  printf "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK\t%s\n" "$HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"
   printf "HYDRALISK_B12X_CLAMP_PATCH\t%s\n" "$HYDRALISK_B12X_CLAMP_PATCH"
   printf "HYDRALISK_B12X_CLAMP_LIMIT\t%s\n" "$HYDRALISK_B12X_CLAMP_LIMIT"
   printf "DOCKER_BUILD_PULL\t%s\n" "$DOCKER_BUILD_PULL"
@@ -861,6 +1092,7 @@ hf_env_args=(
   -e "HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE=$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE"
   -e "HYDRALISK_DEEPSEEK_O_PROJ_BYPASS=$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS"
   -e "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK"
+  -e "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=$HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"
 )
 if [[ -n "$HF_XET_NUM_CONCURRENT_RANGE_GETS" ]]; then
   hf_env_args+=(-e "HF_XET_NUM_CONCURRENT_RANGE_GETS=$HF_XET_NUM_CONCURRENT_RANGE_GETS")
@@ -872,6 +1104,7 @@ sudo docker run --rm --gpus all --ipc=host --network host \
 import importlib
 import importlib.metadata
 import json
+import os
 import torch
 
 def version(name):
@@ -910,6 +1143,13 @@ try:
 except Exception as exc:
     record["deepGemmImport"] = False
     record["deepGemmImportError"] = f"{type(exc).__name__}: {exc}"[:300]
+try:
+    sparse = importlib.import_module("vllm.models.deepseek_v4.nvidia.flashinfer_sparse")
+    record["sparseMlaFallbackPatched"] = hasattr(sparse, "_hydralisk_sparse_mla_fallback")
+    record["sparseMlaFallbackEnv"] = os.environ.get("HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK")
+except Exception as exc:
+    record["sparseMlaFallbackPatched"] = False
+    record["sparseMlaFallbackImportError"] = f"{type(exc).__name__}: {exc}"[:300]
 print(json.dumps(record, sort_keys=True))
 PY' > "$REMOTE_LOG_DIR/provider-stack-import.jsonl" 2> "$REMOTE_LOG_DIR/provider-stack-import.stderr" || true
 
@@ -965,6 +1205,8 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK"
+  printf "HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH\t%s\n" "$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH"
+  printf "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK\t%s\n" "$HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"
   printf "HYDRALISK_B12X_CLAMP_PATCH\t%s\n" "$HYDRALISK_B12X_CLAMP_PATCH"
   printf "HYDRALISK_B12X_CLAMP_LIMIT\t%s\n" "$HYDRALISK_B12X_CLAMP_LIMIT"
   printf "HF_HUB_DISABLE_XET\t%s\n" "$HF_HUB_DISABLE_XET"
@@ -980,7 +1222,13 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "COMPLETION_TIMEOUT_SECONDS\t%s\n" "$COMPLETION_TIMEOUT_SECONDS"
   printf "CONTAINER_START_TIMEOUT_SECONDS\t%s\n" "$CONTAINER_START_TIMEOUT_SECONDS"
   if [[ "$HYDRALISK_B12X_CLAMP_PATCH" = "1" ]]; then
-    printf "LOCAL_SITE_PACKAGES_PATCHES\tb12x_clamp\n"
+    if [[ "$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH" = "1" ]]; then
+      printf "LOCAL_SITE_PACKAGES_PATCHES\tb12x_clamp,sparse_mla_fallback\n"
+    else
+      printf "LOCAL_SITE_PACKAGES_PATCHES\tb12x_clamp\n"
+    fi
+  elif [[ "$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH" = "1" ]]; then
+    printf "LOCAL_SITE_PACKAGES_PATCHES\tsparse_mla_fallback\n"
   else
     printf "LOCAL_SITE_PACKAGES_PATCHES\tfalse\n"
   fi

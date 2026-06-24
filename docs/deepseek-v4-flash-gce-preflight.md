@@ -130,6 +130,9 @@ DeepSeek V4 sparse MLA patched-vLLM fallback smoke evidence:
 DeepSeek V4 sparse MLA patched-vLLM G4 live-smoke evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-g4-live-smoke.md`](evidence/2026-06-24-deepseek-v4-sparse-mla-g4-live-smoke.md)
 
+DeepSeek V4 sparse MLA full 8 x G4 smoke evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md`](evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -1076,6 +1079,18 @@ fallback helper, and returned finite, nonzero `[1,64,512]` output for the issue
 #52 tensor shape. GPU memory returned to `0 MiB` afterward. The next honest step
 is now a full DeepSeek V4 8 x G4 model smoke with the same fallback flag, not
 more synthetic attention work.
+
+Issue #59 ran that full 8 x G4 model smoke on a fresh `g4-standard-384` spot
+host. The derived image built from `vllm/vllm-openai:latest`, confirmed all
+eight SM120 RTX PRO 6000 GPUs, and applied both the B12x clamp patch and the
+Hydralisk sparse MLA fallback branch. The model loaded far enough to enter
+vLLM memory/profile initialization, moving past the earlier B12x clamp,
+`o_proj`, and DSV4 FMHA unsupported-architecture blockers. It did not reach
+`/v1/models`: the current blocker is tensor-parallel logits all-gather failing
+through NCCL with CUDA failure 800 `operation not permitted` on the PCIe-only
+G4 topology. The next issue should isolate this with a minimal 8-rank
+Torch/NCCL all-gather fixture under the same Docker/runtime envelope, then test
+safe NCCL transport toggles if the fixture reproduces the error.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable
