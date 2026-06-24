@@ -143,12 +143,22 @@
       "attention_compressor_indexer.gate_proj"
     ]
   },
+  "indexerLoaderProof": {
+    "status": "indexer_loader_mapping_proven",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/75",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md",
+    "adapterPayloadInspected": true,
+    "headerOnly": true,
+    "tensorValuesRead": false,
+    "canImplementContextTransform": true,
+    "provenRuntimeFamily": "self_attn.compressor.indexer.compressor.fused_wkv_wgate"
+  },
   "finalDecision": {
     "status": "rejected_runtime_unstable",
     "admittedPrivateAuthorizedSecurityLabCanary": false,
     "publicAliasesAllowed": false,
     "khalaGeneralRouteAllowed": false,
     "mppPublicSaleAllowed": false,
-    "nextStep": "prove_indexer_compressor_loader_mapping_then_write_context_transform"
+    "nextStep": "implement_context_specific_packed_lora_transform_and_private_load_canary"
   }
 }

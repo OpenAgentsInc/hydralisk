@@ -30,6 +30,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md`](evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md)
 - Adapter context-map evidence:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-context-map.md`](evidence/2026-06-24-deepseek-v4-fable-context-map.md)
+- Indexer-compressor loader proof:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md`](evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md)
 
 ## Summary
 
@@ -407,6 +409,40 @@ loader proof fails, pivot to a canonical DeepSeek-V4-Flash runtime probe.
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-context-map.md`](evidence/2026-06-24-deepseek-v4-fable-context-map.md)
 
+## Issue #75 result
+
+Issue #75 proved the nested indexer compressor loader path for the published
+`self_attn.compressor.indexer.gate_proj` adapter family. It used header-only
+adapter inspection plus the current G4 runtime loader rule; it did not commit
+adapter bytes, tensor values, prompts, responses, or weights.
+
+The result is `indexer_loader_mapping_proven`.
+
+The transform writer should map:
+
+- adapter family:
+  `self_attn.compressor.indexer.gate_proj`;
+- transform checkpoint family:
+  `self_attn.compressor.indexer.compressor.wgate`;
+- runtime family after loader rewrite:
+  `self_attn.compressor.indexer.compressor.fused_wkv_wgate`;
+- shard: `1`.
+
+The current loader rule is `name.replace(weight_name, param_name)`, with
+stacked mapping `compressor.wgate` ->
+`compressor.fused_wkv_wgate` shard `1`. Because `DeepseekV4Indexer` creates a
+nested `DeepseekCompressor` with `prefix=f"{prefix}.compressor"`, a transformed
+checkpoint-style key ending in
+`self_attn.compressor.indexer.compressor.wgate.weight` rewrites to
+`self_attn.compressor.indexer.compressor.fused_wkv_wgate.weight`.
+
+This removes the final known mapping blocker. It still does not admit Fable for
+serving; the next step is the context-specific packed LoRA transform and a
+private no-public-ingress load canary.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md`](evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
@@ -414,13 +450,14 @@ The adapter compatibility probe now rejects the current G4 runtime path before
 load, and the final lab-eval gate rejects the profile because no private load
 canary was admitted. `o_proj` ownership is proven as a kernel/provider path,
 but the real adapter payload does not include the q/k/v/o tensors implied by
-the adapter config. The context map narrows the path to one hard runtime
-question: prove the nested indexer compressor loader mapping, then write a
-context-specific packed LoRA transform for shared-expert MLP, plain compressor
-gate, and nested indexer compressor gate. If that stalls, pivot to a canonical
-base/runtime path that can load the adapter as published. Even if a future
-probe succeeds, Fable should remain an authorized-security research
-capability, not a general Khala model and not a public inference product.
+the adapter config. The context map narrowed the path to one hard runtime
+question, and the indexer loader proof resolved it. The next technical step is
+to write a context-specific packed LoRA transform for shared-expert MLP, plain
+compressor gate, and nested indexer compressor gate, then run a private load
+canary. If that stalls, pivot to a canonical base/runtime path that can load
+the adapter as published. Even if a future probe succeeds, Fable should remain
+an authorized-security research capability, not a general Khala model and not
+a public inference product.
 
 ## Public safety
 

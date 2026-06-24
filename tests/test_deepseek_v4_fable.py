@@ -15,8 +15,10 @@ from hydralisk.admission.deepseek_v4_fable import (
     FABLE_LOAD_CANARY_SCHEMA,
     FABLE_TRANSFORM_SMOKE_SCHEMA,
     FABLE_CONTEXT_MAP_SCHEMA,
+    FABLE_INDEXER_LOADER_SCHEMA,
     FableProbeError,
     build_context_map_report,
+    build_indexer_loader_proof_report,
     build_lab_eval_report,
     build_load_canary_report,
     build_o_proj_ownership_report,
@@ -24,6 +26,7 @@ from hydralisk.admission.deepseek_v4_fable import (
     build_report,
     build_transform_smoke_report,
     context_map_main,
+    indexer_loader_proof_main,
     compare_adapter_targets,
     lab_eval_main,
     load_metadata_from_dir,
@@ -38,6 +41,7 @@ from hydralisk.admission.deepseek_v4_fable import (
     render_retarget_plan_markdown,
     render_transform_smoke_markdown,
     render_context_map_markdown,
+    render_indexer_loader_proof_markdown,
     retarget_plan_main,
     transform_smoke_main,
     validate_requested_files,
@@ -440,6 +444,48 @@ def test_context_map_cli_writes_public_safe_report(tmp_path: Path) -> None:
     assert status == 2
     evidence = (output_dir / "deepseek-v4-fable-context-map.md").read_text()
     assert "Status: `blocked_indexer_loader_mapping_required`" in evidence
+    assert "Contains tensor values: false" in evidence
+
+
+def test_indexer_loader_proof_accepts_nested_indexer_family(tmp_path: Path) -> None:
+    adapter_path = tmp_path / "adapter_model.safetensors"
+    _write_fake_fable_context_adapter(adapter_path)
+
+    report = build_indexer_loader_proof_report(
+        adapter_path=adapter_path,
+        created_at=datetime(2026, 6, 24, tzinfo=UTC),
+    )
+    rendered = render_indexer_loader_proof_markdown(report)
+
+    assert report["schema"] == FABLE_INDEXER_LOADER_SCHEMA
+    assert report["status"] == "indexer_loader_mapping_proven"
+    assert report["adapter"]["indexerCompressorGateModuleCount"] == 2
+    assert report["decision"]["canImplementContextTransform"] is True
+    assert report["loaderProof"]["stackedMapping"]["shardId"] == 1
+    assert all(
+        example["rewritesToExpectedRuntime"]
+        for example in report["loaderProof"]["rewriteExamples"]
+    )
+    assert "indexer.compressor.fused_wkv_wgate" in rendered
+
+
+def test_indexer_loader_proof_cli_writes_public_safe_report(tmp_path: Path) -> None:
+    adapter_path = tmp_path / "adapter_model.safetensors"
+    _write_fake_fable_context_adapter(adapter_path)
+    output_dir = tmp_path / "out"
+
+    status = indexer_loader_proof_main(
+        [
+            "--adapter-path",
+            str(adapter_path),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert status == 0
+    evidence = (output_dir / "deepseek-v4-fable-indexer-loader-proof.md").read_text()
+    assert "Status: `indexer_loader_mapping_proven`" in evidence
     assert "Contains tensor values: false" in evidence
 
 

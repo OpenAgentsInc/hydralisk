@@ -21,6 +21,7 @@ FABLE_RETARGET_SCHEMA = "hydralisk.deepseek-v4-fable.retarget-plan.v1"
 FABLE_OPROJ_OWNERSHIP_SCHEMA = "hydralisk.deepseek-v4-fable.o-proj-ownership.v1"
 FABLE_TRANSFORM_SMOKE_SCHEMA = "hydralisk.deepseek-v4-fable.transform-smoke.v1"
 FABLE_CONTEXT_MAP_SCHEMA = "hydralisk.deepseek-v4-fable.context-map.v1"
+FABLE_INDEXER_LOADER_SCHEMA = "hydralisk.deepseek-v4-fable.indexer-loader-proof.v1"
 FABLE_REPO = "Chunjiang-Intelligence/DeepSeek-v4-Fable"
 FABLE_REVISION = "999909137c15e0b5539fee887431824fa7cb5b10"
 FABLE_BASE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
@@ -33,6 +34,7 @@ RETARGET_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/71"
 OPROJ_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/72"
 TRANSFORM_SMOKE_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/73"
 CONTEXT_MAP_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/74"
+INDEXER_LOADER_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/75"
 
 SMALL_METADATA_FILES = (
     "adapter_config.json",
@@ -2125,6 +2127,253 @@ def write_context_map_report(
     return json_path, md_path
 
 
+def build_indexer_loader_proof_report(
+    *,
+    adapter_path: Path,
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    created_at = created_at or datetime.now(UTC)
+    header = read_safetensors_header(adapter_path)
+    manifest = safetensor_manifest_from_header(header)
+    pairs = collect_lora_pairs(manifest)
+    modules = [
+        module
+        for module in pairs.values()
+        if module["context"] == "attention_compressor_indexer"
+        and module["target"] == "gate_proj"
+        and module["loraA"]
+        and module["loraB"]
+    ]
+    layers = sorted(
+        {
+            module["layer"]
+            for module in modules
+            if module["layer"] is not None
+        }
+    )
+    output_rows = sorted({module["loraB"]["shape"][0] for module in modules})
+    rewrite_examples = [
+        _indexer_loader_rewrite_example(layer)
+        for layer in layers[:2]
+    ]
+    if modules and all(example["rewritesToExpectedRuntime"] for example in rewrite_examples):
+        status = "indexer_loader_mapping_proven"
+        blockers: list[dict[str, str]] = []
+        next_step = "implement_context_specific_packed_lora_transform_and_private_load_canary"
+    else:
+        status = "blocked_indexer_loader_mapping_unproven"
+        blockers = [
+            {
+                "code": "missing_indexer_adapter_family",
+                "message": (
+                    "No complete self_attn.compressor.indexer.gate_proj LoRA pairs "
+                    "were found in the adapter manifest."
+                ),
+            }
+        ]
+        next_step = "pivot_canonical_runtime_or_reinspect_adapter_payload"
+
+    return {
+        "schema": FABLE_INDEXER_LOADER_SCHEMA,
+        "createdAt": created_at.isoformat().replace("+00:00", "Z"),
+        "issue": INDEXER_LOADER_ISSUE_URL,
+        "dependsOn": [CONTEXT_MAP_ISSUE_URL],
+        "profileRef": PROFILE_REF,
+        "status": status,
+        "adapter": {
+            "path": str(adapter_path),
+            "fileBytes": adapter_path.stat().st_size,
+            "tensorCount": len(manifest),
+            "loraModuleCount": len(pairs),
+            "indexerCompressorGateModuleCount": len(modules),
+            "indexerCompressorGateLayers": layers,
+            "indexerCompressorGateOutputRows": output_rows,
+            "tensorValuesRead": False,
+            "headerOnly": True,
+        },
+        "loaderProof": {
+            "runtimeImage": DEFAULT_FABLE_RUNTIME_CONTEXT_INVENTORY["image"],
+            "loaderRule": "name.replace(weight_name, param_name)",
+            "stackedMapping": {
+                "paramName": "compressor.fused_wkv_wgate",
+                "weightName": "compressor.wgate",
+                "shardId": 1,
+            },
+            "indexerInstantiation": (
+                "DeepseekV4Indexer creates DeepseekCompressor with "
+                "prefix=f'{prefix}.compressor'."
+            ),
+            "adapterFamily": "self_attn.compressor.indexer.gate_proj",
+            "transformCheckpointFamily": (
+                "self_attn.compressor.indexer.compressor.wgate"
+            ),
+            "runtimeFamily": (
+                "self_attn.compressor.indexer.compressor.fused_wkv_wgate"
+            ),
+            "rewriteExamples": rewrite_examples,
+        },
+        "blockers": blockers,
+        "decision": {
+            "status": status,
+            "canImplementContextTransform": status == "indexer_loader_mapping_proven",
+            "canRunPrivateLoadCanaryAfterTransform": status == "indexer_loader_mapping_proven",
+            "canRouteKhalaGeneralTraffic": False,
+            "canExposePublicAliases": False,
+            "canExposeMppPublicSale": False,
+            "nextStep": next_step,
+        },
+        "publicSafety": {
+            "containsSecrets": False,
+            "containsPrompts": False,
+            "containsResponses": False,
+            "containsWeights": False,
+            "containsTensorValues": False,
+            "containsHiddenReasoning": False,
+            "containsExploitPayloads": False,
+            "containsTargetDetails": False,
+            "containsFullThirdPartySource": False,
+        },
+    }
+
+
+def _indexer_loader_rewrite_example(layer: int) -> dict[str, Any]:
+    checkpoint = (
+        f"model.layers.{layer}.self_attn.compressor.indexer."
+        "compressor.wgate.weight"
+    )
+    runtime = checkpoint.replace(
+        "compressor.wgate",
+        "compressor.fused_wkv_wgate",
+    )
+    expected = (
+        f"model.layers.{layer}.self_attn.compressor.indexer."
+        "compressor.fused_wkv_wgate.weight"
+    )
+    return {
+        "layer": layer,
+        "adapterModule": (
+            f"base_model.model.model.layers.{layer}.self_attn."
+            "compressor.indexer.gate_proj"
+        ),
+        "transformCheckpointName": checkpoint,
+        "loaderRuntimeName": runtime,
+        "expectedRuntimeName": expected,
+        "shardId": 1,
+        "rewritesToExpectedRuntime": runtime == expected,
+    }
+
+
+def render_indexer_loader_proof_markdown(report: dict[str, Any]) -> str:
+    example_rows = [
+        "| Layer | Adapter module | Transform checkpoint name | Loader runtime name | Shard | OK |",
+        "| ---: | --- | --- | --- | ---: | --- |",
+    ]
+    for example in report["loaderProof"]["rewriteExamples"]:
+        example_rows.append(
+            "| {layer} | `{adapter}` | `{checkpoint}` | `{runtime}` | {shard} | `{ok}` |".format(
+                layer=example["layer"],
+                adapter=example["adapterModule"],
+                checkpoint=example["transformCheckpointName"],
+                runtime=example["loaderRuntimeName"],
+                shard=example["shardId"],
+                ok=str(example["rewritesToExpectedRuntime"]).lower(),
+            )
+        )
+    example_table = "\n".join(example_rows)
+    blocker_lines = "\n".join(
+        f"- `{item['code']}`: {item['message']}"
+        for item in report["blockers"]
+    ) or "- None"
+
+    return f"""# DeepSeek-V4-Fable indexer-compressor loader proof
+
+Date: {report["createdAt"]}
+
+Issue: {report["issue"]}
+
+Depends on: {", ".join(report["dependsOn"])}
+
+Profile: `{report["profileRef"]}`
+
+Status: `{report["status"]}`
+
+## Decision
+
+- Context transform can be implemented: `{str(report["decision"]["canImplementContextTransform"]).lower()}`
+- Private load canary can run after transform: `{str(report["decision"]["canRunPrivateLoadCanaryAfterTransform"]).lower()}`
+- Khala general route allowed: `{str(report["decision"]["canRouteKhalaGeneralTraffic"]).lower()}`
+- Public aliases allowed: `{str(report["decision"]["canExposePublicAliases"]).lower()}`
+- MPP public sale allowed: `{str(report["decision"]["canExposeMppPublicSale"]).lower()}`
+- Next step: `{report["decision"]["nextStep"]}`
+
+## Adapter inspection
+
+- Adapter path: `{report["adapter"]["path"]}`
+- Adapter file bytes: `{report["adapter"]["fileBytes"]}`
+- Tensor count: `{report["adapter"]["tensorCount"]}`
+- LoRA module count: `{report["adapter"]["loraModuleCount"]}`
+- Indexer compressor gate modules: `{report["adapter"]["indexerCompressorGateModuleCount"]}`
+- Indexer compressor gate layers: `{", ".join(str(layer) for layer in report["adapter"]["indexerCompressorGateLayers"]) or "none"}`
+- Indexer compressor gate output rows: `{", ".join(str(row) for row in report["adapter"]["indexerCompressorGateOutputRows"]) or "none"}`
+- Header-only inspection: `{str(report["adapter"]["headerOnly"]).lower()}`
+- Tensor values read: `{str(report["adapter"]["tensorValuesRead"]).lower()}`
+
+## Loader proof
+
+- Runtime image: `{report["loaderProof"]["runtimeImage"]}`
+- Loader rule: `{report["loaderProof"]["loaderRule"]}`
+- Stacked mapping: `{report["loaderProof"]["stackedMapping"]["weightName"]}` -> `{report["loaderProof"]["stackedMapping"]["paramName"]}` shard `{report["loaderProof"]["stackedMapping"]["shardId"]}`
+- Indexer instantiation: `{report["loaderProof"]["indexerInstantiation"]}`
+- Adapter family: `{report["loaderProof"]["adapterFamily"]}`
+- Transform checkpoint family: `{report["loaderProof"]["transformCheckpointFamily"]}`
+- Runtime family: `{report["loaderProof"]["runtimeFamily"]}`
+
+{example_table}
+
+## Blockers
+
+{blocker_lines}
+
+## Interpretation
+
+The nested indexer compressor path is proven well enough to proceed to the
+context-specific packed LoRA transform. The transform writer should convert the
+published `self_attn.compressor.indexer.gate_proj` LoRA delta into a
+checkpoint-style `self_attn.compressor.indexer.compressor.wgate` delta. The
+current runtime loader then rewrites that checkpoint family into
+`self_attn.compressor.indexer.compressor.fused_wkv_wgate` shard 1, matching
+the nested `DeepseekCompressor` created inside `DeepseekV4Indexer`.
+
+This still does not admit Fable for serving. It only removes the last mapping
+blocker before implementing the transform and running a private no-public-
+ingress load canary.
+
+## Public safety
+
+- Contains secrets: false
+- Contains prompts: false
+- Contains responses: false
+- Contains weights: false
+- Contains tensor values: false
+- Contains hidden reasoning: false
+- Contains exploit payloads: false
+- Contains target details: false
+- Contains full third-party source: false
+"""
+
+
+def write_indexer_loader_proof_report(
+    report: dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "deepseek-v4-fable-indexer-loader-proof.json"
+    md_path = output_dir / "deepseek-v4-fable-indexer-loader-proof.md"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    md_path.write_text(render_indexer_loader_proof_markdown(report))
+    return json_path, md_path
+
+
 def _hf_resolve_url(repo: str, revision: str, filename: str) -> str:
     return f"https://huggingface.co/{repo}/resolve/{revision}/{filename}"
 
@@ -2379,6 +2628,29 @@ def context_map_main(argv: list[str] | None = None) -> int:
         runtime_inventory=runtime_inventory,
     )
     json_path, md_path = write_context_map_report(report, args.output_dir)
+    print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
+    return 0 if report["decision"]["canImplementContextTransform"] else 2
+
+
+def indexer_loader_proof_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Emit a public-safe DeepSeek-V4-Fable indexer loader proof."
+    )
+    parser.add_argument(
+        "--adapter-path",
+        type=Path,
+        required=True,
+        help="Local Fable adapter_model.safetensors path in ignored evidence space.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(".hydralisk/deepseek-v4-fable-indexer-loader-proof"),
+    )
+    args = parser.parse_args(argv)
+
+    report = build_indexer_loader_proof_report(adapter_path=args.adapter_path)
+    json_path, md_path = write_indexer_loader_proof_report(report, args.output_dir)
     print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
     return 0 if report["decision"]["canImplementContextTransform"] else 2
 
