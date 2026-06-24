@@ -197,12 +197,35 @@
     "stagingAllowed": true,
     "publicServingAllowed": false
   },
+  "mergedCheckpointStaging": {
+    "status": "staged_private_g4_ready_for_canary",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/79",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-merged-staging.md",
+    "manifestRef": "docs/evidence/2026-06-24-deepseek-v4-fable-merged-staging-manifest.tsv",
+    "targetInstance": "hydralisk-deepseek-v4-b12x-g4-8g-b-20260624155352",
+    "zone": "us-central1-b",
+    "targetPath": "/opt/hydralisk/models/deepseek-v4-fable-merged",
+    "storagePathClass": "private_gce_boot_persistent_disk",
+    "bootDiskAutoDelete": false,
+    "manifestRows": 52,
+    "metadataFileCount": 5,
+    "mergedCheckpointShardCount": 47,
+    "stagedFileBytes": 298428071600,
+    "indexTensorPayloadBytes": 298425334924,
+    "manifestSha256": "0610e0fc3f79512a9cc11b6ce93e48e1bdf6c25e0e694d52f4046f43c06a8833",
+    "initialSequentialStart": "2026-06-24T20:14:36Z",
+    "parallelManifestStart": "2026-06-24T20:35:03Z",
+    "completedAt": "2026-06-24T21:31:24Z",
+    "parallelJobs": 8,
+    "privateLoadCanaryAllowed": true,
+    "publicServingAllowed": false
+  },
   "finalDecision": {
     "status": "rejected_runtime_unstable",
     "admittedPrivateAuthorizedSecurityLabCanary": false,
     "publicAliasesAllowed": false,
     "khalaGeneralRouteAllowed": false,
     "mppPublicSaleAllowed": false,
-    "nextStep": "stage_merged_checkpoint_on_g4_with_resumable_verification"
+    "nextStep": "run_fable_merged_checkpoint_private_g4_canary"
   }
 }

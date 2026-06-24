@@ -38,6 +38,10 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-upstream-payload.md`](evidence/2026-06-24-deepseek-v4-fable-upstream-payload.md)
 - Merged-checkpoint G4 preflight:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-g4-preflight.md`](evidence/2026-06-24-deepseek-v4-fable-merged-g4-preflight.md)
+- Merged-checkpoint staging evidence:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-staging.md`](evidence/2026-06-24-deepseek-v4-fable-merged-staging.md)
+- Merged-checkpoint staging manifest:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-staging-manifest.tsv`](evidence/2026-06-24-deepseek-v4-fable-merged-staging-manifest.tsv)
 
 ## Summary
 
@@ -554,6 +558,44 @@ blocked.
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-g4-preflight.md`](evidence/2026-06-24-deepseek-v4-fable-merged-g4-preflight.md)
 
+## Issue #79 result
+
+Issue #79 staged the full merged Fable checkpoint into private G4 runtime
+storage.
+
+The result is `staged_private_g4_ready_for_canary`.
+
+Staging target:
+
+- path: `/opt/hydralisk/models/deepseek-v4-fable-merged`;
+- instance: `hydralisk-deepseek-v4-b12x-g4-8g-b-20260624155352`;
+- zone: `us-central1-b`;
+- storage path class: private GCE boot persistent disk;
+- boot disk auto-delete: `false` after the staging safety change.
+
+Artifact integrity:
+
+- manifest rows: `52`;
+- metadata files: `5`;
+- merged checkpoint shards: `47`;
+- staged file bytes: `298428071600`;
+- manifest SHA-256:
+  `0610e0fc3f79512a9cc11b6ce93e48e1bdf6c25e0e694d52f4046f43c06a8833`;
+- completed at: `2026-06-24T21:31:24Z`.
+
+No Docker containers were running after staging, and all eight G4 GPUs reported
+`0 MiB` memory used. The host retained about `385 GB` free on `/`.
+
+This proves artifact staging is not the blocker. It still does not admit Fable
+for serving; the next gate is a private-only load/generation canary against the
+staged FP8 merged checkpoint.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-merged-staging.md`](evidence/2026-06-24-deepseek-v4-fable-merged-staging.md)
+
+Manifest:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-merged-staging-manifest.tsv`](evidence/2026-06-24-deepseek-v4-fable-merged-staging-manifest.tsv)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
@@ -569,10 +611,11 @@ upstream adapter payload found no nonzero adapter path at the current latest
 SHA. The next honest path is either to obtain a nonzero adapter artifact or
 intentionally evaluate the full 47-shard merged checkpoint path before a
 semantic canary. The merged-checkpoint G4 preflight says staging is feasible
-but high-risk because it is an FP8 merged artifact on a patched NVFP4 G4 lane.
-The next step is resumable private staging and a load-only canary. Even if a
-future probe succeeds, Fable should remain an authorized-security research
-capability, not a general Khala model and not a public inference product.
+but high-risk because it is an FP8 merged artifact on a patched NVFP4 G4 lane,
+and the full checkpoint is now staged with verified hashes. The next step is a
+private-only load/generation canary. Even if a future probe succeeds, Fable
+should remain an authorized-security research capability, not a general Khala
+model and not a public inference product.
 
 ## Public safety
 
