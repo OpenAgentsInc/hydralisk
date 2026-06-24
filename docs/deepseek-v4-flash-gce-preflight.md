@@ -883,6 +883,35 @@ G4 next step is therefore not another blind full-model smoke; it is to inspect
 DeepSeek V4's FlashMLA integration and find, patch, or implement an SM120-safe
 sparse-prefill fallback before retrying generation.
 
+Issue #40 performed that source audit against the local vLLM reference checkout.
+The important result is that vLLM already has an explicit DeepSeek V4
+FlashInfer sparse MLA backend:
+
+```text
+AttentionBackendEnum.FLASHINFER_MLA_SPARSE_DSV4
+DeepseekV4FlashInferMLAAttention
+flashinfer_trtllm_batch_decode_sparse_mla_dsv4
+```
+
+That path avoids `flash_mla_sparse_fwd`, uses a plain KV layout rather than
+FlashMLA's `fp8_ds_mla`, and is selected through vLLM `--attention-config`.
+Hydralisk now exposes this as:
+
+```text
+VLLM_ATTENTION_BACKEND=FLASHINFER_MLA_SPARSE_DSV4
+```
+
+which renders as:
+
+```text
+--attention-config '{"backend":"FLASHINFER_MLA_SPARSE_DSV4"}'
+```
+
+The next GPU step is to rerun the eager B12x/o_proj-fallback smoke with that
+backend before writing any new sparse-prefill kernel. If the FlashInfer path
+still fails, capture its exact blocker and only then decide whether to patch
+FlashMLA's SM120 architecture guard or build a correctness-first fallback.
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this

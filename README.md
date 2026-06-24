@@ -167,7 +167,13 @@ Initial targets:
   generation smoke fails in `flash_mla_sparse_fwd` because the sparse prefill
   kernel only admits SM90a and SM100f. The remaining work is therefore an
   SM120-safe DeepSeek FlashMLA sparse-prefill backend or a correctness-first
-  prefill fallback before any generation or serving claim.
+  prefill fallback before any generation or serving claim. A source audit then
+  found a better next probe already in vLLM: explicit
+  `FLASHINFER_MLA_SPARSE_DSV4` backend selection routes DeepSeek V4 to
+  `DeepseekV4FlashInferMLAAttention`, which avoids `flash_mla_sparse_fwd` and
+  calls FlashInfer's TRTLLM sparse MLA launcher instead. Hydralisk now exposes
+  that as `VLLM_ATTENTION_BACKEND=FLASHINFER_MLA_SPARSE_DSV4` for the next G4
+  smoke once gcloud auth is interactive again.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -225,6 +231,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-full-model-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-full-model-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-eager-mla-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-eager-mla-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md`](docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

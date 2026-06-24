@@ -13,6 +13,7 @@ DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"
 VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"
 VLLM_ENABLE_EXPERT_PARALLEL="${VLLM_ENABLE_EXPERT_PARALLEL:-1}"
 VLLM_ENFORCE_EAGER="${VLLM_ENFORCE_EAGER:-0}"
+VLLM_ATTENTION_BACKEND="${VLLM_ATTENTION_BACKEND:-auto}"
 VLLM_E8M0_TRITON_UPCAST="${VLLM_E8M0_TRITON_UPCAST:-0}"
 HYDRALISK_DEEPSEEK_O_PROJ_PATCH="${HYDRALISK_DEEPSEEK_O_PROJ_PATCH:-0}"
 HYDRALISK_DEEPSEEK_O_PROJ_RECIPE="${HYDRALISK_DEEPSEEK_O_PROJ_RECIPE:-auto}"
@@ -75,6 +76,7 @@ render_markdown() {
     echo "- vLLM linear backend: \`$VLLM_LINEAR_BACKEND\`"
     echo "- vLLM expert parallel: \`$VLLM_ENABLE_EXPERT_PARALLEL\`"
     echo "- vLLM enforce eager: \`$VLLM_ENFORCE_EAGER\`"
+    echo "- vLLM attention backend: \`$VLLM_ATTENTION_BACKEND\`"
     echo "- vLLM E8M0 Triton upcast patch: \`$VLLM_E8M0_TRITON_UPCAST\`"
     echo "- DeepSeek o_proj provider patch: \`$HYDRALISK_DEEPSEEK_O_PROJ_PATCH\`"
     echo "- DeepSeek o_proj recipe: \`$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE\`"
@@ -197,6 +199,7 @@ remote_script_file="$OUTPUT_DIR/provider-stack-remote-script.sh"
   printf 'VLLM_LINEAR_BACKEND=%q\n' "$VLLM_LINEAR_BACKEND"
   printf 'VLLM_ENABLE_EXPERT_PARALLEL=%q\n' "$VLLM_ENABLE_EXPERT_PARALLEL"
   printf 'VLLM_ENFORCE_EAGER=%q\n' "$VLLM_ENFORCE_EAGER"
+  printf 'VLLM_ATTENTION_BACKEND=%q\n' "$VLLM_ATTENTION_BACKEND"
   printf 'VLLM_E8M0_TRITON_UPCAST=%q\n' "$VLLM_E8M0_TRITON_UPCAST"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE"
@@ -943,6 +946,7 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "VLLM_LINEAR_BACKEND\t%s\n" "$VLLM_LINEAR_BACKEND"
   printf "VLLM_ENABLE_EXPERT_PARALLEL\t%s\n" "$VLLM_ENABLE_EXPERT_PARALLEL"
   printf "VLLM_ENFORCE_EAGER\t%s\n" "$VLLM_ENFORCE_EAGER"
+  printf "VLLM_ATTENTION_BACKEND\t%s\n" "$VLLM_ATTENTION_BACKEND"
   printf "VLLM_E8M0_TRITON_UPCAST\t%s\n" "$VLLM_E8M0_TRITON_UPCAST"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_PATCH\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_RECIPE\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE"
@@ -978,7 +982,11 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   if [[ "$VLLM_ENFORCE_EAGER" = "1" ]]; then
     eager_flags+=(--enforce-eager)
   fi
-  printf "PROVIDER_FLAGS\t--kv-cache-dtype fp8 --block-size 256 %s %s --tensor-parallel-size %s --linear-backend %s\n" "${expert_parallel_flags[*]:-}" "${eager_flags[*]:-}" "$gpu_count" "$VLLM_LINEAR_BACKEND"
+  attention_config_flags=()
+  if [[ "$VLLM_ATTENTION_BACKEND" != "auto" ]]; then
+    attention_config_flags+=(--attention-config "{\"backend\":\"$VLLM_ATTENTION_BACKEND\"}")
+  fi
+  printf "PROVIDER_FLAGS\t--kv-cache-dtype fp8 --block-size 256 %s %s %s --tensor-parallel-size %s --linear-backend %s\n" "${expert_parallel_flags[*]:-}" "${eager_flags[*]:-}" "${attention_config_flags[*]:-}" "$gpu_count" "$VLLM_LINEAR_BACKEND"
 } > "$REMOTE_LOG_DIR/provider-stack-engine.txt"
 
 sudo docker rm -f "$container_name" >/dev/null 2>&1 || true
@@ -997,6 +1005,10 @@ fi
 eager_args=()
 if [[ "$VLLM_ENFORCE_EAGER" = "1" ]]; then
   eager_args+=(--enforce-eager)
+fi
+attention_config_args=()
+if [[ "$VLLM_ATTENTION_BACKEND" != "auto" ]]; then
+  attention_config_args+=(--attention-config "{\"backend\":\"$VLLM_ATTENTION_BACKEND\"}")
 fi
 sudo docker run --rm --gpus all --ipc=host --network host \
   --name "$container_name" \
@@ -1018,6 +1030,7 @@ sudo docker run --rm --gpus all --ipc=host --network host \
   --tensor-parallel-size "$gpu_count" \
   "${expert_parallel_flags[@]}" \
   "${eager_args[@]}" \
+  "${attention_config_args[@]}" \
   --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \
   --max-model-len "$MAX_MODEL_LEN" \
   --max-num-seqs "$MAX_NUM_SEQS" \
