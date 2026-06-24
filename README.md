@@ -68,8 +68,7 @@ Initial targets:
   past the original vLLM `0.23.0` Blackwell FP8 scaled-mm failure: direct
   CUTLASS FP8 cases still fail, Triton block FP8 works after E8M0 scales are
   upcast, and the remaining startup blocker is DeepSeek's NVIDIA `o_proj`
-  DeepGEMM `fp8_einsum` grouped right-hand weight/scale layout before
-  `/v1/models`.
+  DeepGEMM grouped right-hand scale-factor transformation before `/v1/models`.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -98,6 +97,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-scaled-mm-g4-probe.md`](docs/evidence/2026-06-24-deepseek-v4-flash-scaled-mm-g4-probe.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-e8m0-upcast-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-e8m0-upcast-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 
