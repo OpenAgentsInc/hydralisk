@@ -70,9 +70,11 @@ Initial targets:
   upcast, and local `o_proj` RHS rank/scale hotpatches still stop in DeepGEMM
   before `/v1/models`. A clean provider-guided vLLM/DeepGEMM container also
   builds and imports successfully on the G4 host, then fails before readiness
-  on the original CUTLASS `dispatch_scaled_mm` path. The next honest lane is
-  an 8-GPU H100/H200/B200 published-recipe allocation or a custom
-  RTX PRO 6000 Triton/offload kernel path.
+  on the original CUTLASS `dispatch_scaled_mm` path. The published-recipe
+  GCE probe can see H100/H200/B200/GB200 catalog entries and machine types, but
+  this project currently exposes only L4 regional GPU quota. The available
+  Google lane today is therefore a custom RTX PRO 6000 Triton/offload kernel
+  path unless we obtain H100/H200/B200/GB200 quota.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -104,6 +106,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md`](docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

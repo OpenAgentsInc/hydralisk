@@ -271,6 +271,54 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert "HYDRALISK_DEEPSEEK_O_PROJ" not in script
 
 
+def test_published_recipe_probe_script_is_public_safe_in_dry_run(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-deepseek-v4-published-recipe-gce.sh"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path),
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "published-recipe-gce-probe.md").read_text()
+    plan = (tmp_path / "published-recipe-candidates.tsv").read_text()
+
+    assert "Wrote" in result.stdout
+    assert "a3-ultragpu-8g" in plan
+    assert "a4-highgpu-8g" in plan
+    assert "nvidia-h200-141gb" in plan
+    assert "nvidia-b200" in plan
+    assert "nvidia-gb200" in plan
+    assert "hydralisk-gptoss" not in plan
+    assert "khala" not in plan.lower()
+    assert "Contains weights: false" in evidence
+
+
+def test_published_recipe_probe_requires_explicit_create() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = (
+        repo_root / "scripts" / "probe-deepseek-v4-published-recipe-gce.sh"
+    ).read_text()
+
+    assert 'ATTEMPT_CREATE="${ATTEMPT_CREATE:-0}"' in script
+    assert "--provisioning-model \"$PROVISIONING_MODEL\"" in script
+    assert "--instance-termination-action DELETE" in script
+    assert "--max-run-duration \"$MAX_RUN_DURATION\"" in script
+    assert "hydralisk-probe,deepseek-v4,published-recipe" in script
+    assert 'quota_${quota%%:*}' in script
+    assert "ATTEMPT_CREATE=0" in script
+
+
 def test_e8m0_upcast_patch_script_is_public_safe_and_target_scoped(
     tmp_path: Path,
 ) -> None:

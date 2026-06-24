@@ -34,6 +34,9 @@ Grouped o_proj RHS scale-mode evidence:
 Provider-stack evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md`](evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md)
 
+Published-recipe GCE admission evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md`](evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -157,9 +160,24 @@ RuntimeError: dispatch_scaled_mm,
 /workspace/csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_helper.hpp:17
 ```
 
+The provider card supplied with this investigation confirms the shape of the
+published recipe: vLLM 0.20+, DeepGEMM installed through vLLM's helper,
+FP8 KV cache, block size 256, expert parallel enabled, and DeepSeek V4 parser
+flags. It also says tensor parallelism must match GPU count to avoid replicated
+dense-layer OOM. The advertised NVIDIA deployment shapes are 8 x H100,
+8 x H200, 8 x B200, 4 x GB200 NVL4, or a DGX Station class single-GPU path.
+
+The published-recipe GCE admission probe then checked those Google shapes
+directly. The project can see matching catalog entries and machine types for
+H100, H100 Mega, H200, B200, and GB200 candidates in the sampled zones, but
+every candidate blocked on missing regional quota metrics. The probed regions
+exposed L4 GPU quota only. No create attempt was made because `ATTEMPT_CREATE=0`
+by default and the candidates were quota-blocked before create.
+
 The next issue should stop treating the two-card G4 stock-vLLM path as a
-near-serving lane. Pick one branch: secure an 8-GPU H100/H200/B200-class node
-that matches the published recipe, or start a custom G4 implementation lane
+near-serving lane. The published-recipe path is administratively blocked until
+we obtain H100/H200/B200/GB200 quota. The Google hardware admitted today is
+G4 RTX PRO 6000, so the next executable lane is a custom G4 implementation
 that owns Triton FP8, expert offload/prefetch, and the remaining DeepGEMM or
 replacement-kernel behavior.
 
@@ -241,7 +259,8 @@ The 2026-06-24 G4 smoke is currently stopped on the CUDA/kernel support
 condition above. More random flag trials on the same host are not the next
 useful step; the useful split is now an 8-GPU H100/H200/B200 allocation that
 matches the published recipe, or a custom expert-prefetch/offload route for
-RTX PRO 6000.
+RTX PRO 6000. The published-recipe allocation is currently blocked by missing
+H100/H100 Mega/H200/B200/GB200 quota in this project.
 
 ## Promotion boundary
 

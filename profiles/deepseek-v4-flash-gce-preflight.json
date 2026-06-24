@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "load_smoke_blocked_cutlass_scaled_mm_on_g4_provider_stack",
+  "status": "blocked_published_recipe_gpu_quota_missing_custom_g4_required",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -127,7 +127,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/10",
       "https://github.com/OpenAgentsInc/hydralisk/issues/11",
       "https://github.com/OpenAgentsInc/hydralisk/issues/12",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/13"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/13",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/14"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -137,7 +138,8 @@
       "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md",
-      "docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md"
+      "docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md",
+      "docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -166,7 +168,39 @@
       "site": "vllm/model_executor/kernels/linear/scaled_mm/cutlass.py cutlass_scaled_mm",
       "message": "A clean provider-guided container derived from vllm/vllm-openai:latest built DeepGEMM via the vLLM helper and imported vLLM 0.23.0, Torch 2.11.0+cu130, CUDA 13.0, and DeepGEMM on both RTX PRO 6000 GPUs. The provider-style serve command still failed before /v1/models with dispatch_scaled_mm at c3x/scaled_mm_helper.hpp:17.",
       "defaultAndFallbacksAffected": true,
-      "nextProbe": "either run the published recipe on an 8-GPU H100/H200/B200-class node or start the custom RTX PRO 6000 Triton/offload lane"
+      "nextProbe": "start the custom RTX PRO 6000 Triton/offload lane unless H100/H200/B200/GB200 quota is obtained"
+    }
+  },
+  "publishedRecipeAdmission": {
+    "status": "blocked_quota_missing",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/14",
+    "script": "scripts/probe-deepseek-v4-published-recipe-gce.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md",
+    "providerRecipe": {
+      "engine": "vllm>=0.20.0",
+      "deepGemmInstall": "vllm tools/install_deepgemm.sh",
+      "serveFlags": [
+        "--kv-cache-dtype fp8",
+        "--block-size 256",
+        "--enable-expert-parallel",
+        "--tokenizer-mode deepseek_v4",
+        "--tool-call-parser deepseek_v4",
+        "--reasoning-parser deepseek_v4"
+      ],
+      "tensorParallelRule": "tensor parallel size must match GPU count for the published MoE recipe"
+    },
+    "candidateHardware": [
+      "8 x NVIDIA H100 80GB",
+      "8 x NVIDIA H100 Mega 80GB",
+      "8 x NVIDIA H200 141GB",
+      "8 x NVIDIA B200 180GB",
+      "4 x NVIDIA GB200 192GB NVL4"
+    ],
+    "gceResult": {
+      "catalogAndMachineTypes": "visible_for_sampled_candidates",
+      "quota": "missing_for_h100_h100_mega_h200_b200_gb200",
+      "visibleQuota": "L4 only in sampled regions",
+      "createAttempted": false
     }
   },
   "promotionGates": [
@@ -179,8 +213,8 @@
     "public-safe Hydralisk receipt is emitted"
   ],
   "recommendation": {
-    "nextLane": "choose_published_recipe_gpu_or_custom_g4_kernel_path",
-    "why": "Google admitted the two-card G4 lane, the host has enough memory and disk for a low-context smoke, and a clean provider-guided vLLM/DeepGEMM container now builds and imports on RTX PRO 6000. Stock vLLM still fails on CUTLASS dispatch_scaled_mm before readiness. Serving DeepSeek-V4-Flash now requires an 8-GPU H100/H200/B200-class node that matches the published recipe, or custom RTX PRO 6000 work around Triton FP8, expert offload/prefetch, and replacement/owned kernel behavior.",
+    "nextLane": "custom_g4_triton_offload_kernel_path",
+    "why": "Google admitted the two-card G4 lane, the host has enough memory and disk for a low-context smoke, and a clean provider-guided vLLM/DeepGEMM container now builds and imports on RTX PRO 6000. Stock vLLM still fails on CUTLASS dispatch_scaled_mm before readiness. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. Serving DeepSeek-V4-Flash on available Google infrastructure now requires custom RTX PRO 6000 work around Triton FP8, expert offload/prefetch, and replacement/owned kernel behavior unless new quota is obtained.",
     "publicClaim": "none"
   },
   "publicSafety": {
