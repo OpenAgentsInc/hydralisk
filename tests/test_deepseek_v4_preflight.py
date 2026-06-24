@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import math
 from pathlib import Path
+import subprocess
 import struct
 
 from hydralisk.admission.deepseek_v4_flash import (
@@ -73,6 +74,52 @@ def test_preflight_report_and_markdown_are_public_safe(tmp_path: Path) -> None:
     assert report["recommendation"]["nextStep"].startswith("try_g4_standard_96")
     assert "Do not disturb the live single-H100" in rendered
     assert "Contains weights: false" in rendered
+
+
+def test_gce_smoke_script_dry_run_plans_fresh_probe_hosts(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "smoke-deepseek-v4-gce.sh"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path),
+            "TS": "20260624000000",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    plan = (tmp_path / "attempt-plan.tsv").read_text()
+    attempts = (tmp_path / "attempts.tsv").read_text()
+    evidence = (tmp_path / "deepseek-v4-gce-smoke.md").read_text()
+
+    assert "hydralisk-deepseek-v4" in attempts
+    assert "DRY_RUN=1" in result.stdout
+    assert "g4-standard-96" in plan
+    assert "a3-highgpu-2g" in plan
+    assert "hydralisk-gptoss" not in plan
+    assert "khala" not in plan.lower()
+    assert "Contains weights: false" in evidence
+
+
+def test_gce_smoke_script_exposes_backend_and_issue_knobs() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = (repo_root / "scripts" / "smoke-deepseek-v4-gce.sh").read_text()
+
+    assert 'ISSUE_NUMBER="${ISSUE_NUMBER:-6}"' in script
+    assert 'VLLM_USE_DEEP_GEMM="${VLLM_USE_DEEP_GEMM:-1}"' in script
+    assert 'VLLM_USE_DEEP_GEMM_E8M0="${VLLM_USE_DEEP_GEMM_E8M0:-1}"' in script
+    assert (
+        'VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER="${VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER:-1}"'
+        in script
+    )
+    assert 'printf "VLLM_USE_DEEP_GEMM\\t%s\\n"' in script
+    assert 'issue="$ISSUE_NUMBER"' in script
 
 
 def _write_tiny_gguf(path: Path) -> None:

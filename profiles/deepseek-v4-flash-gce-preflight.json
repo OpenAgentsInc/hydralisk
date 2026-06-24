@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "admission_preflight",
+  "status": "load_smoke_blocked_cutlass_scaled_mm",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -111,11 +111,50 @@
     ]
   },
   "admission": {
-    "status": "preflight_only",
+    "status": "fresh_g4_admitted",
     "ref": "admission.hydralisk.deepseek-v4-flash.gce.20260624",
     "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/5",
     "command": "uv run hydralisk-deepseek-v4-preflight --gguf ~/Downloads/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf --collect-gcloud",
     "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-flash-gce-preflight.md"
+  },
+  "loadSmoke": {
+    "status": "blocked_before_ready",
+    "issues": [
+      "https://github.com/OpenAgentsInc/hydralisk/issues/6",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/7"
+    ],
+    "evidenceRefs": [
+      "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
+      "docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md"
+    ],
+    "admittedHost": {
+      "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
+      "project": "openagentsgemini",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-96",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 2,
+      "gpuName": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "driverVersion": "580.159.03",
+      "cudaHome": "/usr/local/cuda-12.9",
+      "provisioning": "SPOT",
+      "publicIngress": false
+    },
+    "engine": {
+      "name": "vllm",
+      "version": "0.23.0",
+      "torch": "2.11.0",
+      "python": "3.12.13",
+      "tensorParallelSize": 2,
+      "kvCacheDtype": "fp8",
+      "maxModelLen": 4096
+    },
+    "blocker": {
+      "stage": "engine_startup_determine_available_memory",
+      "site": "vllm/_custom_ops.py cutlass_scaled_mm",
+      "message": "RuntimeError: dispatch_scaled_mm, /workspace/csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_helper.hpp:17",
+      "defaultAndFallbacksAffected": true
+    }
   },
   "promotionGates": [
     "exact model revision or local artifact digest pinned",
@@ -127,8 +166,8 @@
     "public-safe Hydralisk receipt is emitted"
   ],
   "recommendation": {
-    "nextLane": "g4-standard-96 all-GPU low-context smoke, or g4-standard-48 offload/prefetch validation if two-card G4 capacity is unavailable",
-    "why": "The 86.7 GB local artifact is too tight for a conservative single-G4 all-GPU run once runtime and KV cache reserve are included, but single G4 is exactly the cheapest place to validate expert repack/offload. Two G4 or two H100 lanes clear the low-context memory preflight if Google capacity admits.",
+    "nextLane": "fix_or_pin_a_vllm_scaled_mm_backend_for_deepseek_v4_flash_on_rtx_pro_6000",
+    "why": "Google admitted the two-card G4 lane, the host has enough memory and disk for a low-context smoke, and vLLM reached model selection/kernel compile. The current blocker is the CUTLASS FP8 scaled-mm runtime path, not quota or raw GPU memory.",
     "publicClaim": "none"
   },
   "publicSafety": {

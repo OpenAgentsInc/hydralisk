@@ -10,6 +10,12 @@ Profile:
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-gce-preflight.md`](evidence/2026-06-24-deepseek-v4-flash-gce-preflight.md)
 
+Load-smoke evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md`](evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md)
+
+Backend-matrix evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md`](evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -69,11 +75,30 @@ history.
 The live single-H100 host is rejected for DeepSeek work because it is already
 reserved for GPT-OSS 120B.
 
+On 2026-06-24, Google admitted the first fresh DeepSeek probe:
+`g4-standard-96` in `us-central1-b` with 2 x RTX PRO 6000 Blackwell GPUs. That
+changed the blocker from quota/capacity to vLLM kernel compatibility. The host
+loaded enough of `deepseek-ai/DeepSeek-V4-Flash` to resolve
+`DeepseekV4ForCausalLM`, use tensor parallel size 2, use FP8 KV, cache roughly
+149 GB of model data, and compile TileLang kernels after pinning CUDA 12.9.
+It did not reach `/v1/models`.
+
+The current blocker is:
+
+```text
+RuntimeError: dispatch_scaled_mm,
+/workspace/csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_helper.hpp:17
+```
+
+Disabling DeepGEMM, UE8M0, TMA-aligned scales, and block-scale FP8 FlashInfer
+did not avoid the same `cutlass_scaled_mm` failure in vLLM `0.23.0`.
+
 The first viable lanes are:
 
-1. `g4-standard-96`, 2 x RTX PRO 6000, if Google capacity admits it.
-   This clears the low-context all-GPU memory preflight and is directionally
-   aligned with Blackwell FP4 work.
+1. `g4-standard-96`, 2 x RTX PRO 6000. Google admitted this lane; it clears
+   the low-context all-GPU memory preflight and is directionally aligned with
+   Blackwell FP4 work, but stock vLLM `0.23.0` currently fails in CUTLASS
+   FP8 scaled-mm before readiness.
 2. `g4-standard-48`, 1 x RTX PRO 6000, for the cheapest offload/prefetch
    validation. It does not clear conservative all-GPU memory once runtime and
    KV reserve are included, but it is the right place to test expert repack plus
@@ -103,6 +128,26 @@ After this preflight passes and a fresh GPU host is admitted:
 7. Only then evaluate whether Psionic should implement the same scheduling
    behavior natively.
 
+The reproducible smoke runner is:
+
+```bash
+scripts/smoke-deepseek-v4-gce.sh
+```
+
+Useful knobs:
+
+```bash
+ISSUE_NUMBER=7
+VLLM_USE_DEEP_GEMM=0
+VLLM_USE_DEEP_GEMM_E8M0=0
+VLLM_USE_DEEP_GEMM_TMA_ALIGNED_SCALES=0
+VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER=0
+```
+
+Use `TARGET_INSTANCE`, `TARGET_ZONE`, and `TARGET_GPU_COUNT` only for a fresh
+`hydralisk-deepseek-v4-*` probe. The script refuses arbitrary existing host
+names so it does not accidentally target Khala/GPT-OSS product hosts.
+
 ## Stop conditions
 
 Stop and record a blocker if:
@@ -113,6 +158,9 @@ Stop and record a blocker if:
 - CUDA/kernel support rejects RTX PRO 6000 or H100 for this model path;
 - the smoke cannot produce public-safe usage, latency, memory, and blocker
   receipts.
+
+The 2026-06-24 G4 smoke is currently stopped on the CUDA/kernel support
+condition above.
 
 ## Promotion boundary
 

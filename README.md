@@ -63,9 +63,10 @@ Initial targets:
 - `gpt-oss-120b` on H100/H200/B200/G4-class high-memory GPUs with vLLM.
 - GLM-5.2 first as a hosted baseline, then as a high-memory SGLang/Dynamo
   self-hosting campaign.
-- DeepSeek-V4-Flash as a Google GPU admission experiment: start with GGUF
-  parser validation and GCE lane classification, then try G4/H100 load smoke
-  only on fresh non-product hosts.
+- DeepSeek-V4-Flash as a Google GPU admission experiment: G4 capacity was
+  admitted on 2026-06-24 with 2 x RTX PRO 6000, and the current blocker is
+  vLLM `0.23.0` failing in the Blackwell FP8 `cutlass_scaled_mm` path before
+  `/v1/models`.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -89,6 +90,8 @@ First execution roadmap:
 - [`docs/gce-l4-vllm-runbook.md`](docs/gce-l4-vllm-runbook.md)
 - [`docs/glm-5.2-sglang-preflight-runbook.md`](docs/glm-5.2-sglang-preflight-runbook.md)
 - [`docs/deepseek-v4-flash-gce-preflight.md`](docs/deepseek-v4-flash-gce-preflight.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md`](docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 
