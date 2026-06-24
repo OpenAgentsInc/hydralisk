@@ -655,8 +655,12 @@ def test_flashinfer_b12x_moe_probe_is_public_safe_and_target_scoped(
     assert "supportsSwigluLimitKwarg" in script_text
     assert "b12x_swiglu_limit_kwarg_probe" in script_text
     assert "deepseek_shape_local_shard_remap" in script_text
+    assert "RUN_MASKED_LOCAL_SHARD_CASE" in script_text
+    assert "deepseek_shape_local_shard_masked_dispatch" in script_text
+    assert "local_shard_masked_zero_scale" in script_text
     assert '-e "SWIGLU_LIMIT=$SWIGLU_LIMIT"' in script_text
     assert '-e "RUN_LOCAL_SHARD_REMAP_CASE=$RUN_LOCAL_SHARD_REMAP_CASE"' in script_text
+    assert '-e "RUN_MASKED_LOCAL_SHARD_CASE=$RUN_MASKED_LOCAL_SHARD_CASE"' in script_text
     assert "deepseek_shape_ep" in script_text
     assert "deepseek_shape_no_ep" in script_text
 

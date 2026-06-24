@@ -4,7 +4,7 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-openagentsgemini}"
 TARGET_INSTANCE="${TARGET_INSTANCE:-}"
 TARGET_ZONE="${TARGET_ZONE:-}"
-ISSUE_NUMBER="${ISSUE_NUMBER:-31}"
+ISSUE_NUMBER="${ISSUE_NUMBER:-33}"
 IMAGE="${IMAGE:-hydralisk-deepseek-v4-oproj-fallback-g4-vllm:20260624095206}"
 FLASHINFER_INSTALL_MODE="${FLASHINFER_INSTALL_MODE:-none}"
 FLASHINFER_PIP_PACKAGE="${FLASHINFER_PIP_PACKAGE:-flashinfer-python}"
@@ -22,6 +22,7 @@ LOCAL_NUM_EXPERTS="${LOCAL_NUM_EXPERTS:-32}"
 TOP_K="${TOP_K:-6}"
 SWIGLU_LIMIT="${SWIGLU_LIMIT:-10.0}"
 RUN_LOCAL_SHARD_REMAP_CASE="${RUN_LOCAL_SHARD_REMAP_CASE:-1}"
+RUN_MASKED_LOCAL_SHARD_CASE="${RUN_MASKED_LOCAL_SHARD_CASE:-1}"
 RUN_NO_EP_CASE="${RUN_NO_EP_CASE:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 TS="${TS:-$(date -u +%Y%m%d%H%M%S)}"
@@ -65,6 +66,7 @@ render_markdown() {
     echo "- Top-k: \`$TOP_K\`"
     echo "- SwiGLU limit: \`$SWIGLU_LIMIT\`"
     echo "- Run local-shard remap case: \`$RUN_LOCAL_SHARD_REMAP_CASE\`"
+    echo "- Run masked local-shard case: \`$RUN_MASKED_LOCAL_SHARD_CASE\`"
     echo "- Run no-EP case: \`$RUN_NO_EP_CASE\`"
     echo
     if [[ "$DRY_RUN" = "1" ]]; then
@@ -125,6 +127,7 @@ remote_script="$(
   printf 'TOP_K=%q\n' "$TOP_K"
   printf 'SWIGLU_LIMIT=%q\n' "$SWIGLU_LIMIT"
   printf 'RUN_LOCAL_SHARD_REMAP_CASE=%q\n' "$RUN_LOCAL_SHARD_REMAP_CASE"
+  printf 'RUN_MASKED_LOCAL_SHARD_CASE=%q\n' "$RUN_MASKED_LOCAL_SHARD_CASE"
   printf 'RUN_NO_EP_CASE=%q\n' "$RUN_NO_EP_CASE"
   printf 'REMOTE_LOG_DIR=%q\n' "/var/log/hydralisk/flashinfer-b12x-moe-$TS"
   cat <<'REMOTE'
@@ -284,6 +287,7 @@ def run_b12x_case(
     global_num_experts=None,
     routing_domain="global",
     swiglu_limit=None,
+    zero_every_nth_route=None,
 ) -> dict:
     import flashinfer
     import flashinfer.fused_moe as fm
@@ -309,6 +313,7 @@ def run_b12x_case(
         "topK": top_k,
         "routingDomain": routing_domain,
         "swigluLimitKwarg": swiglu_limit,
+        "zeroEveryNthRoute": zero_every_nth_route,
         "loadsModelWeights": False,
         "publicSafety": {
             "containsSecrets": False,
@@ -364,6 +369,27 @@ def run_b12x_case(
         token_final_scales = torch.full(
             (seq_len, top_k), 1.0 / top_k, device="cuda", dtype=torch.float32
         )
+        if zero_every_nth_route is not None:
+            route_positions = torch.arange(
+                seq_len * top_k,
+                device="cuda",
+                dtype=torch.int64,
+            ).reshape(seq_len, top_k)
+            route_mask = (route_positions % zero_every_nth_route) == (
+                zero_every_nth_route - 1
+            )
+            token_selected_experts = torch.where(
+                route_mask,
+                torch.zeros_like(token_selected_experts),
+                token_selected_experts,
+            )
+            token_final_scales = torch.where(
+                route_mask,
+                torch.zeros_like(token_final_scales),
+                token_final_scales,
+            )
+            record["maskedRouteCount"] = int(route_mask.sum().item())
+            record["maskedFillExpert"] = 0
         w1_alpha = torch.ones(
             (local_num_experts,), device="cuda", dtype=torch.float32
         )
@@ -476,6 +502,21 @@ if os.environ.get("RUN_LOCAL_SHARD_REMAP_CASE", "1") == "1":
             top_k=top_k,
             global_num_experts=num_experts,
             routing_domain="local_shard_remapped",
+        )
+    )
+if os.environ.get("RUN_MASKED_LOCAL_SHARD_CASE", "1") == "1":
+    emit(
+        run_b12x_case(
+            "deepseek_shape_local_shard_masked_dispatch",
+            seq_len=seq_len,
+            hidden_size=hidden_size,
+            intermediate_size=intermediate_size,
+            num_experts=local_num_experts,
+            local_num_experts=local_num_experts,
+            top_k=top_k,
+            global_num_experts=num_experts,
+            routing_domain="local_shard_masked_zero_scale",
+            zero_every_nth_route=2,
         )
     )
 if os.environ.get("RUN_NO_EP_CASE", "1") == "1":
@@ -616,6 +657,7 @@ sudo docker run --rm --gpus all --ipc=host --network host \
   -e "TOP_K=$TOP_K" \
   -e "SWIGLU_LIMIT=$SWIGLU_LIMIT" \
   -e "RUN_LOCAL_SHARD_REMAP_CASE=$RUN_LOCAL_SHARD_REMAP_CASE" \
+  -e "RUN_MASKED_LOCAL_SHARD_CASE=$RUN_MASKED_LOCAL_SHARD_CASE" \
   -e "RUN_NO_EP_CASE=$RUN_NO_EP_CASE" \
   -v "$REMOTE_LOG_DIR/repro.py:/tmp/repro.py:ro" \
   -v "$REMOTE_LOG_DIR/run-probe.py:/tmp/run-probe.py:ro" \

@@ -91,6 +91,9 @@ B12x nightly wrapper evidence:
 B12x local dispatcher shim evidence:
 [`docs/evidence/2026-06-24-deepseek-b12x-local-dispatcher-shim.md`](evidence/2026-06-24-deepseek-b12x-local-dispatcher-shim.md)
 
+B12x masked local-dispatch evidence:
+[`docs/evidence/2026-06-24-flashinfer-b12x-masked-dispatch-g4.md`](evidence/2026-06-24-flashinfer-b12x-masked-dispatch-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -731,6 +734,14 @@ inputs. It also fails closed when DeepSeek needs `swiglu_limit=10.0` and the
 target B12x surface lacks that clamp. This moves the blocker again: local-route
 remap is now implemented in Hydralisk; the remaining B12x work is clamp-capable
 GPU integration or a kernel-side clamp patch.
+
+The live G4 masked-dispatch probe then validated that Hydralisk's fixed-shape
+zero-scale masking strategy is acceptable to the B12x kernel input contract.
+With `globalNumExperts=256`, `kernelNumExperts=32`, `localNumExperts=32`, and
+half the routes masked to fill expert `0` with scale `0.0`, B12x returned
+`ok=true` and `outShape=[512,4096]` on RTX PRO 6000. That removes the
+dispatcher-shape concern. The remaining blocker is still the clamp:
+`b12x_fused_moe` rejects `swiglu_limit=10.0`.
 
 ## Promotion boundary
 

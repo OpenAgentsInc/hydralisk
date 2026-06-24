@@ -142,6 +142,8 @@ Initial targets:
   that shim: fixed-shape global-to-local expert remap, zero-scale masking for
   nonlocal/out-of-range routes, reference-equivalence tests on nonzero inputs,
   and a fail-closed gate for missing DeepSeek `swiglu_limit` support. The
+  live B12x kernel also accepts that dispatcher-shaped masked local-domain
+  input on RTX PRO 6000 (`maskedRouteCount=1536`, `outShape=[512,4096]`). The
   remaining B12x work is clamp-capable GPU integration or a kernel-side clamp
   patch.
 
@@ -194,6 +196,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md)
 - [`docs/evidence/2026-06-24-flashinfer-b12x-nightly-wrapper-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-nightly-wrapper-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-local-dispatcher-shim.md`](docs/evidence/2026-06-24-deepseek-b12x-local-dispatcher-shim.md)
+- [`docs/evidence/2026-06-24-flashinfer-b12x-masked-dispatch-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-masked-dispatch-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 
