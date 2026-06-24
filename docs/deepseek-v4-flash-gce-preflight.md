@@ -49,6 +49,9 @@ NVFP4 private-egress G4 evidence:
 NVFP4 no-Xet G4 evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-no-xet-g4.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-no-xet-g4.md)
 
+NVFP4 Triton-linear G4 evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-triton-g4.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-triton-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -284,6 +287,25 @@ dense FP8 linear layers away from the failing CUTLASS block-scaled-mm dispatch,
 preferably toward the Triton path that passed the earlier microprobe, while
 keeping NVFP4 experts on `flashinfer_trtllm`.
 
+The Triton-linear probe then did exactly that with
+`VLLM_LINEAR_BACKEND=triton`, `VLLM_E8M0_TRITON_UPCAST=1`,
+`ALLOW_NVFP4_SM120=1`, `HF_HUB_DISABLE_XET=1`, and
+`MOE_BACKEND=flashinfer_trtllm`. It removed the CUTLASS
+`dispatch_scaled_mm` blocker and moved the failure to DeepSeek V4's NVIDIA
+`o_proj` path:
+
+```text
+RuntimeError: Assertion error
+(csrc/apis/../jit_kernels/impls/../heuristics/../../utils/layout.hpp:39):
+t.dim() == N
+```
+
+The stack now passes through `vllm/models/deepseek_v4/nvidia/flashmla.py`,
+`vllm/models/deepseek_v4/nvidia/ops/o_proj.py`, and
+`vllm/utils/deep_gemm.py`. The next hard thing is a public-safe shape trace and
+minimal fallback for `deep_gemm_fp8_o_proj`, while preserving the
+FlashInfer TRTLLM NVFP4 MoE path.
+
 The first viable lanes are:
 
 1. `g4-standard-96`, 2 x RTX PRO 6000. Google admitted this lane; it clears
@@ -368,7 +390,10 @@ route first stopped on vLLM/FlashInfer backend support for this exact G4
 device/configuration. The patched SM120 probe got past that device gate,
 Cloud NAT got past private config fetch, and `HF_HUB_DISABLE_XET=1` got past
 the Xet/vLLM transfer wedge. The active blocker is now vLLM's dense FP8
-`cutlass_scaled_mm` dispatch on SM120 before readiness.
+`cutlass_scaled_mm` dispatch on SM120 before readiness. After
+`VLLM_LINEAR_BACKEND=triton` plus the E8M0 upcast patch, that CUTLASS blocker
+is cleared and the lane stops on DeepGEMM `o_proj` layout handling before
+readiness.
 
 ## Promotion boundary
 

@@ -10,6 +10,8 @@ MODEL_REVISION="${MODEL_REVISION:-}"
 MOE_BACKEND="${MOE_BACKEND:-auto}"
 ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"
 DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"
+VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"
+VLLM_E8M0_TRITON_UPCAST="${VLLM_E8M0_TRITON_UPCAST:-0}"
 HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-0}"
 HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-0}"
 HF_XET_NUM_CONCURRENT_RANGE_GETS="${HF_XET_NUM_CONCURRENT_RANGE_GETS:-}"
@@ -57,6 +59,8 @@ render_markdown() {
     echo "- MoE backend: \`$MOE_BACKEND\`"
     echo "- Allow NVFP4 SM120 guard patch: \`$ALLOW_NVFP4_SM120\`"
     echo "- Docker build pull: \`$DOCKER_BUILD_PULL\`"
+    echo "- vLLM linear backend: \`$VLLM_LINEAR_BACKEND\`"
+    echo "- vLLM E8M0 Triton upcast patch: \`$VLLM_E8M0_TRITON_UPCAST\`"
     echo "- HF Hub disable Xet: \`$HF_HUB_DISABLE_XET\`"
     echo "- HF Xet high performance: \`$HF_XET_HIGH_PERFORMANCE\`"
     echo "- HF Xet concurrent range gets: \`${HF_XET_NUM_CONCURRENT_RANGE_GETS:-default}\`"
@@ -163,6 +167,8 @@ remote_script="$(
   printf 'MOE_BACKEND=%q\n' "$MOE_BACKEND"
   printf 'ALLOW_NVFP4_SM120=%q\n' "$ALLOW_NVFP4_SM120"
   printf 'DOCKER_BUILD_PULL=%q\n' "$DOCKER_BUILD_PULL"
+  printf 'VLLM_LINEAR_BACKEND=%q\n' "$VLLM_LINEAR_BACKEND"
+  printf 'VLLM_E8M0_TRITON_UPCAST=%q\n' "$VLLM_E8M0_TRITON_UPCAST"
   printf 'HF_HUB_DISABLE_XET=%q\n' "$HF_HUB_DISABLE_XET"
   printf 'HF_XET_HIGH_PERFORMANCE=%q\n' "$HF_XET_HIGH_PERFORMANCE"
   printf 'HF_XET_NUM_CONCURRENT_RANGE_GETS=%q\n' "$HF_XET_NUM_CONCURRENT_RANGE_GETS"
@@ -214,6 +220,7 @@ FROM ${BASE_IMAGE}
 SHELL ["/bin/bash", "-lc"]
 ARG INSTALL_DEEPGEMM=1
 ARG ALLOW_NVFP4_SM120=0
+ARG VLLM_E8M0_TRITON_UPCAST=0
 RUN if [[ "$INSTALL_DEEPGEMM" == "1" ]]; then \
       apt-get update && \
       apt-get install -y --no-install-recommends ca-certificates git cuda-libraries-dev-13-0 && \
@@ -225,6 +232,9 @@ RUN if [[ "$INSTALL_DEEPGEMM" == "1" ]]; then \
     fi
 RUN if [[ "$ALLOW_NVFP4_SM120" == "1" ]]; then \
       python3 -c "from pathlib import Path; import vllm.model_executor.layers.fused_moe.experts.trtllm_nvfp4_moe as mod; path = Path(mod.__file__); text = path.read_text(); old = 'p.is_device_capability_family(100)\\n            and has_flashinfer_trtllm_fused_moe()'; new = '(p.is_device_capability_family(100)\\n             or p.is_device_capability_family(120))\\n            and has_flashinfer_trtllm_fused_moe()'; assert old in text, f'SM120 guard patch target not found in {path}'; path.write_text(text.replace(old, new)); print(f'patched {path} for NVFP4 SM120 probe')"; \
+    fi
+RUN if [[ "$VLLM_E8M0_TRITON_UPCAST" == "1" ]]; then \
+      python3 -c "from pathlib import Path; import py_compile; import vllm.model_executor.layers.quantization.utils.fp8_utils as mod; path = Path(mod.__file__); text = path.read_text(); marker = 'Hydralisk issue #19 E8M0 CUDA Triton upcast'; old = '''    # Triton cannot currently bind E8M0 scale tensors directly. On ROCm,\n    # DeepSeek-V4 checkpoints store block scales in exponent-only E8M0 format,\n    # so decode them to fp32 before launching the kernel.\n    if current_platform.is_rocm() or current_platform.is_xpu():\n        if As.dtype == torch.float8_e8m0fnu:\n            As = _upcast_e8m0_to_fp32(As).contiguous()\n        if Bs.dtype == torch.float8_e8m0fnu:\n            Bs = _upcast_e8m0_to_fp32(Bs).contiguous()\n'''; new = '''    # Triton cannot currently bind E8M0 scale tensors directly. DeepSeek-V4\n    # checkpoints can store block scales in exponent-only E8M0 format.\n    # Hydralisk issue #19 E8M0 CUDA Triton upcast: decode these scales to fp32\n    # before launching Triton on CUDA as well as ROCm/XPU. Derived-image patch.\n    if As.dtype == torch.float8_e8m0fnu:\n        As = _upcast_e8m0_to_fp32(As).contiguous()\n    if Bs.dtype == torch.float8_e8m0fnu:\n        Bs = _upcast_e8m0_to_fp32(Bs).contiguous()\n'''; assert marker in text or old in text, f'E8M0 upcast patch target not found in {path}'; path.write_text(text if marker in text else text.replace(old, new)); py_compile.compile(str(path), doraise=True); print(f'patched {path} for CUDA Triton E8M0 upcast probe')"; \
     fi
 DOCKERFILE
 
@@ -238,6 +248,7 @@ timeout "$STACK_BUILD_TIMEOUT_SECONDS"s sudo docker build \
   --build-arg "BASE_IMAGE=$BASE_IMAGE" \
   --build-arg "INSTALL_DEEPGEMM=$INSTALL_DEEPGEMM" \
   --build-arg "ALLOW_NVFP4_SM120=$ALLOW_NVFP4_SM120" \
+  --build-arg "VLLM_E8M0_TRITON_UPCAST=$VLLM_E8M0_TRITON_UPCAST" \
   -t "$DERIVED_IMAGE" \
   -f "$build_ctx/Dockerfile" \
   "$build_ctx" > "$REMOTE_LOG_DIR/provider-stack-build.log" 2>&1 || build_rc=$?
@@ -247,6 +258,7 @@ rm -rf "$build_ctx"
   printf "BASE_IMAGE\t%s\n" "$BASE_IMAGE"
   printf "DERIVED_IMAGE\t%s\n" "$DERIVED_IMAGE"
   printf "INSTALL_DEEPGEMM\t%s\n" "$INSTALL_DEEPGEMM"
+  printf "VLLM_E8M0_TRITON_UPCAST\t%s\n" "$VLLM_E8M0_TRITON_UPCAST"
   printf "DOCKER_BUILD_PULL\t%s\n" "$DOCKER_BUILD_PULL"
   printf "BUILD_RC\t%s\n" "$build_rc"
   printf "BASE_IMAGE_INSPECT_BEGIN\n"
@@ -358,6 +370,8 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "MODEL_REVISION\t%s\n" "${MODEL_REVISION:-unconfigured}"
   printf "MOE_BACKEND\t%s\n" "$MOE_BACKEND"
   printf "ALLOW_NVFP4_SM120\t%s\n" "$ALLOW_NVFP4_SM120"
+  printf "VLLM_LINEAR_BACKEND\t%s\n" "$VLLM_LINEAR_BACKEND"
+  printf "VLLM_E8M0_TRITON_UPCAST\t%s\n" "$VLLM_E8M0_TRITON_UPCAST"
   printf "HF_HUB_DISABLE_XET\t%s\n" "$HF_HUB_DISABLE_XET"
   printf "HF_XET_HIGH_PERFORMANCE\t%s\n" "$HF_XET_HIGH_PERFORMANCE"
   printf "HF_XET_NUM_CONCURRENT_RANGE_GETS\t%s\n" "${HF_XET_NUM_CONCURRENT_RANGE_GETS:-default}"
@@ -369,7 +383,7 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "MAX_NUM_BATCHED_TOKENS\t%s\n" "$MAX_NUM_BATCHED_TOKENS"
   printf "GPU_MEMORY_UTILIZATION\t%s\n" "$GPU_MEMORY_UTILIZATION"
   printf "LOCAL_SITE_PACKAGES_PATCHES\tfalse\n"
-  printf "PROVIDER_FLAGS\t--kv-cache-dtype fp8 --block-size 256 --enable-expert-parallel --tensor-parallel-size %s\n" "$gpu_count"
+  printf "PROVIDER_FLAGS\t--kv-cache-dtype fp8 --block-size 256 --enable-expert-parallel --tensor-parallel-size %s --linear-backend %s\n" "$gpu_count" "$VLLM_LINEAR_BACKEND"
 } > "$REMOTE_LOG_DIR/provider-stack-engine.txt"
 
 sudo docker rm -f "$container_name" >/dev/null 2>&1 || true
@@ -380,6 +394,10 @@ fi
 moe_backend_args=()
 if [[ "$MOE_BACKEND" != "auto" ]]; then
   moe_backend_args+=(--moe-backend "$MOE_BACKEND")
+fi
+linear_backend_args=()
+if [[ "$VLLM_LINEAR_BACKEND" != "auto" ]]; then
+  linear_backend_args+=(--linear-backend "$VLLM_LINEAR_BACKEND")
 fi
 sudo docker run --rm --gpus all --ipc=host --network host \
   --name "$container_name" \
@@ -392,6 +410,7 @@ sudo docker run --rm --gpus all --ipc=host --network host \
   "$MODEL_ID" \
   "${revision_args[@]}" \
   "${moe_backend_args[@]}" \
+  "${linear_backend_args[@]}" \
   --host 127.0.0.1 \
   --port 8000 \
   --trust-remote-code \

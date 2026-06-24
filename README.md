@@ -87,8 +87,10 @@ Initial targets:
   before `/v1/models`. Disabling Xet for the next private G4 run made snapshot
   acquisition deterministic enough to expose the current blocker again:
   non-expert FP8 layers hit vLLM's CUTLASS `dispatch_scaled_mm` path on SM120
-  before `/v1/models`. The next useful DeepSeek issue is therefore a dense-FP8
-  backend patch or selector change, not more artifact-transfer work.
+  before `/v1/models`. Forcing vLLM's dense FP8 linear backend to `triton`
+  with the derived-image E8M0 upcast patch removed that CUTLASS blocker. The
+  active blocker is now DeepSeek V4's NVIDIA `o_proj` DeepGEMM `fp8_einsum`
+  layout assertion before readiness.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -125,6 +127,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-sm120-g4-probe.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-sm120-g4-probe.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-no-xet-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-no-xet-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-triton-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-triton-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

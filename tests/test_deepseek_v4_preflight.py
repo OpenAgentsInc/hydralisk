@@ -265,6 +265,8 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'MOE_BACKEND="${MOE_BACKEND:-auto}"' in script
     assert 'ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"' in script
     assert 'DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"' in script
+    assert 'VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"' in script
+    assert 'VLLM_E8M0_TRITON_UPCAST="${VLLM_E8M0_TRITON_UPCAST:-0}"' in script
     assert 'HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-0}"' in script
     assert 'HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-0}"' in script
     assert 'HF_XET_NUM_CONCURRENT_RANGE_GETS="${HF_XET_NUM_CONCURRENT_RANGE_GETS:-}"' in script
@@ -277,14 +279,19 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert '--tokenizer-revision "$MODEL_REVISION"' in script
     assert '--moe-backend "$MOE_BACKEND"' in script
     assert "--build-arg \"ALLOW_NVFP4_SM120=$ALLOW_NVFP4_SM120\"" in script
+    assert "--build-arg \"VLLM_E8M0_TRITON_UPCAST=$VLLM_E8M0_TRITON_UPCAST\"" in script
     assert "pull_args+=(--pull)" in script
     assert "p.is_device_capability_family(120)" in script
+    assert "Hydralisk issue #19 E8M0 CUDA Triton upcast" in script
     assert "provider-stack-network.txt" in script
     assert "cdn-lfs.huggingface.co" in script
     assert "NETWORK_RC" in script
     assert 'HF_HUB_DISABLE_XET\\t%s' in script
     assert 'HF_XET_NUM_CONCURRENT_RANGE_GETS\\t%s' in script
+    assert 'VLLM_LINEAR_BACKEND\\t%s' in script
+    assert 'VLLM_E8M0_TRITON_UPCAST\\t%s' in script
     assert '"${hf_env_args[@]}"' in script
+    assert 'linear_backend_args+=(--linear-backend "$VLLM_LINEAR_BACKEND")' in script
     assert "--kv-cache-dtype fp8" in script
     assert "--block-size 256" in script
     assert "--enable-expert-parallel" in script
@@ -320,6 +327,8 @@ def test_nvfp4_g4_probe_script_is_public_safe_in_dry_run(
     assert "MoE backend: `auto`" in evidence
     assert "Allow NVFP4 SM120 guard patch: `0`" in evidence
     assert "Docker build pull: `1`" in evidence
+    assert "vLLM linear backend: `auto`" in evidence
+    assert "vLLM E8M0 Triton upcast patch: `0`" in evidence
     assert "HF Hub disable Xet: `0`" in evidence
     assert "HF Xet high performance: `0`" in evidence
     assert "HF Xet concurrent range gets: `default`" in evidence

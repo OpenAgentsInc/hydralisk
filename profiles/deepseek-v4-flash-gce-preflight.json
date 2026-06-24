@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "blocked_nvfp4_dense_fp8_cutlass_scaled_mm_on_g4_sm120",
+  "status": "blocked_nvfp4_o_proj_deepgemm_layout_on_g4_sm120",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -132,7 +132,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/15",
       "https://github.com/OpenAgentsInc/hydralisk/issues/16",
       "https://github.com/OpenAgentsInc/hydralisk/issues/17",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/18"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/18",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/19"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -147,7 +148,8 @@
       "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-sm120-g4-probe.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md",
-      "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-no-xet-g4.md"
+      "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-no-xet-g4.md",
+      "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-triton-g4.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -383,6 +385,51 @@
       "nextProbe": "force or patch dense FP8 linear backend selection away from CUTLASS toward Triton while keeping NVFP4 experts on FlashInfer TRTLLM"
     }
   },
+  "nvfp4TritonLinearG4Probe": {
+    "status": "blocked_o_proj_deepgemm_layout_before_ready",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/19",
+    "script": "scripts/probe-deepseek-v4-nvfp4-g4-gce.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-triton-g4.md",
+    "host": {
+      "instance": "hydralisk-deepseek-v4-nvfp4-g4-2g-b-20260624073921",
+      "project": "openagentsgemini",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-96",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 2,
+      "network": "default",
+      "subnet": "default",
+      "internalIp": "10.128.0.28",
+      "externalIp": null
+    },
+    "engine": {
+      "name": "vllm",
+      "version": "0.23.0",
+      "torch": "2.11.0+cu130",
+      "cudaRuntime": "13.0",
+      "baseImage": "hydralisk-deepseek-v4-nvfp4-vllm:20260624074009@sha256:35149725614cca7842ba16ea02f5b3765e0b875f85e8f192f1a2ba2a4bcfc9f5",
+      "derivedImage": "hydralisk-deepseek-v4-nvfp4-sm120-triton-vllm:20260624084245@sha256:e923fb6576796c166e7d5be017eb012552a1a7b069ded657a2cd51947e16d0b7",
+      "moeBackend": "flashinfer_trtllm",
+      "tensorParallelSize": 2,
+      "linearBackend": "triton",
+      "e8m0TritonUpcast": true,
+      "hfHubDisableXet": true
+    },
+    "modelLoad": {
+      "architectureResolved": "DeepseekV4ForCausalLM",
+      "moeBackend": "FLASHINFER_TRTLLM",
+      "expertParallel": true,
+      "ready": false,
+      "modelsEndpoint": "not_reached",
+      "previousCutlassScaledMmBlockerReached": false
+    },
+    "blocker": {
+      "stage": "determine_available_memory_deepseek_v4_o_proj_deepgemm",
+      "site": "vllm/models/deepseek_v4/nvidia/ops/o_proj.py deep_gemm_fp8_o_proj -> vllm/utils/deep_gemm.py fp8_einsum",
+      "message": "Forcing --linear-backend triton with the E8M0 upcast patch removed the prior CUTLASS dispatch_scaled_mm blocker. The run now fails before readiness in DeepSeek V4's NVIDIA o_proj path with DeepGEMM layout.hpp:39: t.dim() == N.",
+      "nextProbe": "add a public-safe o_proj shape trace, then patch or bypass deep_gemm_fp8_o_proj for the NVFP4 G4 path while preserving FlashInfer TRTLLM MoE"
+    }
+  },
   "promotionGates": [
     "exact model revision or local artifact digest pinned",
     "engine version and container image digest pinned",
@@ -393,8 +440,8 @@
     "public-safe Hydralisk receipt is emitted"
   ],
   "recommendation": {
-    "nextLane": "force_or_patch_dense_fp8_linear_backend_off_cutlass_for_nvfp4_g4_sm120",
-    "why": "Google admitted the two-card G4 lane and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects every tested NVFP4 MoE backend for this two-card G4 configuration. A derived-image SM120 gate patch advances the FlashInfer TRTLLM NVFP4 path into vLLM startup. Cloud NAT fixes private outbound artifact access without restoring a VM external IP, and HF_HUB_DISABLE_XET=1 avoids the prior transfer wedge. The current blocker is deterministic: vLLM fails during dense non-expert FP8 linear profiling on CUTLASS cutlass_scaled_mm before /v1/models. The next executable step is to force or patch dense FP8 linear backend selection away from CUTLASS while preserving FlashInfer TRTLLM for NVFP4 experts.",
+    "nextLane": "trace_and_patch_deepseek_v4_o_proj_deepgemm_for_nvfp4_g4_sm120",
+    "why": "Google admitted the two-card G4 lane and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects every tested NVFP4 MoE backend for this two-card G4 configuration. A derived-image SM120 gate patch advances the FlashInfer TRTLLM NVFP4 path into vLLM startup. Cloud NAT fixes private outbound artifact access without restoring a VM external IP, and HF_HUB_DISABLE_XET=1 avoids the prior transfer wedge. Forcing --linear-backend triton with the E8M0 upcast patch clears the dense FP8 CUTLASS blocker. The current blocker is DeepSeek V4's NVIDIA o_proj DeepGEMM fp8_einsum layout assertion before /v1/models. The next executable step is to trace o_proj tensor/scale shapes and patch or bypass deep_gemm_fp8_o_proj for this NVFP4 G4 path.",
     "publicClaim": "none"
   },
   "publicSafety": {
