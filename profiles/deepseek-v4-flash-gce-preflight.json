@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "blocked_nvfp4_flashinfer_trtllm_device_gate_on_g4",
+  "status": "blocked_private_g4_artifact_fetch_after_nvfp4_sm120_gate_patch",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -129,7 +129,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/12",
       "https://github.com/OpenAgentsInc/hydralisk/issues/13",
       "https://github.com/OpenAgentsInc/hydralisk/issues/14",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/15"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/15",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/16"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -141,7 +142,8 @@
       "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md",
-      "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md"
+      "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md",
+      "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-sm120-g4-probe.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -240,6 +242,55 @@
       "nextProbe": "isolate and validate the FlashInfer TRTLLM NVFP4 device-support guard for RTX PRO 6000"
     }
   },
+  "nvfp4Sm120G4Probe": {
+    "status": "blocked_private_artifact_fetch_before_weight_load",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/16",
+    "script": "scripts/probe-deepseek-v4-nvfp4-g4-gce.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-sm120-g4-probe.md",
+    "model": {
+      "repository": "nvidia/DeepSeek-V4-Flash-NVFP4",
+      "revision": "e3cd60e7de98e9867116860d522499a728de1cf9"
+    },
+    "host": {
+      "instance": "hydralisk-deepseek-v4-nvfp4-g4-2g-b-20260624073921",
+      "project": "openagentsgemini",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-96",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 2,
+      "publicNat": false,
+      "access": "iap"
+    },
+    "patch": {
+      "scope": "derived_probe_image_only",
+      "defaultEnabled": false,
+      "knob": "ALLOW_NVFP4_SM120=1",
+      "target": "vllm.model_executor.layers.fused_moe.experts.trtllm_nvfp4_moe",
+      "change": "allow is_device_capability_family(120) alongside family 100 for the FlashInfer TRTLLM NVFP4 gate"
+    },
+    "engine": {
+      "name": "vllm",
+      "version": "0.23.0",
+      "torch": "2.11.0+cu130",
+      "cudaRuntime": "13.0",
+      "baseImage": "hydralisk-deepseek-v4-nvfp4-vllm:20260624074009@sha256:35149725614cca7842ba16ea02f5b3765e0b875f85e8f192f1a2ba2a4bcfc9f5",
+      "derivedImage": "hydralisk-deepseek-v4-nvfp4-sm120-vllm:20260624080336@sha256:0d419bd990b6dc65e1a026f045118f6b3e83553a1a008861cee1c8fe9458bd10",
+      "moeBackend": "flashinfer_trtllm",
+      "tensorParallelSize": 2
+    },
+    "result": {
+      "ready": false,
+      "previousBackendSelectorErrorReached": false,
+      "vllmApiServerStarted": true,
+      "weightLoadTested": false,
+      "kernelLoadTested": false
+    },
+    "blocker": {
+      "stage": "model_artifact_fetch_on_private_host",
+      "message": "The patched image advanced into vLLM startup with flashinfer_trtllm, but the private-only G4 host cannot currently resolve/fetch all Hugging Face artifacts. cdn-lfs.huggingface.co failed DNS resolution and the pinned config fetch returned network unreachable before /v1/models.",
+      "nextProbe": "configure Cloud NAT/private egress or pre-stage the pinned Hugging Face snapshot, then rerun the same ALLOW_NVFP4_SM120=1 probe"
+    }
+  },
   "promotionGates": [
     "exact model revision or local artifact digest pinned",
     "engine version and container image digest pinned",
@@ -250,8 +301,8 @@
     "public-safe Hydralisk receipt is emitted"
   ],
   "recommendation": {
-    "nextLane": "patch_or_validate_flashinfer_trtllm_nvfp4_device_gate_on_g4",
-    "why": "Google admitted the two-card G4 lane and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects every tested NVFP4 MoE backend for this two-card G4 configuration. The next executable step is to isolate the FlashInfer TRTLLM NVFP4 current-device guard and validate a minimal kernel smoke on RTX PRO 6000 before retrying the full model.",
+    "nextLane": "configure_private_egress_or_prestage_nvfp4_snapshot_then_retry_sm120_g4_probe",
+    "why": "Google admitted the two-card G4 lane and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects every tested NVFP4 MoE backend for this two-card G4 configuration. A derived-image SM120 gate patch advances the FlashInfer TRTLLM NVFP4 path into vLLM startup, but the private-only G4 host now blocks on Hugging Face artifact access before weight load. The next executable step is private egress or pre-staged model artifacts, then rerun the same patched probe.",
     "publicClaim": "none"
   },
   "publicSafety": {

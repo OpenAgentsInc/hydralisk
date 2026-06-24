@@ -8,6 +8,8 @@ ISSUE_NUMBER="${ISSUE_NUMBER:-13}"
 MODEL_ID="${MODEL_ID:-deepseek-ai/DeepSeek-V4-Flash}"
 MODEL_REVISION="${MODEL_REVISION:-}"
 MOE_BACKEND="${MOE_BACKEND:-auto}"
+ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"
+DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"
 BASE_IMAGE="${BASE_IMAGE:-vllm/vllm-openai:latest}"
 INSTALL_DEEPGEMM="${INSTALL_DEEPGEMM:-1}"
 DERIVED_IMAGE="${DERIVED_IMAGE:-hydralisk-deepseek-v4-provider-vllm}"
@@ -50,6 +52,8 @@ render_markdown() {
       echo "- Model revision: \`$MODEL_REVISION\`"
     fi
     echo "- MoE backend: \`$MOE_BACKEND\`"
+    echo "- Allow NVFP4 SM120 guard patch: \`$ALLOW_NVFP4_SM120\`"
+    echo "- Docker build pull: \`$DOCKER_BUILD_PULL\`"
     echo "- Base image: \`$BASE_IMAGE\`"
     echo "- Derived image: \`$DERIVED_IMAGE\`"
     echo "- Install DeepGEMM helper: \`$INSTALL_DEEPGEMM\`"
@@ -102,6 +106,12 @@ render_markdown() {
       sed -n '1,80p' "$OUTPUT_DIR/provider-stack-import.stderr" 2>/dev/null || true
       echo '```'
       echo
+      echo "## Network Artifact Fetch Probe"
+      echo
+      echo '```text'
+      sed -n '1,160p' "$OUTPUT_DIR/provider-stack-network.txt" 2>/dev/null || true
+      echo '```'
+      echo
       echo "## Model Smoke"
       echo
       echo '```text'
@@ -145,6 +155,8 @@ remote_script="$(
   printf 'MODEL_ID=%q\n' "$MODEL_ID"
   printf 'MODEL_REVISION=%q\n' "$MODEL_REVISION"
   printf 'MOE_BACKEND=%q\n' "$MOE_BACKEND"
+  printf 'ALLOW_NVFP4_SM120=%q\n' "$ALLOW_NVFP4_SM120"
+  printf 'DOCKER_BUILD_PULL=%q\n' "$DOCKER_BUILD_PULL"
   printf 'BASE_IMAGE=%q\n' "$BASE_IMAGE"
   printf 'INSTALL_DEEPGEMM=%q\n' "$INSTALL_DEEPGEMM"
   printf 'DERIVED_IMAGE=%q\n' "$DERIVED_IMAGE:$TS"
@@ -192,6 +204,7 @@ ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 SHELL ["/bin/bash", "-lc"]
 ARG INSTALL_DEEPGEMM=1
+ARG ALLOW_NVFP4_SM120=0
 RUN if [[ "$INSTALL_DEEPGEMM" == "1" ]]; then \
       apt-get update && \
       apt-get install -y --no-install-recommends ca-certificates git cuda-libraries-dev-13-0 && \
@@ -201,13 +214,21 @@ RUN if [[ "$INSTALL_DEEPGEMM" == "1" ]]; then \
       python3 -c 'from urllib.request import urlopen; open("/tmp/install_deepgemm.sh", "wb").write(urlopen("https://raw.githubusercontent.com/vllm-project/vllm/main/tools/install_deepgemm.sh", timeout=120).read())' && \
       UV_SYSTEM_PYTHON=1 bash /tmp/install_deepgemm.sh; \
     fi
+RUN if [[ "$ALLOW_NVFP4_SM120" == "1" ]]; then \
+      python3 -c "from pathlib import Path; import vllm.model_executor.layers.fused_moe.experts.trtllm_nvfp4_moe as mod; path = Path(mod.__file__); text = path.read_text(); old = 'p.is_device_capability_family(100)\\n            and has_flashinfer_trtllm_fused_moe()'; new = '(p.is_device_capability_family(100)\\n             or p.is_device_capability_family(120))\\n            and has_flashinfer_trtllm_fused_moe()'; assert old in text, f'SM120 guard patch target not found in {path}'; path.write_text(text.replace(old, new)); print(f'patched {path} for NVFP4 SM120 probe')"; \
+    fi
 DOCKERFILE
 
 build_rc=0
+pull_args=()
+if [[ "$DOCKER_BUILD_PULL" == "1" ]]; then
+  pull_args+=(--pull)
+fi
 timeout "$STACK_BUILD_TIMEOUT_SECONDS"s sudo docker build \
-  --pull \
+  "${pull_args[@]}" \
   --build-arg "BASE_IMAGE=$BASE_IMAGE" \
   --build-arg "INSTALL_DEEPGEMM=$INSTALL_DEEPGEMM" \
+  --build-arg "ALLOW_NVFP4_SM120=$ALLOW_NVFP4_SM120" \
   -t "$DERIVED_IMAGE" \
   -f "$build_ctx/Dockerfile" \
   "$build_ctx" > "$REMOTE_LOG_DIR/provider-stack-build.log" 2>&1 || build_rc=$?
@@ -217,6 +238,7 @@ rm -rf "$build_ctx"
   printf "BASE_IMAGE\t%s\n" "$BASE_IMAGE"
   printf "DERIVED_IMAGE\t%s\n" "$DERIVED_IMAGE"
   printf "INSTALL_DEEPGEMM\t%s\n" "$INSTALL_DEEPGEMM"
+  printf "DOCKER_BUILD_PULL\t%s\n" "$DOCKER_BUILD_PULL"
   printf "BUILD_RC\t%s\n" "$build_rc"
   printf "BASE_IMAGE_INSPECT_BEGIN\n"
   sudo docker image inspect "$BASE_IMAGE" --format '{{json .RepoDigests}} {{json .Id}}' 2>/dev/null || true
@@ -278,6 +300,31 @@ except Exception as exc:
 print(json.dumps(record, sort_keys=True))
 PY' > "$REMOTE_LOG_DIR/provider-stack-import.jsonl" 2> "$REMOTE_LOG_DIR/provider-stack-import.stderr" || true
 
+network_rc=0
+timeout 45s sudo docker run --rm --network host \
+  --entrypoint python3 "$DERIVED_IMAGE" -c '
+import socket
+import urllib.request
+
+hosts = ["huggingface.co", "cdn-lfs.huggingface.co", "google.com"]
+for host in hosts:
+    try:
+        print("DNS\t%s\t%s" % (host, socket.getaddrinfo(host, 443)[0][4][0]))
+    except Exception as exc:
+        print("DNS_ERROR\t%s\t%s: %s" % (host, type(exc).__name__, exc))
+
+url = "https://huggingface.co/%s/resolve/%s/config.json" % (
+    "'"$MODEL_ID"'",
+    "'"${MODEL_REVISION:-main}"'",
+)
+try:
+    with urllib.request.urlopen(url, timeout=10) as response:
+        print("FETCH\t%s\t%s\t%s" % (url, response.status, response.headers.get("content-length")))
+except Exception as exc:
+    print("FETCH_ERROR\t%s\t%s: %s" % (url, type(exc).__name__, exc))
+' > "$REMOTE_LOG_DIR/provider-stack-network.txt" 2>&1 || network_rc=$?
+printf "NETWORK_RC\t%s\n" "$network_rc" >> "$REMOTE_LOG_DIR/provider-stack-network.txt"
+
 if [[ "$RUN_MODEL_SMOKE" != "1" ]]; then
   printf "READY\t0\nBLOCKER\tmodel_smoke_skipped\n" > "$REMOTE_LOG_DIR/provider-stack-smoke-summary.txt"
   printf '{"ready":false,"status":"model_smoke_skipped"}\n' > "$REMOTE_LOG_DIR/provider-stack-completion-public.json"
@@ -291,6 +338,7 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "MODEL_ID\t%s\n" "$MODEL_ID"
   printf "MODEL_REVISION\t%s\n" "${MODEL_REVISION:-unconfigured}"
   printf "MOE_BACKEND\t%s\n" "$MOE_BACKEND"
+  printf "ALLOW_NVFP4_SM120\t%s\n" "$ALLOW_NVFP4_SM120"
   printf "BASE_IMAGE\t%s\n" "$BASE_IMAGE"
   printf "DERIVED_IMAGE\t%s\n" "$DERIVED_IMAGE"
   printf "TENSOR_PARALLEL_SIZE\t%s\n" "$gpu_count"
@@ -399,6 +447,7 @@ for file in \
   provider-stack-image.txt \
   provider-stack-import.jsonl \
   provider-stack-import.stderr \
+  provider-stack-network.txt \
   provider-stack-engine.txt \
   provider-stack-smoke-summary.txt \
   provider-stack-completion-public.json \

@@ -6,7 +6,10 @@ ISSUE_NUMBER="${ISSUE_NUMBER:-15}"
 MODEL_ID="${MODEL_ID:-nvidia/DeepSeek-V4-Flash-NVFP4}"
 MODEL_REVISION="${MODEL_REVISION:-e3cd60e7de98e9867116860d522499a728de1cf9}"
 MOE_BACKEND="${MOE_BACKEND:-auto}"
+ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"
+DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"
 BASE_IMAGE="${BASE_IMAGE:-vllm/vllm-openai:latest}"
+INSTALL_DEEPGEMM="${INSTALL_DEEPGEMM:-1}"
 DERIVED_IMAGE="${DERIVED_IMAGE:-hydralisk-deepseek-v4-nvfp4-vllm}"
 TARGET_INSTANCE="${TARGET_INSTANCE:-}"
 TARGET_ZONE="${TARGET_ZONE:-}"
@@ -117,7 +120,10 @@ run_provider_probe() {
   MODEL_ID="$MODEL_ID" \
   MODEL_REVISION="$MODEL_REVISION" \
   MOE_BACKEND="$MOE_BACKEND" \
+  ALLOW_NVFP4_SM120="$ALLOW_NVFP4_SM120" \
+  DOCKER_BUILD_PULL="$DOCKER_BUILD_PULL" \
   BASE_IMAGE="$BASE_IMAGE" \
+  INSTALL_DEEPGEMM="$INSTALL_DEEPGEMM" \
   DERIVED_IMAGE="$DERIVED_IMAGE" \
   TARGET_INSTANCE="$TARGET_INSTANCE" \
   TARGET_ZONE="$TARGET_ZONE" \
@@ -146,7 +152,10 @@ render_markdown() {
     echo "- Model: \`$MODEL_ID\`"
     echo "- Model revision: \`$MODEL_REVISION\`"
     echo "- MoE backend: \`$MOE_BACKEND\`"
+    echo "- Allow NVFP4 SM120 guard patch: \`$ALLOW_NVFP4_SM120\`"
+    echo "- Docker build pull: \`$DOCKER_BUILD_PULL\`"
     echo "- Base image: \`$BASE_IMAGE\`"
+    echo "- Install DeepGEMM helper: \`$INSTALL_DEEPGEMM\`"
     echo "- Target instance: \`${TARGET_INSTANCE:-unadmitted}\`"
     echo "- Target zone: \`${TARGET_ZONE:-unadmitted}\`"
     echo "- Create if missing: \`$CREATE_IF_MISSING\`"

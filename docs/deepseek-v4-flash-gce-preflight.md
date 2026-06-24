@@ -40,6 +40,9 @@ Published-recipe GCE admission evidence:
 NVFP4 G4 evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md)
 
+NVFP4 SM120 G4 evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-sm120-g4-probe.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-sm120-g4-probe.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -206,6 +209,35 @@ G4 RTX PRO 6000, so the next executable lane is a custom G4 implementation.
 The immediate next hard thing is to isolate and validate the FlashInfer TRTLLM
 NVFP4 device support gate for RTX PRO 6000 before retrying the full model.
 
+The provider inventory pasted into the investigation reinforces the same target
+shape: DeepSeek-V4-Flash wants vLLM `0.20.0+`, DeepGEMM, FP8 KV cache, block
+size `256`, expert parallel, DeepSeek V4 parser flags, and tensor parallelism
+matching visible GPU count. It also keeps the real published-serving target in
+view: 8 x H100, 8 x H200, 8 x B200, 4 x GB200 NVL4, or a DGX Station class
+single-GPU path. The admitted 2 x RTX PRO 6000 G4 lane remains a compatibility
+probe, not a published-recipe shape.
+
+The SM120 gate probe then built a derived NVFP4 image with an explicit
+default-off local patch allowing `is_device_capability_family(120)` in the
+FlashInfer TRTLLM NVFP4 gate. That moved the lane past the immediate
+`flashinfer_trtllm` backend selector rejection and into vLLM `0.23.0` startup
+with the pinned NVFP4 model revision. It still did not reach `/v1/models`.
+
+The new blocker is artifact access on the private-only G4 host:
+
+```text
+dns huggingface.co 3.170.185.25
+dns_error cdn-lfs.huggingface.co gaierror [Errno -2] Name or service not known
+fetch_error URLError <urlopen error [Errno 101] Network is unreachable>
+NET_RC=124
+```
+
+This means the next useful step is to configure private egress for the G4
+subnet or pre-stage the pinned HF snapshot under
+`/var/lib/hydralisk/huggingface`, then rerun the same SM120 probe. It does not
+yet prove or disprove weight load, memory fit, or the actual FlashInfer TRTLLM
+kernel on RTX PRO 6000.
+
 The first viable lanes are:
 
 1. `g4-standard-96`, 2 x RTX PRO 6000. Google admitted this lane; it clears
@@ -287,7 +319,9 @@ matches the published recipe, or a custom expert-prefetch/offload route for
 RTX PRO 6000. The published-recipe allocation is currently blocked by missing
 H100/H100 Mega/H200/B200/GB200 quota in this project. The NVFP4 stock-vLLM
 route is currently blocked by vLLM/FlashInfer backend support for this exact
-G4 device/configuration, not by the prior FP8 CUTLASS scaled-mm signature.
+G4 device/configuration, not by the prior FP8 CUTLASS scaled-mm signature. The
+patched SM120 probe gets past that first device gate but is now blocked on
+private-host artifact access before it can test weight load.
 
 ## Promotion boundary
 

@@ -263,6 +263,8 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'ISSUE_NUMBER="${ISSUE_NUMBER:-13}"' in script
     assert 'MODEL_REVISION="${MODEL_REVISION:-}"' in script
     assert 'MOE_BACKEND="${MOE_BACKEND:-auto}"' in script
+    assert 'ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"' in script
+    assert 'DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"' in script
     assert 'BASE_IMAGE="${BASE_IMAGE:-vllm/vllm-openai:latest}"' in script
     assert "tools/install_deepgemm.sh" in script
     assert "cuda-libraries-dev-13-0" in script
@@ -271,6 +273,12 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert '--revision "$MODEL_REVISION"' in script
     assert '--tokenizer-revision "$MODEL_REVISION"' in script
     assert '--moe-backend "$MOE_BACKEND"' in script
+    assert "--build-arg \"ALLOW_NVFP4_SM120=$ALLOW_NVFP4_SM120\"" in script
+    assert "pull_args+=(--pull)" in script
+    assert "p.is_device_capability_family(120)" in script
+    assert "provider-stack-network.txt" in script
+    assert "cdn-lfs.huggingface.co" in script
+    assert "NETWORK_RC" in script
     assert "--kv-cache-dtype fp8" in script
     assert "--block-size 256" in script
     assert "--enable-expert-parallel" in script
@@ -304,6 +312,9 @@ def test_nvfp4_g4_probe_script_is_public_safe_in_dry_run(
     assert "nvidia/DeepSeek-V4-Flash-NVFP4" in evidence
     assert "e3cd60e7de98e9867116860d522499a728de1cf9" in evidence
     assert "MoE backend: `auto`" in evidence
+    assert "Allow NVFP4 SM120 guard patch: `0`" in evidence
+    assert "Docker build pull: `1`" in evidence
+    assert "Install DeepGEMM helper: `1`" in evidence
     assert "g4-standard-96" in plan
     assert "nvidia-rtx-pro-6000" in plan
     assert "--no-address" in script.read_text()
