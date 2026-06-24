@@ -947,6 +947,15 @@ B12x clamp overlay, and the low-context smoke limits. A dry run renders the
 intended launch contract, and a live attempt on this Mac still stops at
 `blocked_auth` before GCE admission.
 
+Issue #44 checked whether the workspace Tailnet could route around this Mac's
+gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable
+alternate executor was reachable noninteractively from this shell: local
+`tailscale status` could not reach the Tailscale service, `archlinux` refused
+or timed out on SSH, the M2 and iMac Pro IPs timed out, and the MagicDNS names
+for the Mac hosts did not resolve. Therefore the immediate live path remains
+interactive gcloud reauth on this Mac, or bringing a Tailnet host online with
+SSH plus valid gcloud auth and then running the same wrapper there.
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this
