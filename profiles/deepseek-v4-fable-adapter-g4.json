@@ -153,12 +153,27 @@
     "canImplementContextTransform": true,
     "provenRuntimeFamily": "self_attn.compressor.indexer.compressor.fused_wkv_wgate"
   },
+  "packedDeltaTransform": {
+    "status": "packed_delta_artifact_written_zero_delta_payload",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/76",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-packed-delta.md",
+    "adapterPayloadInspected": true,
+    "tensorValuesRead": true,
+    "sampleArtifactLayers": [
+      2
+    ],
+    "loraBTensorCount": 191,
+    "loraBZeroTensorCount": 191,
+    "loraBNonzeroTensorCount": 0,
+    "mechanicalTransformProven": true,
+    "semanticAdapterCanaryAllowed": false
+  },
   "finalDecision": {
     "status": "rejected_runtime_unstable",
     "admittedPrivateAuthorizedSecurityLabCanary": false,
     "publicAliasesAllowed": false,
     "khalaGeneralRouteAllowed": false,
     "mppPublicSaleAllowed": false,
-    "nextStep": "implement_context_specific_packed_lora_transform_and_private_load_canary"
+    "nextStep": "verify_upstream_adapter_payload_or_find_nonzero_revision_before_private_canary"
   }
 }

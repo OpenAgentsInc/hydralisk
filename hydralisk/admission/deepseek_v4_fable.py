@@ -22,6 +22,7 @@ FABLE_OPROJ_OWNERSHIP_SCHEMA = "hydralisk.deepseek-v4-fable.o-proj-ownership.v1"
 FABLE_TRANSFORM_SMOKE_SCHEMA = "hydralisk.deepseek-v4-fable.transform-smoke.v1"
 FABLE_CONTEXT_MAP_SCHEMA = "hydralisk.deepseek-v4-fable.context-map.v1"
 FABLE_INDEXER_LOADER_SCHEMA = "hydralisk.deepseek-v4-fable.indexer-loader-proof.v1"
+FABLE_PACKED_DELTA_SCHEMA = "hydralisk.deepseek-v4-fable.packed-delta.v1"
 FABLE_REPO = "Chunjiang-Intelligence/DeepSeek-v4-Fable"
 FABLE_REVISION = "999909137c15e0b5539fee887431824fa7cb5b10"
 FABLE_BASE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
@@ -35,6 +36,7 @@ OPROJ_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/72"
 TRANSFORM_SMOKE_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/73"
 CONTEXT_MAP_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/74"
 INDEXER_LOADER_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/75"
+PACKED_DELTA_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/76"
 
 SMALL_METADATA_FILES = (
     "adapter_config.json",
@@ -2374,6 +2376,424 @@ def write_indexer_loader_proof_report(
     return json_path, md_path
 
 
+def build_packed_delta_report(
+    *,
+    adapter_path: Path,
+    output_dir: Path,
+    scale: float = 2.0,
+    layers: set[int] | None = None,
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    created_at = created_at or datetime.now(UTC)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "deepseek-v4-fable-packed-deltas.safetensors"
+    header = read_safetensors_header(adapter_path)
+    manifest = safetensor_manifest_from_header(header)
+    pairs = collect_lora_pairs(manifest)
+    specs = _packed_delta_specs(pairs, scale=scale, layers=layers)
+    if not specs:
+        raise FableProbeError("no supported Fable LoRA modules matched the transform")
+    value_stats = _adapter_lora_value_stats(adapter_path, pairs)
+    tensor_summaries = _write_packed_delta_safetensors(
+        adapter_path=adapter_path,
+        output_path=output_path,
+        specs=specs,
+    )
+    family_counts: dict[str, int] = {}
+    for summary in tensor_summaries:
+        family_counts[summary["family"]] = family_counts.get(summary["family"], 0) + 1
+    total_tensor_bytes = sum(summary["bytes"] for summary in tensor_summaries)
+
+    zero_delta_payload = value_stats["loraBNonzeroTensorCount"] == 0
+    status = (
+        "packed_delta_artifact_written_zero_delta_payload"
+        if zero_delta_payload
+        else "packed_delta_artifact_written"
+    )
+    next_step = (
+        "verify_upstream_adapter_payload_or_find_nonzero_revision_before_private_canary"
+        if zero_delta_payload
+        else "apply_packed_deltas_to_private_checkpoint_and_run_load_canary"
+    )
+
+    return {
+        "schema": FABLE_PACKED_DELTA_SCHEMA,
+        "createdAt": created_at.isoformat().replace("+00:00", "Z"),
+        "issue": PACKED_DELTA_ISSUE_URL,
+        "dependsOn": [INDEXER_LOADER_ISSUE_URL],
+        "profileRef": PROFILE_REF,
+        "status": status,
+        "adapter": {
+            "path": str(adapter_path),
+            "fileBytes": adapter_path.stat().st_size,
+            "tensorCount": len(manifest),
+            "loraModuleCount": len(pairs),
+            "loraValueStats": value_stats,
+            "tensorValuesRead": True,
+            "headerOnly": False,
+        },
+        "transform": {
+            "scale": scale,
+            "layers": sorted(layers) if layers else "all",
+            "tensorCount": len(tensor_summaries),
+            "familyCounts": family_counts,
+            "totalTensorBytes": total_tensor_bytes,
+            "outputPath": str(output_path),
+            "outputFileBytes": output_path.stat().st_size,
+            "outputSha256": _sha256_file(output_path),
+            "tensorSummaries": tensor_summaries,
+        },
+        "decision": {
+            "status": status,
+            "canRunMechanicalLoadCanary": True,
+            "canRunSemanticAdapterCanary": not zero_delta_payload,
+            "canRouteKhalaGeneralTraffic": False,
+            "canExposePublicAliases": False,
+            "canExposeMppPublicSale": False,
+            "nextStep": next_step,
+        },
+        "publicSafety": {
+            "containsSecrets": False,
+            "containsPrompts": False,
+            "containsResponses": False,
+            "containsWeights": False,
+            "containsTensorValues": False,
+            "containsHiddenReasoning": False,
+            "containsExploitPayloads": False,
+            "containsTargetDetails": False,
+            "containsFullThirdPartySource": False,
+            "trackedEvidenceOnly": True,
+        },
+    }
+
+
+def _packed_delta_specs(
+    pairs: dict[str, dict[str, Any]],
+    *,
+    scale: float,
+    layers: set[int] | None,
+) -> list[dict[str, Any]]:
+    specs = []
+    for module in pairs.values():
+        if not module["loraA"] or not module["loraB"]:
+            continue
+        layer = module["layer"]
+        if layer is None or (layers is not None and layer not in layers):
+            continue
+        context_family = _context_family(module["module"], module["context"])
+        output = _packed_delta_output_for_module(
+            layer=layer,
+            context_family=context_family,
+            target=module["target"],
+        )
+        if output is None:
+            continue
+        shape = [module["loraB"]["shape"][0], module["loraA"]["shape"][1]]
+        specs.append(
+            {
+                "adapterModule": module["module"],
+                "family": output["family"],
+                "target": module["target"],
+                "layer": layer,
+                "loraAKey": module["loraA"]["key"],
+                "loraBKey": module["loraB"]["key"],
+                "outputKey": output["key"],
+                "runtimeFamily": output["runtimeFamily"],
+                "shardId": output["shardId"],
+                "dtype": "F32",
+                "shape": shape,
+                "bytes": shape[0] * shape[1] * 4,
+                "scale": scale,
+            }
+        )
+    return sorted(specs, key=lambda item: item["outputKey"])
+
+
+def _packed_delta_output_for_module(
+    *,
+    layer: int,
+    context_family: str,
+    target: str,
+) -> dict[str, Any] | None:
+    prefix = f"model.layers.{layer}"
+    if context_family == "mlp_shared_experts":
+        if target == "gate_proj":
+            return {
+                "family": "mlp_shared_experts_gate",
+                "key": f"{prefix}.mlp.shared_experts.w1.weight",
+                "runtimeFamily": "mlp.shared_experts.gate_up_proj",
+                "shardId": 0,
+            }
+        if target == "up_proj":
+            return {
+                "family": "mlp_shared_experts_up",
+                "key": f"{prefix}.mlp.shared_experts.w3.weight",
+                "runtimeFamily": "mlp.shared_experts.gate_up_proj",
+                "shardId": 1,
+            }
+        if target == "down_proj":
+            return {
+                "family": "mlp_shared_experts_down",
+                "key": f"{prefix}.mlp.shared_experts.w2.weight",
+                "runtimeFamily": "mlp.shared_experts.down_proj",
+                "shardId": None,
+            }
+    if context_family == "attention_compressor" and target == "gate_proj":
+        return {
+            "family": "attention_compressor_gate",
+            "key": f"{prefix}.self_attn.compressor.wgate.weight",
+            "runtimeFamily": "self_attn.compressor.fused_wkv_wgate",
+            "shardId": 1,
+        }
+    if context_family == "attention_compressor_indexer" and target == "gate_proj":
+        return {
+            "family": "attention_compressor_indexer_gate",
+            "key": f"{prefix}.self_attn.compressor.indexer.compressor.wgate.weight",
+            "runtimeFamily": (
+                "self_attn.compressor.indexer.compressor.fused_wkv_wgate"
+            ),
+            "shardId": 1,
+        }
+    return None
+
+
+def _write_packed_delta_safetensors(
+    *,
+    adapter_path: Path,
+    output_path: Path,
+    specs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    import numpy as np
+    from safetensors.numpy import load_file
+
+    tensors = load_file(str(adapter_path))
+    header: dict[str, Any] = {
+        "__metadata__": {
+            "schema": FABLE_PACKED_DELTA_SCHEMA,
+            "source": FABLE_REPO,
+            "revision": FABLE_REVISION,
+        }
+    }
+    offset = 0
+    for spec in specs:
+        header[spec["outputKey"]] = {
+            "dtype": spec["dtype"],
+            "shape": spec["shape"],
+            "data_offsets": [offset, offset + spec["bytes"]],
+        }
+        offset += spec["bytes"]
+    header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
+    summaries = []
+    with output_path.open("wb") as handle:
+        handle.write(struct.pack("<Q", len(header_bytes)))
+        handle.write(header_bytes)
+        for spec in specs:
+            a = tensors[spec["loraAKey"]].astype(np.float32, copy=False)
+            b = tensors[spec["loraBKey"]].astype(np.float32, copy=False)
+            delta = np.ascontiguousarray((b @ a) * np.float32(spec["scale"]))
+            if list(delta.shape) != spec["shape"]:
+                raise FableProbeError(
+                    f"delta shape mismatch for {spec['adapterModule']}: "
+                    f"{list(delta.shape)} != {spec['shape']}"
+                )
+            data = delta.tobytes(order="C")
+            if len(data) != spec["bytes"]:
+                raise FableProbeError(
+                    f"delta byte size mismatch for {spec['adapterModule']}"
+                )
+            handle.write(data)
+            abs_delta = np.abs(delta)
+            summaries.append(
+                {
+                    "key": spec["outputKey"],
+                    "adapterModule": spec["adapterModule"],
+                    "family": spec["family"],
+                    "runtimeFamily": spec["runtimeFamily"],
+                    "layer": spec["layer"],
+                    "target": spec["target"],
+                    "shardId": spec["shardId"],
+                    "dtype": spec["dtype"],
+                    "shape": spec["shape"],
+                    "bytes": spec["bytes"],
+                    "scale": spec["scale"],
+                    "absMax": float(abs_delta.max()) if delta.size else 0.0,
+                    "absSum": float(abs_delta.sum()) if delta.size else 0.0,
+                    "nonzeroElements": int(np.count_nonzero(delta)),
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                }
+            )
+    return summaries
+
+
+def _adapter_lora_value_stats(
+    adapter_path: Path,
+    pairs: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    import numpy as np
+    from safetensors.numpy import load_file
+
+    tensors = load_file(str(adapter_path))
+    lora_b_stats = []
+    for module in pairs.values():
+        if not module["loraB"]:
+            continue
+        tensor = tensors[module["loraB"]["key"]]
+        abs_tensor = np.abs(tensor)
+        lora_b_stats.append(
+            {
+                "module": module["module"],
+                "target": module["target"],
+                "context": _context_family(module["module"], module["context"]),
+                "layer": module["layer"],
+                "absMax": float(abs_tensor.max()) if tensor.size else 0.0,
+                "absSum": float(abs_tensor.sum()) if tensor.size else 0.0,
+                "nonzeroElements": int(np.count_nonzero(tensor)),
+            }
+        )
+    nonzero = [item for item in lora_b_stats if item["nonzeroElements"]]
+    return {
+        "loraBTensorCount": len(lora_b_stats),
+        "loraBZeroTensorCount": len(lora_b_stats) - len(nonzero),
+        "loraBNonzeroTensorCount": len(nonzero),
+        "nonzeroLoraBSamples": nonzero[:3],
+    }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def render_packed_delta_markdown(report: dict[str, Any]) -> str:
+    if report["status"] == "packed_delta_artifact_written_zero_delta_payload":
+        interpretation = """Hydralisk wrote a checkpoint-style packed delta safetensors artifact in ignored
+evidence space, but the adapter payload appears to be a zero-delta LoRA
+payload: every LoRA B tensor inspected from the adapter is zero. The transform
+path is mechanically proven, but applying this artifact should not change model
+behavior.
+
+This should not proceed to a semantic Fable canary until the upstream adapter
+payload is verified, a nonzero revision is found, or the full merged checkpoint
+path is intentionally evaluated."""
+    else:
+        interpretation = """Hydralisk wrote a checkpoint-style packed delta safetensors artifact in ignored
+evidence space. The artifact contains dense LoRA deltas for shared-expert MLP,
+plain compressor gate, and nested indexer compressor gate targets using the
+runtime-loader mappings proven in the previous issues.
+
+This still is not a served model. The next step is to apply these deltas to a
+private DeepSeek-V4-Flash checkpoint copy on the G4 host and run a private
+no-public-ingress load canary."""
+    family_rows = [
+        "| Family | Tensors |",
+        "| --- | ---: |",
+    ]
+    for family, count in sorted(report["transform"]["familyCounts"].items()):
+        family_rows.append(f"| `{family}` | {count} |")
+    tensor_rows = [
+        "| Key | Shape | Dtype | Bytes | Scale | Nonzero | Abs max | Abs sum | SHA-256 |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for tensor in report["transform"]["tensorSummaries"]:
+        tensor_rows.append(
+            "| `{key}` | `{shape}` | `{dtype}` | {bytes} | {scale:g} | {nonzero} | {absmax:g} | {abssum:g} | `{sha}` |".format(
+                key=tensor["key"],
+                shape="x".join(str(dim) for dim in tensor["shape"]),
+                dtype=tensor["dtype"],
+                bytes=tensor["bytes"],
+                scale=tensor["scale"],
+                nonzero=tensor["nonzeroElements"],
+                absmax=tensor["absMax"],
+                abssum=tensor["absSum"],
+                sha=tensor["sha256"],
+            )
+        )
+    family_table = "\n".join(family_rows)
+    tensor_table = "\n".join(tensor_rows)
+
+    return f"""# DeepSeek-V4-Fable packed LoRA delta artifact
+
+Date: {report["createdAt"]}
+
+Issue: {report["issue"]}
+
+Depends on: {", ".join(report["dependsOn"])}
+
+Profile: `{report["profileRef"]}`
+
+Status: `{report["status"]}`
+
+## Decision
+
+- Mechanical load canary can run: `{str(report["decision"]["canRunMechanicalLoadCanary"]).lower()}`
+- Semantic adapter canary can run: `{str(report["decision"]["canRunSemanticAdapterCanary"]).lower()}`
+- Khala general route allowed: `{str(report["decision"]["canRouteKhalaGeneralTraffic"]).lower()}`
+- Public aliases allowed: `{str(report["decision"]["canExposePublicAliases"]).lower()}`
+- MPP public sale allowed: `{str(report["decision"]["canExposeMppPublicSale"]).lower()}`
+- Next step: `{report["decision"]["nextStep"]}`
+
+## Adapter inspection
+
+- Adapter path: `{report["adapter"]["path"]}`
+- Adapter file bytes: `{report["adapter"]["fileBytes"]}`
+- Tensor count: `{report["adapter"]["tensorCount"]}`
+- LoRA module count: `{report["adapter"]["loraModuleCount"]}`
+- LoRA B tensors: `{report["adapter"]["loraValueStats"]["loraBTensorCount"]}`
+- LoRA B zero tensors: `{report["adapter"]["loraValueStats"]["loraBZeroTensorCount"]}`
+- LoRA B nonzero tensors: `{report["adapter"]["loraValueStats"]["loraBNonzeroTensorCount"]}`
+- Tensor values read locally: `{str(report["adapter"]["tensorValuesRead"]).lower()}`
+- Header-only inspection: `{str(report["adapter"]["headerOnly"]).lower()}`
+
+## Output artifact
+
+- Path: `{report["transform"]["outputPath"]}`
+- File bytes: `{report["transform"]["outputFileBytes"]}`
+- SHA-256: `{report["transform"]["outputSha256"]}`
+- Scale: `{report["transform"]["scale"]:g}`
+- Layers: `{report["transform"]["layers"]}`
+- Tensor count: `{report["transform"]["tensorCount"]}`
+- Total tensor bytes: `{report["transform"]["totalTensorBytes"]}`
+
+{family_table}
+
+## Tensor manifest
+
+{tensor_table}
+
+## Interpretation
+
+{interpretation}
+
+## Public safety
+
+- Contains secrets: false
+- Contains prompts: false
+- Contains responses: false
+- Contains weights: false
+- Contains tensor values: false
+- Contains hidden reasoning: false
+- Contains exploit payloads: false
+- Contains target details: false
+- Contains full third-party source: false
+- Tracked evidence only: true
+"""
+
+
+def write_packed_delta_report(
+    report: dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "deepseek-v4-fable-packed-delta.json"
+    md_path = output_dir / "deepseek-v4-fable-packed-delta.md"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    md_path.write_text(render_packed_delta_markdown(report))
+    return json_path, md_path
+
+
 def _hf_resolve_url(repo: str, revision: str, filename: str) -> str:
     return f"https://huggingface.co/{repo}/resolve/{revision}/{filename}"
 
@@ -2653,6 +3073,59 @@ def indexer_loader_proof_main(argv: list[str] | None = None) -> int:
     json_path, md_path = write_indexer_loader_proof_report(report, args.output_dir)
     print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
     return 0 if report["decision"]["canImplementContextTransform"] else 2
+
+
+def packed_delta_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Write DeepSeek-V4-Fable packed LoRA delta artifacts."
+    )
+    parser.add_argument(
+        "--adapter-path",
+        type=Path,
+        required=True,
+        help="Local Fable adapter_model.safetensors path in ignored evidence space.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(".hydralisk/deepseek-v4-fable-packed-delta"),
+    )
+    parser.add_argument(
+        "--scale",
+        type=float,
+        default=2.0,
+        help="LoRA scale to apply to B @ A. Fable metadata records scale 2.0.",
+    )
+    parser.add_argument(
+        "--layers",
+        default="all",
+        help="Comma-separated layer ids for a bounded artifact, or 'all'.",
+    )
+    args = parser.parse_args(argv)
+
+    report = build_packed_delta_report(
+        adapter_path=args.adapter_path,
+        output_dir=args.output_dir,
+        scale=args.scale,
+        layers=_parse_layer_filter(args.layers),
+    )
+    json_path, md_path = write_packed_delta_report(report, args.output_dir)
+    print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
+    return 0
+
+
+def _parse_layer_filter(value: str) -> set[int] | None:
+    if value == "all":
+        return None
+    layers = set()
+    for raw in value.split(","):
+        item = raw.strip()
+        if not item:
+            continue
+        layers.add(int(item))
+    if not layers:
+        raise FableProbeError("--layers must be 'all' or contain at least one layer id")
+    return layers
 
 
 if __name__ == "__main__":  # pragma: no cover

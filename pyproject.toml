@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115.0,<1",
   "httpx>=0.28.0,<1",
+  "numpy>=2.0,<3",
   "pydantic>=2.10.0,<3",
   "safetensors>=0.5.0,<1",
   "uvicorn[standard]>=0.34.0,<1",
@@ -35,6 +36,7 @@ hydralisk-deepseek-v4-fable-o-proj-ownership = "hydralisk.admission.deepseek_v4_
 hydralisk-deepseek-v4-fable-transform-smoke = "hydralisk.admission.deepseek_v4_fable:transform_smoke_main"
 hydralisk-deepseek-v4-fable-context-map = "hydralisk.admission.deepseek_v4_fable:context_map_main"
 hydralisk-deepseek-v4-fable-indexer-loader-proof = "hydralisk.admission.deepseek_v4_fable:indexer_loader_proof_main"
+hydralisk-deepseek-v4-fable-packed-delta = "hydralisk.admission.deepseek_v4_fable:packed_delta_main"
 
 [build-system]
 requires = ["hatchling"]

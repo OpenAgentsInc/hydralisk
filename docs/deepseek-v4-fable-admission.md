@@ -32,6 +32,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-context-map.md`](evidence/2026-06-24-deepseek-v4-fable-context-map.md)
 - Indexer-compressor loader proof:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md`](evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md)
+- Packed delta transform evidence:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-packed-delta.md`](evidence/2026-06-24-deepseek-v4-fable-packed-delta.md)
 
 ## Summary
 
@@ -443,6 +445,44 @@ private no-public-ingress load canary.
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md`](evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md)
 
+## Issue #76 result
+
+Issue #76 implemented the first context-specific packed LoRA transform writer.
+The writer reads the adapter tensors locally from ignored `.hydralisk`, computes
+`B @ A * scale`, and writes checkpoint-style dense delta safetensors into
+ignored output space. It emits tracked evidence with names, shapes, byte sizes,
+checksums, and scalar zero/nonzero stats only; it does not commit tensor values
+or weights.
+
+The result is `packed_delta_artifact_written_zero_delta_payload`.
+
+For the real published adapter payload at the pinned revision:
+
+- LoRA B tensors: `191`;
+- LoRA B zero tensors: `191`;
+- LoRA B nonzero tensors: `0`;
+- no non-LoRA tensors are present in the adapter safetensors file.
+
+Hydralisk wrote a bounded layer-2 packed delta artifact covering:
+
+- `model.layers.2.mlp.shared_experts.w1.weight`;
+- `model.layers.2.mlp.shared_experts.w2.weight`;
+- `model.layers.2.mlp.shared_experts.w3.weight`;
+- `model.layers.2.self_attn.compressor.wgate.weight`;
+- `model.layers.2.self_attn.compressor.indexer.compressor.wgate.weight`.
+
+All five generated dense deltas are zero because every selected LoRA B matrix
+is zero, and the global adapter scan shows that this is true across all LoRA B
+tensors. The mechanical transform path is proven, but this adapter file should
+not be used for a semantic Fable canary because applying it should not change
+base model behavior.
+
+The next step is to verify the upstream payload: either find a nonzero adapter
+revision/artifact or intentionally evaluate the full merged checkpoint path.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-packed-delta.md`](evidence/2026-06-24-deepseek-v4-fable-packed-delta.md)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
@@ -452,12 +492,12 @@ canary was admitted. `o_proj` ownership is proven as a kernel/provider path,
 but the real adapter payload does not include the q/k/v/o tensors implied by
 the adapter config. The context map narrowed the path to one hard runtime
 question, and the indexer loader proof resolved it. The next technical step is
-to write a context-specific packed LoRA transform for shared-expert MLP, plain
-compressor gate, and nested indexer compressor gate, then run a private load
-canary. If that stalls, pivot to a canonical base/runtime path that can load
-the adapter as published. Even if a future probe succeeds, Fable should remain
-an authorized-security research capability, not a general Khala model and not
-a public inference product.
+not a load canary yet: the transform writer works, but the published adapter
+payload has zero LoRA B tensors, so the packed deltas are zero. Verify the
+upstream adapter payload, find a nonzero revision, or intentionally evaluate
+the full merged checkpoint path before a semantic canary. Even if a future
+probe succeeds, Fable should remain an authorized-security research
+capability, not a general Khala model and not a public inference product.
 
 ## Public safety
 

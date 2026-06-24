@@ -326,6 +326,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-fable-context-map.md`](docs/evidence/2026-06-24-deepseek-v4-fable-context-map.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md`](docs/evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-fable-packed-delta.md`](docs/evidence/2026-06-24-deepseek-v4-fable-packed-delta.md)
 - [`docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md`](docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md)
 - [`docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md`](docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md`](docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md)

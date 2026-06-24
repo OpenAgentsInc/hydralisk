@@ -16,6 +16,7 @@ from hydralisk.admission.deepseek_v4_fable import (
     FABLE_TRANSFORM_SMOKE_SCHEMA,
     FABLE_CONTEXT_MAP_SCHEMA,
     FABLE_INDEXER_LOADER_SCHEMA,
+    FABLE_PACKED_DELTA_SCHEMA,
     FableProbeError,
     build_context_map_report,
     build_indexer_loader_proof_report,
@@ -25,8 +26,10 @@ from hydralisk.admission.deepseek_v4_fable import (
     build_retarget_plan_report,
     build_report,
     build_transform_smoke_report,
+    build_packed_delta_report,
     context_map_main,
     indexer_loader_proof_main,
+    packed_delta_main,
     compare_adapter_targets,
     lab_eval_main,
     load_metadata_from_dir,
@@ -34,6 +37,7 @@ from hydralisk.admission.deepseek_v4_fable import (
     load_runtime_module_names,
     main,
     o_proj_ownership_main,
+    read_safetensors_header,
     render_load_canary_markdown,
     render_lab_eval_markdown,
     render_markdown,
@@ -42,6 +46,7 @@ from hydralisk.admission.deepseek_v4_fable import (
     render_transform_smoke_markdown,
     render_context_map_markdown,
     render_indexer_loader_proof_markdown,
+    render_packed_delta_markdown,
     retarget_plan_main,
     transform_smoke_main,
     validate_requested_files,
@@ -489,6 +494,55 @@ def test_indexer_loader_proof_cli_writes_public_safe_report(tmp_path: Path) -> N
     assert "Contains tensor values: false" in evidence
 
 
+def test_packed_delta_writer_emits_checkpoint_style_artifact(tmp_path: Path) -> None:
+    adapter_path = tmp_path / "adapter_model.safetensors"
+    _write_small_fake_fable_context_adapter(adapter_path)
+    output_dir = tmp_path / "out"
+
+    report = build_packed_delta_report(
+        adapter_path=adapter_path,
+        output_dir=output_dir,
+        scale=2.0,
+        layers={2},
+        created_at=datetime(2026, 6, 24, tzinfo=UTC),
+    )
+    rendered = render_packed_delta_markdown(report)
+    output_path = Path(report["transform"]["outputPath"])
+    output_manifest = read_safetensors_header(output_path)
+
+    assert report["schema"] == FABLE_PACKED_DELTA_SCHEMA
+    assert report["status"] == "packed_delta_artifact_written_zero_delta_payload"
+    assert report["transform"]["tensorCount"] == 5
+    assert report["decision"]["canRunMechanicalLoadCanary"] is True
+    assert report["decision"]["canRunSemanticAdapterCanary"] is False
+    assert report["adapter"]["loraValueStats"]["loraBNonzeroTensorCount"] == 0
+    assert "model.layers.2.mlp.shared_experts.w1.weight" in output_manifest
+    assert "model.layers.2.self_attn.compressor.indexer.compressor.wgate.weight" in output_manifest
+    assert "Contains tensor values: false" in rendered
+
+
+def test_packed_delta_cli_writes_public_safe_report(tmp_path: Path) -> None:
+    adapter_path = tmp_path / "adapter_model.safetensors"
+    _write_small_fake_fable_context_adapter(adapter_path)
+    output_dir = tmp_path / "out"
+
+    status = packed_delta_main(
+        [
+            "--adapter-path",
+            str(adapter_path),
+            "--output-dir",
+            str(output_dir),
+            "--layers",
+            "2",
+        ]
+    )
+
+    assert status == 0
+    evidence = (output_dir / "deepseek-v4-fable-packed-delta.md").read_text()
+    assert "Status: `packed_delta_artifact_written_zero_delta_payload`" in evidence
+    assert "Contains tensor values: false" in evidence
+
+
 def _write_fable_metadata(directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "adapter_config.json").write_text(
@@ -687,6 +741,29 @@ def _write_fake_fable_context_adapter(path: Path) -> None:
         )
         entries[f"{indexer}.lora_A.weight"] = ("F32", [16, 4096])
         entries[f"{indexer}.lora_B.weight"] = ("F32", [256, 16])
+    _write_fake_safetensors(path, entries)
+
+
+def _write_small_fake_fable_context_adapter(path: Path) -> None:
+    entries: dict[str, tuple[str, list[int]]] = {}
+    layer = 2
+    for target, a_shape, b_shape in (
+        ("gate_proj", [2, 4], [3, 2]),
+        ("up_proj", [2, 4], [3, 2]),
+        ("down_proj", [2, 3], [4, 2]),
+    ):
+        module = f"base_model.model.model.layers.{layer}.mlp.shared_experts.{target}"
+        entries[f"{module}.lora_A.weight"] = ("F32", a_shape)
+        entries[f"{module}.lora_B.weight"] = ("F32", b_shape)
+    compressor = f"base_model.model.model.layers.{layer}.self_attn.compressor.gate_proj"
+    entries[f"{compressor}.lora_A.weight"] = ("F32", [2, 4])
+    entries[f"{compressor}.lora_B.weight"] = ("F32", [5, 2])
+    indexer = (
+        "base_model.model.model.layers."
+        f"{layer}.self_attn.compressor.indexer.gate_proj"
+    )
+    entries[f"{indexer}.lora_A.weight"] = ("F32", [2, 4])
+    entries[f"{indexer}.lora_B.weight"] = ("F32", [6, 2])
     _write_fake_safetensors(path, entries)
 
 
