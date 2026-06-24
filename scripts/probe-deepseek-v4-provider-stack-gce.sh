@@ -10,6 +10,9 @@ MODEL_REVISION="${MODEL_REVISION:-}"
 MOE_BACKEND="${MOE_BACKEND:-auto}"
 ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"
 DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"
+HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-0}"
+HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-0}"
+HF_XET_NUM_CONCURRENT_RANGE_GETS="${HF_XET_NUM_CONCURRENT_RANGE_GETS:-}"
 BASE_IMAGE="${BASE_IMAGE:-vllm/vllm-openai:latest}"
 INSTALL_DEEPGEMM="${INSTALL_DEEPGEMM:-1}"
 DERIVED_IMAGE="${DERIVED_IMAGE:-hydralisk-deepseek-v4-provider-vllm}"
@@ -54,6 +57,9 @@ render_markdown() {
     echo "- MoE backend: \`$MOE_BACKEND\`"
     echo "- Allow NVFP4 SM120 guard patch: \`$ALLOW_NVFP4_SM120\`"
     echo "- Docker build pull: \`$DOCKER_BUILD_PULL\`"
+    echo "- HF Hub disable Xet: \`$HF_HUB_DISABLE_XET\`"
+    echo "- HF Xet high performance: \`$HF_XET_HIGH_PERFORMANCE\`"
+    echo "- HF Xet concurrent range gets: \`${HF_XET_NUM_CONCURRENT_RANGE_GETS:-default}\`"
     echo "- Base image: \`$BASE_IMAGE\`"
     echo "- Derived image: \`$DERIVED_IMAGE\`"
     echo "- Install DeepGEMM helper: \`$INSTALL_DEEPGEMM\`"
@@ -157,6 +163,9 @@ remote_script="$(
   printf 'MOE_BACKEND=%q\n' "$MOE_BACKEND"
   printf 'ALLOW_NVFP4_SM120=%q\n' "$ALLOW_NVFP4_SM120"
   printf 'DOCKER_BUILD_PULL=%q\n' "$DOCKER_BUILD_PULL"
+  printf 'HF_HUB_DISABLE_XET=%q\n' "$HF_HUB_DISABLE_XET"
+  printf 'HF_XET_HIGH_PERFORMANCE=%q\n' "$HF_XET_HIGH_PERFORMANCE"
+  printf 'HF_XET_NUM_CONCURRENT_RANGE_GETS=%q\n' "$HF_XET_NUM_CONCURRENT_RANGE_GETS"
   printf 'BASE_IMAGE=%q\n' "$BASE_IMAGE"
   printf 'INSTALL_DEEPGEMM=%q\n' "$INSTALL_DEEPGEMM"
   printf 'DERIVED_IMAGE=%q\n' "$DERIVED_IMAGE:$TS"
@@ -254,7 +263,16 @@ if [[ "$build_rc" != "0" ]]; then
   exit 0
 fi
 
+hf_env_args=(
+  -e "HF_HUB_DISABLE_XET=$HF_HUB_DISABLE_XET"
+  -e "HF_XET_HIGH_PERFORMANCE=$HF_XET_HIGH_PERFORMANCE"
+)
+if [[ -n "$HF_XET_NUM_CONCURRENT_RANGE_GETS" ]]; then
+  hf_env_args+=(-e "HF_XET_NUM_CONCURRENT_RANGE_GETS=$HF_XET_NUM_CONCURRENT_RANGE_GETS")
+fi
+
 sudo docker run --rm --gpus all --ipc=host --network host \
+  "${hf_env_args[@]}" \
   --entrypoint bash "$DERIVED_IMAGE" -lc 'python3 - <<'"'"'PY'"'"'
 import importlib
 import importlib.metadata
@@ -302,6 +320,7 @@ PY' > "$REMOTE_LOG_DIR/provider-stack-import.jsonl" 2> "$REMOTE_LOG_DIR/provider
 
 network_rc=0
 timeout 45s sudo docker run --rm --network host \
+  "${hf_env_args[@]}" \
   --entrypoint python3 "$DERIVED_IMAGE" -c '
 import socket
 import urllib.request
@@ -339,6 +358,9 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "MODEL_REVISION\t%s\n" "${MODEL_REVISION:-unconfigured}"
   printf "MOE_BACKEND\t%s\n" "$MOE_BACKEND"
   printf "ALLOW_NVFP4_SM120\t%s\n" "$ALLOW_NVFP4_SM120"
+  printf "HF_HUB_DISABLE_XET\t%s\n" "$HF_HUB_DISABLE_XET"
+  printf "HF_XET_HIGH_PERFORMANCE\t%s\n" "$HF_XET_HIGH_PERFORMANCE"
+  printf "HF_XET_NUM_CONCURRENT_RANGE_GETS\t%s\n" "${HF_XET_NUM_CONCURRENT_RANGE_GETS:-default}"
   printf "BASE_IMAGE\t%s\n" "$BASE_IMAGE"
   printf "DERIVED_IMAGE\t%s\n" "$DERIVED_IMAGE"
   printf "TENSOR_PARALLEL_SIZE\t%s\n" "$gpu_count"
@@ -362,6 +384,7 @@ fi
 sudo docker run --rm --gpus all --ipc=host --network host \
   --name "$container_name" \
   -v /var/lib/hydralisk/huggingface:/root/.cache/huggingface \
+  "${hf_env_args[@]}" \
   -e VLLM_ENGINE_READY_TIMEOUT_S=3600 \
   -e VLLM_RPC_TIMEOUT=600000 \
   -e VLLM_LOG_STATS_INTERVAL=1 \

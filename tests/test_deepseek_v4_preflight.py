@@ -265,6 +265,9 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'MOE_BACKEND="${MOE_BACKEND:-auto}"' in script
     assert 'ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"' in script
     assert 'DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"' in script
+    assert 'HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-0}"' in script
+    assert 'HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-0}"' in script
+    assert 'HF_XET_NUM_CONCURRENT_RANGE_GETS="${HF_XET_NUM_CONCURRENT_RANGE_GETS:-}"' in script
     assert 'BASE_IMAGE="${BASE_IMAGE:-vllm/vllm-openai:latest}"' in script
     assert "tools/install_deepgemm.sh" in script
     assert "cuda-libraries-dev-13-0" in script
@@ -279,6 +282,9 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert "provider-stack-network.txt" in script
     assert "cdn-lfs.huggingface.co" in script
     assert "NETWORK_RC" in script
+    assert 'HF_HUB_DISABLE_XET\\t%s' in script
+    assert 'HF_XET_NUM_CONCURRENT_RANGE_GETS\\t%s' in script
+    assert '"${hf_env_args[@]}"' in script
     assert "--kv-cache-dtype fp8" in script
     assert "--block-size 256" in script
     assert "--enable-expert-parallel" in script
@@ -314,6 +320,9 @@ def test_nvfp4_g4_probe_script_is_public_safe_in_dry_run(
     assert "MoE backend: `auto`" in evidence
     assert "Allow NVFP4 SM120 guard patch: `0`" in evidence
     assert "Docker build pull: `1`" in evidence
+    assert "HF Hub disable Xet: `0`" in evidence
+    assert "HF Xet high performance: `0`" in evidence
+    assert "HF Xet concurrent range gets: `default`" in evidence
     assert "Install DeepGEMM helper: `1`" in evidence
     assert "g4-standard-96" in plan
     assert "nvidia-rtx-pro-6000" in plan

@@ -46,6 +46,9 @@ NVFP4 SM120 G4 evidence:
 NVFP4 private-egress G4 evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md)
 
+NVFP4 no-Xet G4 evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-no-xet-g4.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-no-xet-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -263,6 +266,24 @@ next useful step is to make snapshot acquisition deterministic: use an
 out-of-band `HF_TOKEN`, disable Xet if supported by the installed HF stack, or
 pre-stage the complete pinned snapshot before starting vLLM.
 
+The no-Xet probe then set `HF_HUB_DISABLE_XET=1` on the private G4 host. That
+run reused Cloud NAT, fetched the pinned config, avoided fresh Xet log traffic,
+grew the Hugging Face cache to about `163G`, and reached a deterministic vLLM
+exception instead of hanging with defunct workers. vLLM again resolved
+`DeepseekV4ForCausalLM`, enabled expert parallelism, selected
+`FLASHINFER_TRTLLM`, and used the FP8 indexer cache, but it failed during
+`determine_available_memory` on the non-expert FP8 linear path:
+
+```text
+RuntimeError: dispatch_scaled_mm,
+/workspace/csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_helper.hpp:17
+```
+
+The useful next step is no longer Hugging Face transfer. It is to force or patch
+dense FP8 linear layers away from the failing CUTLASS block-scaled-mm dispatch,
+preferably toward the Triton path that passed the earlier microprobe, while
+keeping NVFP4 experts on `flashinfer_trtllm`.
+
 The first viable lanes are:
 
 1. `g4-standard-96`, 2 x RTX PRO 6000. Google admitted this lane; it clears
@@ -343,12 +364,11 @@ useful step; the useful split is now an 8-GPU H100/H200/B200 allocation that
 matches the published recipe, or a custom expert-prefetch/offload route for
 RTX PRO 6000. The published-recipe allocation is currently blocked by missing
 H100/H100 Mega/H200/B200/GB200 quota in this project. The NVFP4 stock-vLLM
-route is currently blocked by vLLM/FlashInfer backend support for this exact
-G4 device/configuration, not by the prior FP8 CUTLASS scaled-mm signature. The
-patched SM120 probe gets past that first device gate but is now blocked on
-private-host artifact access before it can test weight load. After Cloud NAT,
-private artifact access is fixed enough to start model load, but the current
-blocker is a stalled Hugging Face Xet / vLLM load path before readiness.
+route first stopped on vLLM/FlashInfer backend support for this exact G4
+device/configuration. The patched SM120 probe got past that device gate,
+Cloud NAT got past private config fetch, and `HF_HUB_DISABLE_XET=1` got past
+the Xet/vLLM transfer wedge. The active blocker is now vLLM's dense FP8
+`cutlass_scaled_mm` dispatch on SM120 before readiness.
 
 ## Promotion boundary
 
