@@ -4,7 +4,7 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-openagentsgemini}"
 TARGET_INSTANCE="${TARGET_INSTANCE:-}"
 TARGET_ZONE="${TARGET_ZONE:-}"
-ISSUE_NUMBER="${ISSUE_NUMBER:-27}"
+ISSUE_NUMBER="${ISSUE_NUMBER:-28}"
 IMAGE="${IMAGE:-hydralisk-deepseek-v4-oproj-fallback-g4-vllm:20260624095206}"
 SEQ_LEN="${SEQ_LEN:-512}"
 HIDDEN_SIZE="${HIDDEN_SIZE:-4096}"
@@ -13,6 +13,7 @@ NUM_EXPERTS="${NUM_EXPERTS:-256}"
 LOCAL_NUM_EXPERTS="${LOCAL_NUM_EXPERTS:-32}"
 TOP_K="${TOP_K:-6}"
 SWIGLU_LIMIT="${SWIGLU_LIMIT:-10.0}"
+RUN_LOCAL_SHARD_REMAP_CASE="${RUN_LOCAL_SHARD_REMAP_CASE:-1}"
 RUN_NO_EP_CASE="${RUN_NO_EP_CASE:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 TS="${TS:-$(date -u +%Y%m%d%H%M%S)}"
@@ -48,6 +49,7 @@ render_markdown() {
     echo "- Local experts: \`$LOCAL_NUM_EXPERTS\`"
     echo "- Top-k: \`$TOP_K\`"
     echo "- SwiGLU limit: \`$SWIGLU_LIMIT\`"
+    echo "- Run local-shard remap case: \`$RUN_LOCAL_SHARD_REMAP_CASE\`"
     echo "- Run no-EP case: \`$RUN_NO_EP_CASE\`"
     echo
     if [[ "$DRY_RUN" = "1" ]]; then
@@ -99,6 +101,7 @@ remote_script="$(
   printf 'LOCAL_NUM_EXPERTS=%q\n' "$LOCAL_NUM_EXPERTS"
   printf 'TOP_K=%q\n' "$TOP_K"
   printf 'SWIGLU_LIMIT=%q\n' "$SWIGLU_LIMIT"
+  printf 'RUN_LOCAL_SHARD_REMAP_CASE=%q\n' "$RUN_LOCAL_SHARD_REMAP_CASE"
   printf 'RUN_NO_EP_CASE=%q\n' "$RUN_NO_EP_CASE"
   printf 'REMOTE_LOG_DIR=%q\n' "/var/log/hydralisk/flashinfer-b12x-moe-$TS"
   cat <<'REMOTE'
@@ -225,6 +228,8 @@ def run_b12x_case(
     num_experts: int,
     local_num_experts: int,
     top_k: int,
+    global_num_experts=None,
+    routing_domain="global",
     swiglu_limit=None,
 ) -> dict:
     import flashinfer
@@ -243,8 +248,13 @@ def run_b12x_case(
         "hiddenSize": hidden_size,
         "intermediateSize": intermediate_size,
         "numExperts": num_experts,
+        "kernelNumExperts": num_experts,
+        "globalNumExperts": (
+            global_num_experts if global_num_experts is not None else num_experts
+        ),
         "localNumExperts": local_num_experts,
         "topK": top_k,
+        "routingDomain": routing_domain,
         "swigluLimitKwarg": swiglu_limit,
         "loadsModelWeights": False,
         "publicSafety": {
@@ -401,6 +411,20 @@ emit(
         top_k=top_k,
     )
 )
+if os.environ.get("RUN_LOCAL_SHARD_REMAP_CASE", "1") == "1":
+    emit(
+        run_b12x_case(
+            "deepseek_shape_local_shard_remap",
+            seq_len=seq_len,
+            hidden_size=hidden_size,
+            intermediate_size=intermediate_size,
+            num_experts=local_num_experts,
+            local_num_experts=local_num_experts,
+            top_k=top_k,
+            global_num_experts=num_experts,
+            routing_domain="local_shard_remapped",
+        )
+    )
 if os.environ.get("RUN_NO_EP_CASE", "1") == "1":
     emit(
         run_b12x_case(
@@ -423,6 +447,7 @@ sudo docker run --rm --gpus all --ipc=host --network host \
   -e "LOCAL_NUM_EXPERTS=$LOCAL_NUM_EXPERTS" \
   -e "TOP_K=$TOP_K" \
   -e "SWIGLU_LIMIT=$SWIGLU_LIMIT" \
+  -e "RUN_LOCAL_SHARD_REMAP_CASE=$RUN_LOCAL_SHARD_REMAP_CASE" \
   -e "RUN_NO_EP_CASE=$RUN_NO_EP_CASE" \
   -v "$REMOTE_LOG_DIR/repro.py:/tmp/repro.py:ro" \
   --entrypoint python3 "$IMAGE" /tmp/repro.py \

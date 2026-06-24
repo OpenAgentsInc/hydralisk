@@ -76,6 +76,9 @@ Full-shape TRTLLM NVFP4 MoE repro evidence:
 B12x clamp and expert-shard evidence:
 [`docs/evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md`](evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md)
 
+B12x local expert-shard remap evidence:
+[`docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md`](evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -608,6 +611,39 @@ serving path.
 The next issue should therefore implement one of those missing B12x pieces or
 the SGLang-style expert repack/offload path. More stock vLLM G4 flag trials are
 not a credible path to readiness.
+
+The local-shard remap probe then removed one of the B12x blockers. The direct
+global expert-parallel call still fails:
+
+```text
+globalNumExperts=256
+kernelNumExperts=256
+localNumExperts=32
+result=NotImplementedError
+```
+
+But when Hydralisk treats routing as already remapped into the local rank's
+32-expert domain, B12x runs the exact per-rank shard:
+
+```text
+globalNumExperts=256
+kernelNumExperts=32
+localNumExperts=32
+routingDomain=local_shard_remapped
+outShape=[512,4096]
+maxMemoryAllocatedBytes=487574016
+```
+
+So the custom G4 path is narrower and more plausible than it looked after
+issue #27. B12x can execute the per-rank shard. What remains is not another
+stock flag trial; it is a correctness and integration problem:
+
+1. add DeepSeek's `swiglu_limit=10.0` semantics to the B12x path or move to a
+   newer B12x wrapper that provides the needed surface;
+2. build the dispatcher/offload layer that maps global experts to local expert
+   IDs and supplies resident local-shard weights;
+3. verify a nonzero tiny MoE fixture against a PyTorch reference before any
+   full-model retry.
 
 ## Promotion boundary
 

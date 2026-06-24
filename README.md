@@ -120,7 +120,12 @@ Initial targets:
   surface, rejects the exact `32 / 256` expert-parallel shard, and only runs
   the DeepSeek-like synthetic shape when all 256 experts are local. The next G4
   work must be real kernel/scheduler work: B12x clamp, B12x expert
-  parallelism/offload, or a SGLang-style expert repack plus prefetch lane.
+  parallelism/offload, or a SGLang-style expert repack plus prefetch lane. A
+  follow-up local-shard remap probe proved B12x can run the exact per-rank
+  shard when global expert IDs are remapped to a local 32-expert domain
+  (`globalNumExperts=256`, `kernelNumExperts=32`, `localNumExperts=32`). That
+  leaves clamp semantics plus dispatcher/offload correctness as the next real
+  implementation step.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -166,6 +171,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md)
 - [`docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-full-shape-g4.md`](docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-full-shape-g4.md)
 - [`docs/evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md)
+- [`docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

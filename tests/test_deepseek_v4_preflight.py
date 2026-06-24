@@ -640,13 +640,16 @@ def test_flashinfer_b12x_moe_probe_is_public_safe_and_target_scoped(
     assert "Sequence length: `512`" in evidence
     assert "Local experts: `32`" in evidence
     assert "SwiGLU limit: `10.0`" in evidence
+    assert "Run local-shard remap case: `1`" in evidence
     assert "Run no-EP case: `1`" in evidence
     assert "Contains weights: false" in evidence
     assert "b12x_fused_moe" in script_text
     assert "hydralisk.flashinfer.b12x-moe.synthetic.v1" in script_text
     assert "supportsSwigluLimitKwarg" in script_text
     assert "b12x_swiglu_limit_kwarg_probe" in script_text
+    assert "deepseek_shape_local_shard_remap" in script_text
     assert '-e "SWIGLU_LIMIT=$SWIGLU_LIMIT"' in script_text
+    assert '-e "RUN_LOCAL_SHARD_REMAP_CASE=$RUN_LOCAL_SHARD_REMAP_CASE"' in script_text
     assert "deepseek_shape_ep" in script_text
     assert "deepseek_shape_no_ep" in script_text
 
