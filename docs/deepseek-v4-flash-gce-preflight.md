@@ -998,6 +998,13 @@ GCLOUD_ACCOUNT=oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com \
 bash scripts/probe-deepseek-v4-flashinfer-dsv4-g4-gce.sh
 ```
 
+Issue #48 added a grant-authority preflight to that helper. With `APPLY=1`, it
+now checks role-management and IAM-binding authority before changing anything.
+The active user account still stops at `blocked_grant_auth` because gcloud
+requires interactive reauth. The `oa-vertex-inference` service account stops at
+`blocked_grant_iam` because it lacks role/update and policy-binding authority.
+No IAM mutation happened in either check.
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this

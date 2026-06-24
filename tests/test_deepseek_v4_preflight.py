@@ -635,6 +635,10 @@ exit 99
 
     assert not gcloud_called.exists()
     assert "Hydralisk DeepSeek-V4-Flash G4 IAM grant plan" in output
+    assert "gcloud account override: default" in output
+    assert "Grant authority preflight: 1" in output
+    assert "resourcemanager.projects.setIamPolicy" in output
+    assert "iam.serviceAccounts.setIamPolicy" in output
     assert "gcloud iam roles create" in output
     assert "roles/compute.osAdminLogin" in output
     assert "roles/iam.serviceAccountUser" in output
@@ -643,6 +647,113 @@ exit 99
     assert "compute.instances.get" in role_text
     assert "compute.disks.create" in role_text
     assert "compute.subnetworks.use" in role_text
+
+
+def test_deepseek_g4_iam_grant_helper_blocks_apply_without_authority(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "plan-deepseek-v4-g4-iam-grant.sh"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    mutation_called = tmp_path / "mutation-called"
+    account_seen = tmp_path / "account-seen"
+    gcloud = fake_bin / "gcloud"
+    gcloud.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s' "${{CLOUDSDK_CORE_ACCOUNT:-}}" > {account_seen}
+if [[ "$1 $2" == "auth print-access-token" ]]; then
+  echo "fake-token"
+  exit 0
+fi
+if [[ "$1 $2" == "projects describe" ]]; then
+  echo "123456789"
+  exit 0
+fi
+if [[ "$1 $2 $3" == "iam roles create" || "$1 $2 $3" == "iam roles update" || "$1 $2" == "projects add-iam-policy-binding" || "$1 $2 $3" == "iam service-accounts add-iam-policy-binding" ]]; then
+  echo called > {mutation_called}
+  exit 0
+fi
+echo "unexpected gcloud command: $*" >&2
+exit 99
+""",
+    )
+    gcloud.chmod(0o755)
+    curl = fake_bin / "curl"
+    curl.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf '{"permissions":[]}'
+""",
+    )
+    curl.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            **os.environ,
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "APPLY": "1",
+            "GCLOUD_ACCOUNT": "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode != 0
+    assert not mutation_called.exists()
+    assert account_seen.read_text() == "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com"
+    assert "blocked_grant_iam" in result.stderr
+    assert "resourcemanager.projects.setIamPolicy" in result.stderr
+    assert "iam.serviceAccounts.setIamPolicy" in result.stderr
+
+
+def test_deepseek_g4_iam_grant_helper_blocks_apply_when_auth_cannot_resolve_project(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "plan-deepseek-v4-g4-iam-grant.sh"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    mutation_called = tmp_path / "mutation-called"
+    gcloud = fake_bin / "gcloud"
+    gcloud.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1 $2" == "projects describe" ]]; then
+  echo "reauth required" >&2
+  exit 1
+fi
+if [[ "$1 $2 $3" == "iam roles create" || "$1 $2" == "projects add-iam-policy-binding" ]]; then
+  echo called > {mutation_called}
+  exit 0
+fi
+echo "unexpected gcloud command: $*" >&2
+exit 99
+""",
+    )
+    gcloud.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            **os.environ,
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "APPLY": "1",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode != 0
+    assert not mutation_called.exists()
+    assert "blocked_grant_auth" in result.stderr
+    assert "reauth required" in result.stderr
 
 
 def test_flashinfer_dsv4_g4_wrapper_sets_issue_41_defaults(
