@@ -181,9 +181,13 @@ Initial targets:
   with `TllmGenFmhaRunner` reporting `Unsupported architecture` from
   FlashInfer's TRTLLM FMHA runner. A direct one-token synthetic DSV4 FMHA repro
   now confirms the same guard without model weights, prompts, vLLM scheduling,
-  B12x MoE, or `o_proj`. The next useful G4 step is inspecting and patching
-  `TllmGenFmhaRunner` for SM120, or building a correctness-first attention
-  fallback, not another full-model flag trial.
+  B12x MoE, or `o_proj`. The installed FlashInfer package defines `kSM_120`,
+  but this TRTLLM-gen FMHA path guards to SM100/SM103, its compatibility helper
+  has no SM120 special case, and its installed FMHA cubin inventory has zero
+  SM120 cubins. This is not a safe one-line allowlist bug. The next useful G4
+  step is either SM120-built DSV4 FMHA cubins plus dispatch metadata or a
+  correctness-first DeepSeek V4 attention fallback for SM120, not another
+  full-model flag trial.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,

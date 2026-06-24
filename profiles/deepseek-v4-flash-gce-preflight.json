@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "flashinfer_dsv4_fmha_sm120_blocker_isolated",
+  "status": "flashinfer_dsv4_fmha_sm120_requires_attention_fallback",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -165,7 +165,9 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/48",
       "https://github.com/OpenAgentsInc/hydralisk/issues/49",
       "https://github.com/OpenAgentsInc/hydralisk/issues/50",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/51"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/51",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/52",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/53"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -214,7 +216,8 @@
       "docs/evidence/2026-06-24-deepseek-g4-grant-authority-preflight.md",
       "docs/evidence/2026-06-24-deepseek-gcloud-credential-authority-probe.md",
       "docs/evidence/2026-06-24-deepseek-google-alt-credential-probe.md",
-      "docs/evidence/2026-06-24-deepseek-service-account-key-probe.md"
+      "docs/evidence/2026-06-24-deepseek-service-account-key-probe.md",
+      "docs/evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-source-audit.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -241,10 +244,10 @@
     "blocker": {
       "stage": "generation_attention",
       "site": "flashinfer.mla._core.trtllm_batch_decode_sparse_mla_dsv4 / TllmGenFmhaRunner",
-      "message": "The corrected issue #41 DSV4 smoke reached /v1/models on the 8 x G4 host with vLLM 0.23.0, Torch 2.11.0+cu130, CUDA 13.0, B12x clamp patching, eager mode, triton linear kernels, the bf16_einsum o_proj fallback, and HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=hopper. The tiny public-safe completion failed in FlashInfer TRTLLM DSV4 sparse MLA FMHA with Unsupported architecture on SM120. Issue #52 reproduced the same TllmGenFmhaRunner architecture guard with a one-token synthetic direct FlashInfer call and no model weights, prompts, vLLM scheduling, B12x MoE, or o_proj.",
+      "message": "The corrected issue #41 DSV4 smoke reached /v1/models on the 8 x G4 host, and issue #52 reproduced the generation failure with a direct one-token synthetic FlashInfer call. Issue #53 then inspected the installed FlashInfer 0.6.12 TRTLLM-gen FMHA source: the runner guard admits only SM100/SM103, the compatibility helper has no SM120 special case for SM100-family kernels, and the installed TRTLLM-gen FMHA cubin inventory has zero SM120 cubins.",
       "ready": true,
       "completion": false,
-      "nextProbe": "inspect and patch FlashInfer/TRTLLM TllmGenFmhaRunner architecture admission for SM120, or build a correctness-first fallback attention path for DeepSeek V4 on G4"
+      "nextProbe": "build or source an SM120-capable DeepSeek V4 attention path: either SM120 TRTLLM-gen DSV4 FMHA cubins plus dispatch metadata, or a correctness-first sparse MLA attention fallback for RTX PRO 6000/G4"
     }
   },
   "publishedRecipeAdmission": {
@@ -2381,6 +2384,58 @@
       "containsSecrets": false,
       "containsKeyFilePaths": false,
       "containsPrivateKeyMaterial": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekFlashinferDsv4FmhaSm120Audit": {
+    "status": "not_safe_allowlist_patch_no_sm120_cubins",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/53",
+    "script": "scripts/audit-flashinfer-dsv4-fmha-sm120-gce.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-source-audit.md",
+    "target": {
+      "instance": "hydralisk-deepseek-v4-b12x-g4-8g-b-20260624092036",
+      "zone": "us-central1-b",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "capability": [
+        12,
+        0
+      ],
+      "image": "hydralisk-deepseek-v4-b12x-g4-vllm:20260624150453",
+      "flashinfer": "0.6.12",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0"
+    },
+    "sourceFindings": {
+      "runnerGuard": "FLASHINFER_CHECK(mSM == kSM_100 || mSM == kSM_103, \"Unsupported architecture\");",
+      "smConstants": {
+        "kSM_100": 100,
+        "kSM_100f": 10100,
+        "kSM_103": 103,
+        "kSM_120": 120
+      },
+      "compatibilityHelper": "SM103 accepts SM100f/SM103, SM100 accepts SM100f/SM100, otherwise gpuSM must equal kernelSM"
+    },
+    "cubinInventory": {
+      "trtllmGenFmhaCount": 13452,
+      "sm100Count": 11560,
+      "sm100aCount": 312,
+      "sm103Count": 1892,
+      "sm120Count": 0
+    },
+    "decision": {
+      "safeAllowlistPatch": false,
+      "reason": "The installed source already knows kSM_120 exists, but this DSV4 TRTLLM-gen FMHA path ships no SM120 cubins and its compatibility helper will not route SM120 to SM100-family FMHA kernels.",
+      "replacementContract": [
+        "Provide SM120-built TRTLLM-gen DSV4 FMHA cubins plus dispatch metadata, then rerun scripts/probe-flashinfer-dsv4-fmha-gce.sh.",
+        "Or implement a correctness-first DeepSeek V4 sparse MLA attention fallback for G4/SM120, then rerun the full DSV4 smoke."
+      ]
+    },
+    "plainEnglishNext": "Do not ship a guard-only derived image. Build or source the actual SM120 attention kernel path, or make the SM120 fallback attention path work before retrying the full model.",
+    "publicSafety": {
+      "containsSecrets": false,
       "containsPrompts": false,
       "containsResponses": false,
       "containsWeights": false,

@@ -112,6 +112,9 @@ FlashInfer DSV4 G4 live-smoke evidence:
 FlashInfer DSV4 FMHA SM120 repro evidence:
 [`docs/evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-repro.md`](evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-repro.md)
 
+FlashInfer DSV4 FMHA SM120 source-audit evidence:
+[`docs/evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-source-audit.md`](evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-source-audit.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -985,8 +988,22 @@ Error in function 'TllmGenFmhaRunner' at /workspace/include/flashinfer/trtllm/fm
 ```
 
 The blocker is now isolated to FlashInfer/TRTLLM FMHA architecture admission.
-The next issue should inspect and patch `TllmGenFmhaRunner` for SM120 support,
-or build a correctness-first replacement attention path for DeepSeek V4 on G4.
+
+Issue #53 inspected the installed FlashInfer source and cubin inventory behind
+that runner. The package defines `kSM_120`, but `TllmGenFmhaRunner` explicitly
+guards the DSV4 TRTLLM FMHA path to SM100 or SM103:
+
+```text
+FLASHINFER_CHECK(mSM == kSM_100 || mSM == kSM_103, "Unsupported architecture");
+```
+
+The FMHA compatibility helper only treats SM100-family kernels as compatible
+with SM100 and SM103, and the installed TRTLLM-gen FMHA cubin inventory contains
+13,452 cubins with `sm120Count=0`. This is therefore not a safe one-line
+allowlist patch for RTX PRO 6000. The next implementation issue should either
+provide SM120-built TRTLLM-gen DSV4 FMHA cubins plus dispatch metadata, or build
+a correctness-first DeepSeek V4 attention fallback for SM120/G4 and then rerun
+the direct repro before attempting another full-model smoke.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable
