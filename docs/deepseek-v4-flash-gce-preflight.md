@@ -1,0 +1,121 @@
+# DeepSeek-V4-Flash GCE preflight
+
+Date: 2026-06-24
+
+Issue: https://github.com/OpenAgentsInc/hydralisk/issues/5
+
+Profile:
+[`profiles/deepseek-v4-flash-gce-preflight.json`](../profiles/deepseek-v4-flash-gce-preflight.json)
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-gce-preflight.md`](evidence/2026-06-24-deepseek-v4-flash-gce-preflight.md)
+
+## Decision
+
+Start in Hydralisk, not Psionic.
+
+DeepSeek-V4-Flash on our Google estate is first a CUDA/Python admission and
+runtime-shape question. We need to prove the model artifact, engine, GPU
+memory, host RAM, and kernel support before Psionic should spend Rust-runtime
+work on the same serving behavior. The Psionic target is the useful result of
+this lane: expert repack, hot expert pool, overlap/prefetch behavior, and any
+accept/reject evidence from real NVIDIA hosts.
+
+This is not a Khala product route and not a public model selector.
+
+## Model facts to validate
+
+- Model: `deepseek-ai/DeepSeek-V4-Flash`
+- Reported scale: 284B total parameters, 13B active parameters.
+- Context window: 1,048,576 tokens.
+- Architecture in the local GGUF: `deepseek4`.
+- Local artifact:
+  `~/Downloads/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf`
+- Local artifact size: 86,720,111,200 bytes.
+- Official quantization path: FP4 + FP8 mixed.
+- Local GGUF quantization label:
+  `IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8`.
+
+The local GGUF is useful for admission and parser validation. It is not by
+itself a public serving revision. Before any serving claim, pin either the
+upstream HF revision or the local artifact digest and the exact engine/container
+that loads it.
+
+## First hard thing
+
+Run the public-safe preflight:
+
+```bash
+uv run hydralisk-deepseek-v4-preflight \
+  --gguf ~/Downloads/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf \
+  --output-dir .hydralisk/deepseek-v4-flash-preflight-20260624 \
+  --collect-gcloud
+```
+
+The command:
+
+- reads only the GGUF header and metadata;
+- does not read tensor payloads or load weights;
+- optionally captures sanitized live GPU instance inventory from `gcloud`;
+- classifies the current Google GPU lanes against a low-context smoke reserve;
+- writes JSON and Markdown under ignored `.hydralisk/`.
+
+Copy only the public-safe Markdown summary into `docs/evidence/` after review.
+Do not commit the generated JSON if it contains local paths you do not want in
+history.
+
+## Current lane read
+
+The live single-H100 host is rejected for DeepSeek work because it is already
+reserved for GPT-OSS 120B.
+
+The first viable lanes are:
+
+1. `g4-standard-96`, 2 x RTX PRO 6000, if Google capacity admits it.
+   This clears the low-context all-GPU memory preflight and is directionally
+   aligned with Blackwell FP4 work.
+2. `g4-standard-48`, 1 x RTX PRO 6000, for the cheapest offload/prefetch
+   validation. It does not clear conservative all-GPU memory once runtime and
+   KV reserve are included, but it is the right place to test expert repack plus
+   a hot expert cache.
+3. `a3-highgpu-2g`, 2 x H100, if capacity admits it. Hopper is mature, but this
+   does not validate the Blackwell-specific FP4 direction as directly.
+
+Multi-L4 is deprioritized. Aggregate memory can look plausible on paper, but
+bandwidth and interconnect make it a poor first target for this MoE path, and
+active Khala/GPT-OSS L4 hosts must not be disturbed.
+
+## Load-smoke ladder
+
+After this preflight passes and a fresh GPU host is admitted:
+
+1. Pin model revision or local artifact digest.
+2. Pin engine version and container image digest.
+3. Start with no public ingress and no OpenAgents product routing.
+4. For `g4-standard-96` or `a3-highgpu-2g`, attempt an all-GPU low-context load
+   smoke with vLLM first.
+5. For `g4-standard-48`, attempt only an offload/prefetch validation:
+   separate skeleton and expert weights, hold a bounded warm expert pool in
+   VRAM, stream cold experts from host RAM, and measure whether prefetch hides
+   the PCIe slack.
+6. Emit a public-safe receipt with GPU memory, engine version, model revision,
+   context cap, usage, latency, and blocker state.
+7. Only then evaluate whether Psionic should implement the same scheduling
+   behavior natively.
+
+## Stop conditions
+
+Stop and record a blocker if:
+
+- the host lacks enough disk for the artifact and engine cache;
+- `gcloud` admits only a product host or a host already serving another model;
+- the engine cannot parse `deepseek4` or the official HF artifact;
+- CUDA/kernel support rejects RTX PRO 6000 or H100 for this model path;
+- the smoke cannot produce public-safe usage, latency, memory, and blocker
+  receipts.
+
+## Promotion boundary
+
+DeepSeek-V4-Flash should not become a public OpenAgents model name from this
+work. Any later user-facing capability must stay behind the product-owned Khala
+identity unless the product repos explicitly add a new public promise.

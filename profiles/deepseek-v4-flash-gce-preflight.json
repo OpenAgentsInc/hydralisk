@@ -1,0 +1,141 @@
+{
+  "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
+  "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
+  "status": "admission_preflight",
+  "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
+  "publicModelAliases": [],
+  "model": {
+    "publisher": "deepseek-ai",
+    "repository": "deepseek-ai/DeepSeek-V4-Flash",
+    "revision": "must_pin_hf_revision_before_serving",
+    "revisionRef": "deepseek-ai/DeepSeek-V4-Flash@must_pin_hf_revision_before_serving",
+    "architecture": "deepseek4",
+    "modelType": "mixture_of_experts",
+    "license": "MIT",
+    "reportedParameters": {
+      "total": "284B",
+      "active": "13B"
+    },
+    "contextWindowTokens": 1048576,
+    "layers": 43,
+    "hiddenSize": 4096,
+    "experts": 256,
+    "expertsPerToken": 6,
+    "attention": {
+      "heads": 64,
+      "kvHeads": 1,
+      "keyLength": 512,
+      "valueLength": 512,
+      "slidingWindowTokens": 128,
+      "topK": 512
+    },
+    "quantization": {
+      "official": "FP4 + FP8 mixed",
+      "localGguf": "IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8",
+      "serveGate": "the exact model artifact and upstream revision must be pinned before any serving claim"
+    },
+    "modelCardReadAt": "2026-06-24T00:00:00Z"
+  },
+  "localArtifact": {
+    "expectedPath": "~/Downloads/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf",
+    "expectedBytes": 86720111200,
+    "committed": false,
+    "parser": {
+      "name": "hydralisk-deepseek-v4-preflight",
+      "loadsWeights": false,
+      "readsTensorData": false,
+      "requiredMetadata": [
+        "general.architecture",
+        "general.name",
+        "deepseek4.context_length",
+        "deepseek4.block_count",
+        "deepseek4.expert_count",
+        "deepseek4.expert_used_count",
+        "deepseek4.attention.head_count",
+        "deepseek4.attention.head_count_kv"
+      ]
+    }
+  },
+  "engine": {
+    "primary": {
+      "name": "vllm",
+      "version": "must_pin_before_load_smoke",
+      "reason": "official DeepSeek-V4-Flash recipe points at vLLM for the HF artifact path"
+    },
+    "experimental": [
+      {
+        "name": "sglang",
+        "version": "must_pin_before_custom_kernel_work",
+        "reason": "the Exobyt thread describes an SGLang + custom mega-kernel path, not a stock Hydralisk lane"
+      },
+      {
+        "name": "custom_offload_bridge",
+        "version": "not_implemented",
+        "reason": "single-G4 and consumer-Blackwell paths need expert repack plus hot expert cache/offload"
+      }
+    ],
+    "cudaRuntime": "must_capture_on_smoke_host",
+    "containerImage": "must_pin_digest_before_load_smoke",
+    "openaiCompatibleBaseUrl": "not_exposed"
+  },
+  "targetHardware": {
+    "provider": "gce",
+    "project": "openagentsgemini",
+    "firstCandidates": [
+      {
+        "machineType": "g4-standard-96",
+        "accelerator": "nvidia-rtx-pro-6000",
+        "gpuCount": 2,
+        "role": "first all-GPU low-context admission/load candidate if capacity admits"
+      },
+      {
+        "machineType": "g4-standard-48",
+        "accelerator": "nvidia-rtx-pro-6000",
+        "gpuCount": 1,
+        "role": "cheapest offload/prefetch validation candidate; not an all-GPU serve lane"
+      },
+      {
+        "machineType": "a3-highgpu-2g",
+        "accelerator": "nvidia-h100-80gb",
+        "gpuCount": 2,
+        "role": "Hopper all-GPU low-context candidate if capacity admits"
+      }
+    ],
+    "blockedHosts": [
+      {
+        "machineType": "a3-highgpu-1g",
+        "accelerator": "nvidia-h100-80gb",
+        "gpuCount": 1,
+        "reason": "live Hydralisk GPT-OSS 120B host must not be disturbed"
+      }
+    ]
+  },
+  "admission": {
+    "status": "preflight_only",
+    "ref": "admission.hydralisk.deepseek-v4-flash.gce.20260624",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/5",
+    "command": "uv run hydralisk-deepseek-v4-preflight --gguf ~/Downloads/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf --collect-gcloud",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-flash-gce-preflight.md"
+  },
+  "promotionGates": [
+    "exact model revision or local artifact digest pinned",
+    "engine version and container image digest pinned",
+    "GPU admission captured from gcloud on a fresh non-product host",
+    "load-only smoke completes without exposing public ingress",
+    "tiny synthetic generation smoke records usage and latency",
+    "quantization quality eval passes against a non-private prompt set",
+    "public-safe Hydralisk receipt is emitted"
+  ],
+  "recommendation": {
+    "nextLane": "g4-standard-96 all-GPU low-context smoke, or g4-standard-48 offload/prefetch validation if two-card G4 capacity is unavailable",
+    "why": "The 86.7 GB local artifact is too tight for a conservative single-G4 all-GPU run once runtime and KV cache reserve are included, but single G4 is exactly the cheapest place to validate expert repack/offload. Two G4 or two H100 lanes clear the low-context memory preflight if Google capacity admits.",
+    "publicClaim": "none"
+  },
+  "publicSafety": {
+    "containsSecrets": false,
+    "containsPrompts": false,
+    "containsResponses": false,
+    "containsWeights": false,
+    "containsHiddenReasoning": false
+  }
+}

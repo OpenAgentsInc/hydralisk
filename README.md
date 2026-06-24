@@ -43,7 +43,7 @@ uv run hydralisk-smoke \
 
 ## Host Runbook
 
-Use [docs/gce-l4-host-runbook.md](docs/gce-l4-host-runbook.md) for the GCE L4
+Use [docs/gce-l4-vllm-runbook.md](docs/gce-l4-vllm-runbook.md) for the GCE L4
 setup, systemd services, start/stop, rollback, and public-safe evidence rules.
 
 ## Boundaries
@@ -63,6 +63,9 @@ Initial targets:
 - `gpt-oss-120b` on H100/H200/B200/G4-class high-memory GPUs with vLLM.
 - GLM-5.2 first as a hosted baseline, then as a high-memory SGLang/Dynamo
   self-hosting campaign.
+- DeepSeek-V4-Flash as a Google GPU admission experiment: start with GGUF
+  parser validation and GCE lane classification, then try G4/H100 load smoke
+  only on fresh non-product hosts.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -85,7 +88,9 @@ First execution roadmap:
 - [`docs/gpt-oss-20b-khala-live-roadmap.md`](docs/gpt-oss-20b-khala-live-roadmap.md)
 - [`docs/gce-l4-vllm-runbook.md`](docs/gce-l4-vllm-runbook.md)
 - [`docs/glm-5.2-sglang-preflight-runbook.md`](docs/glm-5.2-sglang-preflight-runbook.md)
+- [`docs/deepseek-v4-flash-gce-preflight.md`](docs/deepseek-v4-flash-gce-preflight.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
+- [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 
 ## Early shape
 

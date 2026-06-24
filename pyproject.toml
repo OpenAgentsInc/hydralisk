@@ -20,6 +20,7 @@ dev = [
 [project.scripts]
 hydralisk-proxy = "hydralisk.serve.proxy:main"
 hydralisk-smoke = "hydralisk.serve.smoke:main"
+hydralisk-deepseek-v4-preflight = "hydralisk.admission.deepseek_v4_flash:main"
 
 [build-system]
 requires = ["hatchling"]
