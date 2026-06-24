@@ -124,6 +124,9 @@ DeepSeek V4 sparse MLA fallback smoke evidence:
 DeepSeek V4 sparse MLA vLLM patch evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-patch.md`](evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-patch.md)
 
+DeepSeek V4 sparse MLA patched-vLLM fallback smoke evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-fallback-smoke.md`](evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-fallback-smoke.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -1048,6 +1051,16 @@ patched the import, helper, decode branch, and prefill branch cleanly without
 modifying the checkout. The next live action is to apply this patch inside a
 derived vLLM image on a fresh/provided G4 target, enable the env flag, run the
 container synthetic smoke, and only then retry the full model.
+
+Issue #57 added that patched-vLLM synthetic smoke wrapper. It injects Hydralisk
+into the target vLLM Docker image, patches the installed vLLM source inside the
+ephemeral container layer, imports `_hydralisk_sparse_mla_fallback`, and runs
+the issue #52 tensor shape with torch tensors. The current run recorded
+`target_missing` because no DeepSeek G4 host is live. The next live step is
+only infrastructure: provision or explicitly provide a fresh DeepSeek G4 host,
+then run `scripts/smoke-deepseek-v4-sparse-mla-vllm-fallback-gce.sh`. If that
+synthetic patched-vLLM smoke passes, a full model smoke becomes the next honest
+attempt.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable
