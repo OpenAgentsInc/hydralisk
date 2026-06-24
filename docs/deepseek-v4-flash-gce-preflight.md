@@ -106,6 +106,9 @@ B12x static clamp G4 evidence:
 B12x dynamic clamp G4 evidence:
 [`docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md`](evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md)
 
+FlashInfer DSV4 G4 live-smoke evidence:
+[`docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-live-smoke.md`](evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-live-smoke.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -943,9 +946,31 @@ longer an error-prone bundle of environment variables. It delegates to the B12x
 G4 harness with defaults for `ISSUE_NUMBER=41`,
 `VLLM_ATTENTION_BACKEND=FLASHINFER_MLA_SPARSE_DSV4`,
 `VLLM_ENFORCE_EAGER=1`, `HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum`, the
-B12x clamp overlay, and the low-context smoke limits. A dry run renders the
-intended launch contract, and a live attempt on this Mac still stops at
-`blocked_auth` before GCE admission.
+B12x clamp overlay, and the low-context smoke limits. The live auth blocker is
+now cleared. The first G4 retry reached the existing 8 x RTX PRO 6000 host,
+built the derived image, and launched vLLM, but failed before `/v1/models`
+because the wrapper inherited `HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=blackwell`
+from the B12x harness while the selected `bf16_einsum` `o_proj` fallback
+requires the Hopper/non-TMA activation-scale recipe:
+
+```text
+RuntimeError: HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum requires non-TMA activation scales; set HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=hopper for this probe
+```
+
+The wrapper now defaults `HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=hopper`. The
+corrected issue #41 rerun reached `/v1/models` on the same host and then failed
+the tiny public-safe completion smoke inside the selected FlashInfer DSV4 path:
+
+```text
+flashinfer.mla._core.trtllm_batch_decode_sparse_mla_dsv4
+tvm.error.InternalError: Error in function 'TllmGenFmhaRunner' at /workspace/include/flashinfer/trtllm/fmha/fmhaRunner.cuh:37: Unsupported architecture
+```
+
+That means the existing DSV4 backend avoids the earlier
+`flash_mla_sparse_fwd` call but still depends on a TRTLLM FMHA runner that does
+not admit SM120. The next useful issue is not another full-model smoke; it is a
+tiny FlashInfer TRTLLM DSV4 sparse MLA FMHA repro on RTX PRO 6000, followed by
+an SM120-capable patch or a correctness-first fallback attention implementation.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable

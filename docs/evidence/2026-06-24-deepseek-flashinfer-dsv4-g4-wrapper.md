@@ -19,6 +19,7 @@ ISSUE_NUMBER=41
 VLLM_ATTENTION_BACKEND=FLASHINFER_MLA_SPARSE_DSV4
 VLLM_ENFORCE_EAGER=1
 HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum
+HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=hopper
 HYDRALISK_B12X_CLAMP_PATCH=1
 HYDRALISK_B12X_CLAMP_LIMIT=10.0
 MAX_MODEL_LEN=2048
@@ -44,6 +45,7 @@ MoE backend: flashinfer_b12x
 vLLM enforce eager: 1
 vLLM attention backend: FLASHINFER_MLA_SPARSE_DSV4
 DeepSeek o_proj fallback: bf16_einsum
+DeepSeek o_proj recipe: hopper
 B12x clamp patch: 1
 B12x clamp limit: 10.0
 Max model length: 2048
@@ -59,25 +61,52 @@ order	zone	machine	accelerator	gpu_count	role
 2	us-central1-b	g4-standard-192	nvidia-rtx-pro-6000	4	b12x_no_ep_fallback
 ```
 
-## Current live status
+## Live status
 
-Running the wrapper on this Mac still stops at the issue #42 auth preflight:
+The first wrapper attempts on this Mac stopped at the issue #42 auth preflight:
 
 ```text
 g4-standard-384 / 8 x nvidia-rtx-pro-6000 / us-central1-b -> blocked_auth
 g4-standard-192 / 4 x nvidia-rtx-pro-6000 / us-central1-b -> blocked_auth
 ```
 
-This confirms the wrapper is ready, but the live GPU smoke remains blocked
-before GCE admission by local gcloud reauthentication.
+That was an auth result, not a GPU capacity result.
 
-Next operator action:
+After gcloud auth was refreshed, the issue #41 wrapper was run against the
+existing 8 x G4 target:
 
 ```bash
-gcloud auth login
-gcloud auth application-default login
+ISSUE_NUMBER=41 \
+TARGET_INSTANCE=hydralisk-deepseek-v4-b12x-g4-8g-b-20260624092036 \
+TARGET_ZONE=us-central1-b \
+CREATE_IF_MISSING=0 \
 bash scripts/probe-deepseek-v4-flashinfer-dsv4-g4-gce.sh
 ```
+
+The run reached the G4 host, built the derived vLLM image, launched the
+container, and failed before `/v1/models` because the wrapper inherited the
+B12x harness default `HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=blackwell` while the
+selected `HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum` path requires
+non-TMA activation scales:
+
+```text
+RuntimeError: HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum requires non-TMA activation scales; set HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=hopper for this probe
+```
+
+The wrapper now defaults `HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=hopper` so the
+corrected issue #41 rerun could validate the FlashInfer DSV4 attention backend
+rather than a known local launch-shape mismatch.
+
+The corrected rerun reached `/v1/models` on the 8 x G4 host, then the tiny
+completion smoke failed in the selected DSV4 attention path:
+
+```text
+flashinfer.mla._core.trtllm_batch_decode_sparse_mla_dsv4
+tvm.error.InternalError: Error in function 'TllmGenFmhaRunner' at /workspace/include/flashinfer/trtllm/fmha/fmhaRunner.cuh:37: Unsupported architecture
+```
+
+The public-safe live receipt is tracked separately:
+[`2026-06-24-deepseek-flashinfer-dsv4-g4-live-smoke.md`](2026-06-24-deepseek-flashinfer-dsv4-g4-live-smoke.md).
 
 ## Public safety
 

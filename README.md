@@ -173,7 +173,15 @@ Initial targets:
   `DeepseekV4FlashInferMLAAttention`, which avoids `flash_mla_sparse_fwd` and
   calls FlashInfer's TRTLLM sparse MLA launcher instead. Hydralisk now exposes
   that as `VLLM_ATTENTION_BACKEND=FLASHINFER_MLA_SPARSE_DSV4` for the next G4
-  smoke once gcloud auth is interactive again.
+  smoke. The first auth-cleared run found a wrapper mismatch: the selected
+  `bf16_einsum` `o_proj` fallback requires
+  `HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=hopper`, so the DSV4 wrapper now defaults
+  that recipe. The corrected run reached `/v1/models`, then the tiny
+  generation smoke failed in `flashinfer.mla._core.trtllm_batch_decode_sparse_mla_dsv4`
+  with `TllmGenFmhaRunner` reporting `Unsupported architecture` from
+  FlashInfer's TRTLLM FMHA runner. The next useful G4 step is a tiny DSV4 FMHA
+  repro and SM120 attention patch or fallback, not another full-model flag
+  trial.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
