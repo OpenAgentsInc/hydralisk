@@ -22,6 +22,9 @@ Scaled-mm probe evidence:
 E8M0 upcast evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-e8m0-upcast-g4.md`](evidence/2026-06-24-deepseek-v4-flash-e8m0-upcast-g4.md)
 
+o_proj evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-g4.md`](evidence/2026-06-24-deepseek-v4-flash-o-proj-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -120,8 +123,12 @@ RuntimeError: Assertion error
 t.dim() == N
 ```
 
-The next issue should isolate the `o_proj` recipe/layout choice for SM120,
-especially the Blackwell recipe `(1, 1, 128)` and `tma_aligned_scales=true`.
+The `o_proj` recipe probe showed both Hopper and Blackwell recipes fail at the
+same DeepGEMM layout assertion. The next issue should test the grouped
+right-hand-side layout: `wo_a.weight` is flat `[4096,4096]` and
+`wo_a.weight_scale_inv` is flat `[32,32]`, while the einsum is grouped over 4
+heads and likely needs views or transformed scales shaped like `[4,1024,4096]`
+and `[4,8,32]`.
 
 The first viable lanes are:
 
@@ -176,6 +183,8 @@ VLLM_LINEAR_BACKEND=triton
 VLLM_ENABLE_EXPERT_PARALLEL=1
 FORCE_PYTHON_VLLM=1
 REUSE_PYTHON_VENV=1
+HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=blackwell
+HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE=1
 ```
 
 Use `TARGET_INSTANCE`, `TARGET_ZONE`, and `TARGET_GPU_COUNT` only for a fresh
@@ -195,10 +204,10 @@ Stop and record a blocker if:
 
 The 2026-06-24 G4 smoke is currently stopped on the CUDA/kernel support
 condition above. More random flag trials on the same host are not the next
-useful step; the useful split is either the `o_proj` DeepGEMM recipe/layout
-probe, a known-good DeepSeek vLLM image/build pin, an 8-GPU H100/H200/B200
-allocation that matches the published recipe, or a custom expert-prefetch/
-offload route.
+useful step; the useful split is either the grouped `o_proj` weight/scale
+layout probe, a known-good DeepSeek vLLM image/build pin, an 8-GPU
+H100/H200/B200 allocation that matches the published recipe, or a custom
+expert-prefetch/offload route.
 
 ## Promotion boundary
 

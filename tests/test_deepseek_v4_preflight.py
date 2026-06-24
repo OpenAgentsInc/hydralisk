@@ -122,14 +122,29 @@ def test_gce_smoke_script_exposes_backend_and_issue_knobs() -> None:
     assert 'VLLM_ENABLE_EXPERT_PARALLEL="${VLLM_ENABLE_EXPERT_PARALLEL:-0}"' in script
     assert 'FORCE_PYTHON_VLLM="${FORCE_PYTHON_VLLM:-0}"' in script
     assert 'REUSE_PYTHON_VENV="${REUSE_PYTHON_VENV:-0}"' in script
+    assert (
+        'HYDRALISK_DEEPSEEK_O_PROJ_RECIPE="${HYDRALISK_DEEPSEEK_O_PROJ_RECIPE:-auto}"'
+        in script
+    )
+    assert (
+        'HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE="${HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE:-0}"'
+        in script
+    )
     assert 'printf "VLLM_USE_DEEP_GEMM\\t%s\\n"' in script
     assert 'printf "VLLM_LINEAR_BACKEND\\t%s\\n"' in script
     assert 'printf "VLLM_ENABLE_EXPERT_PARALLEL\\t%s\\n"' in script
     assert 'printf "FORCE_PYTHON_VLLM\\t%s\\n"' in script
     assert 'printf "REUSE_PYTHON_VENV\\t%s\\n"' in script
+    assert 'printf "HYDRALISK_DEEPSEEK_O_PROJ_RECIPE\\t%s\\n"' in script
+    assert 'printf "HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE\\t%s\\n"' in script
     assert '[[ "$FORCE_PYTHON_VLLM" != "1" ]] && command -v docker' in script
     assert '[[ "$REUSE_PYTHON_VENV" != "1" || ! -x .venv/bin/python ]]' in script
     assert '--linear-backend "$VLLM_LINEAR_BACKEND"' in script
+    assert 'HYDRALISK_DEEPSEEK_O_PROJ_RECIPE="$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE"' in script
+    assert (
+        'HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE="$HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE"'
+        in script
+    )
     assert "expert_parallel_args+=(--enable-expert-parallel)" in script
     assert 'issue="$ISSUE_NUMBER"' in script
 
@@ -200,6 +215,52 @@ def test_e8m0_upcast_patch_script_is_public_safe_and_target_scoped(
         check=True,
     )
     evidence = (tmp_path / "e8m0-upcast-patch.md").read_text()
+
+    assert "Wrote" in result.stdout
+    assert "hydralisk-deepseek-v4-g4-2g-b-test" in evidence
+    assert "Action: `apply`" in evidence
+    assert "Contains weights: false" in evidence
+
+    rejected = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path / "rejected"),
+            "TARGET_INSTANCE": "hydralisk-gptoss20b-l4-prod",
+            "TARGET_ZONE": "us-central1-a",
+            "ACTION": "apply",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert rejected.returncode == 2
+    assert "fresh hydralisk-deepseek-v4" in rejected.stderr
+
+
+def test_o_proj_patch_script_is_public_safe_and_target_scoped(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "patch-vllm-deepseek-o-proj-gce.sh"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path),
+            "TARGET_INSTANCE": "hydralisk-deepseek-v4-g4-2g-b-test",
+            "TARGET_ZONE": "us-central1-b",
+            "ACTION": "apply",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "o-proj-patch.md").read_text()
 
     assert "Wrote" in result.stdout
     assert "hydralisk-deepseek-v4-g4-2g-b-test" in evidence
