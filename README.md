@@ -203,8 +203,11 @@ Initial targets:
   FlashInfer DSV4 FMHA calls. The patched-vLLM container smoke wrapper is also
   ready: it patches the installed vLLM source inside the target image and runs
   the issue #52 tensor shape with torch tensors. The live requirement is now a
-  fresh or explicitly provided G4 target; the latest run recorded
-  `target_missing`.
+  full 8 x G4 model retry: a bounded one-GPU G4 spot target successfully ran
+  the patched-vLLM synthetic smoke on real RTX PRO 6000 hardware with
+  `HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1`, vLLM `0.23.0`, Torch
+  `2.11.0+cu130`, CUDA `13.0`, finite nonzero `[1,64,512]` output, and GPU
+  memory back to `0 MiB` after the run.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,

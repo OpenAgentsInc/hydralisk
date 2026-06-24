@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "deepseek_v4_patched_vllm_sparse_mla_smoke_ready_g4_target_needed",
+  "status": "deepseek_v4_patched_vllm_sparse_mla_g4_synthetic_passed",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -225,7 +225,8 @@
       "docs/evidence/2026-06-24-deepseek-v4-sm120-sparse-mla-fallback.md",
       "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-fallback-smoke.md",
       "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-patch.md",
-      "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-fallback-smoke.md"
+      "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-fallback-smoke.md",
+      "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-g4-live-smoke.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -250,12 +251,12 @@
       "maxModelLen": 4096
     },
     "blocker": {
-      "stage": "fresh_g4_target_required_for_patched_vllm_synthetic_smoke",
-      "site": "scripts/smoke-deepseek-v4-sparse-mla-vllm-fallback-gce.sh",
-      "message": "Issue #57 added the patched-vLLM synthetic smoke wrapper. It injects Hydralisk into a target vLLM image, patches the installed DeepSeek V4 FlashInfer sparse source inside the ephemeral container, imports the patched fallback helper, and runs the issue #52 torch tensor shape. The latest run recorded target_missing because no DeepSeek G4 host is live.",
+      "stage": "full_model_8x_g4_smoke_needed",
+      "site": "DeepSeek V4 full model / patched vLLM sparse MLA fallback",
+      "message": "Issue #58 provisioned a short-lived one-GPU G4 target and proved the patched-vLLM sparse MLA fallback branch inside vllm/vllm-openai:latest on RTX PRO 6000 / SM120. The synthetic issue #52 tensor shape returned finite nonzero [1,64,512] output with HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1. The remaining blocker is now full-model integration on an 8 x G4 target, not the attention fallback synthetic path.",
       "ready": true,
       "completion": false,
-      "nextProbe": "provision or explicitly provide a DeepSeek G4 host, then run TARGET_INSTANCE=<fresh-g4-host> TARGET_ZONE=<zone> bash scripts/smoke-deepseek-v4-sparse-mla-vllm-fallback-gce.sh; only then attempt a full model smoke if the synthetic patched-vLLM smoke passes"
+      "nextProbe": "rerun the full DeepSeek V4 8 x G4 smoke with the derived vLLM image, B12x clamp/o_proj fallback stack, VLLM_ATTENTION_BACKEND=FLASHINFER_MLA_SPARSE_DSV4, and HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1"
     }
   },
   "publishedRecipeAdmission": {
@@ -2600,6 +2601,62 @@
       "run the issue #52 synthetic torch shape without weights/prompts/vLLM scheduling"
     ],
     "plainEnglishNext": "Provision or explicitly provide a DeepSeek G4 target and rerun the patched-vLLM smoke wrapper before any full model attempt.",
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekV4PatchedVllmSparseMlaG4LiveSmoke": {
+    "status": "passed",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/58",
+    "script": "scripts/smoke-deepseek-v4-sparse-mla-vllm-fallback-gce.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-g4-live-smoke.md",
+    "target": {
+      "instance": "hydralisk-deepseek-v4-sparse-mla-g4-1g-20260624154209",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-48",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 1,
+      "provisioningModel": "SPOT",
+      "maxRunDurationSeconds": 3600,
+      "instanceTerminationAction": "DELETE",
+      "externalIp": null
+    },
+    "container": {
+      "image": "vllm/vllm-openai:latest",
+      "vllmVersion": "0.23.0",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "deviceName": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "envFlag": "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1"
+    },
+    "patch": {
+      "target": "/usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/flashinfer_sparse.py",
+      "insertedImport": true,
+      "insertedHelpers": true,
+      "decodeBranchPatched": true,
+      "prefillBranchPatched": true
+    },
+    "syntheticOutput": {
+      "shape": [
+        1,
+        64,
+        512
+      ],
+      "finite": true,
+      "nonzero": true,
+      "checksum": {
+        "count": 32768,
+        "l1": 2875.557129,
+        "maxAbs": 0.453125,
+        "sum": 53.662781
+      }
+    },
+    "postRunGpuMemoryMiB": 0,
+    "plainEnglishNext": "Attempt the full 8 x G4 model smoke with HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1 enabled in the derived image.",
     "publicSafety": {
       "containsSecrets": false,
       "containsPrompts": false,

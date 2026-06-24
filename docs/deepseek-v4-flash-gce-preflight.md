@@ -127,6 +127,9 @@ DeepSeek V4 sparse MLA vLLM patch evidence:
 DeepSeek V4 sparse MLA patched-vLLM fallback smoke evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-fallback-smoke.md`](evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-fallback-smoke.md)
 
+DeepSeek V4 sparse MLA patched-vLLM G4 live-smoke evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-g4-live-smoke.md`](evidence/2026-06-24-deepseek-v4-sparse-mla-g4-live-smoke.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -1061,6 +1064,18 @@ only infrastructure: provision or explicitly provide a fresh DeepSeek G4 host,
 then run `scripts/smoke-deepseek-v4-sparse-mla-vllm-fallback-gce.sh`. If that
 synthetic patched-vLLM smoke passes, a full model smoke becomes the next honest
 attempt.
+
+Issue #58 provisioned a bounded one-GPU G4 spot target and ran that
+patched-vLLM synthetic smoke on real RTX PRO 6000 hardware. Docker was installed
+on the host, the NVIDIA container runtime was configured, and
+`vllm/vllm-openai:latest` reported vLLM `0.23.0`, Torch `2.11.0+cu130`, CUDA
+`13.0`, and `NVIDIA RTX PRO 6000 Blackwell Server Edition`. With
+`HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1`, the script patched the installed
+vLLM `flashinfer_sparse.py` in the ephemeral container layer, imported the
+fallback helper, and returned finite, nonzero `[1,64,512]` output for the issue
+#52 tensor shape. GPU memory returned to `0 MiB` afterward. The next honest step
+is now a full DeepSeek V4 8 x G4 model smoke with the same fallback flag, not
+more synthetic attention work.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable
