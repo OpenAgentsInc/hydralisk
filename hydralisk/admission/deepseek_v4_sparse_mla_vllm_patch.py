@@ -10,6 +10,7 @@ from typing import Any
 
 TARGET_RELATIVE_PATH = Path("vllm/models/deepseek_v4/nvidia/flashinfer_sparse.py")
 PATCH_SENTINEL = "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"
+PATCH_VERSION_SENTINEL = "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK_CACHE_LAYOUT_V2"
 
 
 @dataclass(frozen=True)
@@ -26,10 +27,65 @@ class PatchResult:
 HELPER_BLOCK = r'''
 
 _HYDRALISK_SPARSE_MLA_FALLBACK_ENV = "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"
+_HYDRALISK_SPARSE_MLA_FALLBACK_VERSION = (
+    "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK_CACHE_LAYOUT_V2"
+)
 
 
 def _hydralisk_sparse_mla_fallback_enabled() -> bool:
     return os.getenv(_HYDRALISK_SPARSE_MLA_FALLBACK_ENV) == "1"
+
+
+_HYDRALISK_SPARSE_MLA_FLOAT_DTYPES = tuple(
+    dtype
+    for dtype in (
+        torch.bfloat16,
+        torch.float16,
+        torch.float32,
+        getattr(torch, "float8_e4m3fn", None),
+        getattr(torch, "float8_e4m3fnuz", None),
+        getattr(torch, "float8_e5m2", None),
+        getattr(torch, "float8_e5m2fnuz", None),
+        getattr(torch, "float8_e8m0fnu", None),
+    )
+    if dtype is not None
+)
+
+
+def _hydralisk_sparse_mla_floatable_dtype(dtype: torch.dtype) -> bool:
+    return dtype in _HYDRALISK_SPARSE_MLA_FLOAT_DTYPES
+
+
+def _hydralisk_sparse_mla_cache_layout(
+    cache: torch.Tensor,
+    *,
+    name: str,
+) -> tuple[int, int, int, int]:
+    if cache.dim() == 4:
+        pages, kv_heads, page_size, kv_dim = cache.shape
+        return pages, kv_heads, page_size, kv_dim
+    if cache.dim() == 3:
+        pages, page_size, kv_dim = cache.shape
+        return pages, 1, page_size, kv_dim
+    raise RuntimeError(
+        "Hydralisk sparse MLA fallback expects "
+        f"{name} KV cache [pages, page, dim] or [pages, kv_heads, page, dim]; "
+        f"got shape {tuple(cache.shape)}"
+    )
+
+
+def _hydralisk_sparse_mla_cache_row(
+    cache: torch.Tensor,
+    *,
+    slot_id: int,
+    kv_head: int,
+    page_size: int,
+) -> torch.Tensor:
+    page = slot_id // page_size
+    offset = slot_id % page_size
+    if cache.dim() == 4:
+        return cache[page, kv_head, offset]
+    return cache[page, offset]
 
 
 def _hydralisk_sparse_mla_fallback(
@@ -50,30 +106,42 @@ def _hydralisk_sparse_mla_fallback(
     while FlashInfer ships no SM120 TRTLLM-gen FMHA cubins for the fast path.
     """
 
-    if query.dtype != torch.bfloat16:
+    if not _hydralisk_sparse_mla_floatable_dtype(query.dtype):
         raise RuntimeError(
-            f"{_HYDRALISK_SPARSE_MLA_FALLBACK_ENV}=1 only supports bf16 query"
+            f"{_HYDRALISK_SPARSE_MLA_FALLBACK_ENV}=1 unsupported query dtype "
+            f"{query.dtype}; expected a floating dtype convertible to fp32"
         )
-    if swa_kv_cache.dtype != torch.bfloat16 or compressed_kv_cache.dtype != torch.bfloat16:
+    if (
+        not _hydralisk_sparse_mla_floatable_dtype(swa_kv_cache.dtype)
+        or not _hydralisk_sparse_mla_floatable_dtype(compressed_kv_cache.dtype)
+    ):
         raise RuntimeError(
-            f"{_HYDRALISK_SPARSE_MLA_FALLBACK_ENV}=1 only supports bf16 KV caches"
+            f"{_HYDRALISK_SPARSE_MLA_FALLBACK_ENV}=1 unsupported KV cache dtypes "
+            f"{swa_kv_cache.dtype}/{compressed_kv_cache.dtype}; expected floating "
+            "dtypes convertible to fp32"
         )
     if query.dim() != 3:
         raise RuntimeError("Hydralisk sparse MLA fallback expects query [tokens, heads, dim]")
-    if swa_kv_cache.dim() != 4 or compressed_kv_cache.dim() != 4:
-        raise RuntimeError(
-            "Hydralisk sparse MLA fallback expects KV caches [pages, kv_heads, page, dim]"
-        )
-    if swa_kv_cache.shape != compressed_kv_cache.shape:
-        raise RuntimeError("SWA and compressed KV caches must share shape")
     if sparse_indices.dim() != 2 or sparse_topk_lens.dim() != 1 or seq_lens.dim() != 1:
         raise RuntimeError("Hydralisk sparse MLA fallback expects 2D sparse indices and 1D lens")
 
     num_tokens, num_heads, dim = query.shape
-    pages, kv_heads, page_size, kv_dim = swa_kv_cache.shape
-    if dim != kv_dim:
+    swa_pages, swa_kv_heads, swa_page_size, swa_kv_dim = _hydralisk_sparse_mla_cache_layout(
+        swa_kv_cache,
+        name="SWA",
+    )
+    (
+        compressed_pages,
+        compressed_kv_heads,
+        compressed_page_size,
+        compressed_kv_dim,
+    ) = _hydralisk_sparse_mla_cache_layout(
+        compressed_kv_cache,
+        name="compressed",
+    )
+    if dim != swa_kv_dim or dim != compressed_kv_dim:
         raise RuntimeError("query dim must match KV dim")
-    if kv_heads not in (1, num_heads):
+    if swa_kv_heads not in (1, num_heads) or compressed_kv_heads not in (1, num_heads):
         raise RuntimeError("KV heads must broadcast from 1 or match query heads")
     if sparse_indices.shape[0] != num_tokens or sparse_topk_lens.shape[0] != num_tokens:
         raise RuntimeError("sparse metadata must have one row/value per query token")
@@ -85,38 +153,51 @@ def _hydralisk_sparse_mla_fallback(
     if out.shape[0] != num_tokens or out.shape[1] < num_heads or out.shape[-1] != dim:
         raise RuntimeError("output shape is incompatible with query shape")
 
-    total_tokens = pages * page_size
+    swa_total_slots = swa_pages * swa_page_size
+    compressed_total_slots = compressed_pages * compressed_page_size
+    window_columns = max(0, min(window_size, sparse_indices.shape[1]))
     scale = dim ** -0.5
     out.zero_()
 
     for token_idx in range(num_tokens):
-        seq_idx = 0 if seq_lens.numel() == 1 else token_idx
-        seq_len = int(seq_lens[seq_idx].item())
-        seq_len = max(0, min(seq_len, total_tokens))
-        candidates: list[tuple[torch.Tensor, int]] = []
-
-        if window_size > 0 and seq_len > 0:
-            for position in range(max(0, seq_len - window_size), seq_len):
-                candidates.append((swa_kv_cache, position))
-
-        topk_len = min(
+        row_limit = min(
             max(0, int(sparse_topk_lens[token_idx].item())),
             sparse_indices.shape[1],
         )
-        for raw_position in sparse_indices[token_idx, :topk_len]:
-            position = int(raw_position.item())
-            if 0 <= position < seq_len:
-                candidates.append((compressed_kv_cache, position))
+        candidates: list[tuple[torch.Tensor, int, int]] = []
+
+        for raw_slot in sparse_indices[token_idx, : min(window_columns, row_limit)]:
+            slot_id = int(raw_slot.item())
+            if 0 <= slot_id < swa_total_slots:
+                candidates.append((swa_kv_cache, swa_page_size, slot_id))
+
+        for raw_slot in sparse_indices[token_idx, window_columns:row_limit]:
+            slot_id = int(raw_slot.item())
+            if 0 <= slot_id < compressed_total_slots:
+                candidates.append((compressed_kv_cache, compressed_page_size, slot_id))
 
         if not candidates:
             continue
 
         for head_idx in range(num_heads):
-            kv_head = 0 if kv_heads == 1 else head_idx
             keys = []
-            for cache, position in candidates:
-                keys.append(cache[position // page_size, kv_head, position % page_size])
-            key_tensor = torch.stack(keys, dim=0).to(dtype=torch.float32)
+            for cache, candidate_page_size, slot_id in candidates:
+                _, candidate_kv_heads, _, _ = _hydralisk_sparse_mla_cache_layout(
+                    cache,
+                    name="candidate",
+                )
+                kv_head = 0 if candidate_kv_heads == 1 else head_idx
+                keys.append(
+                    _hydralisk_sparse_mla_cache_row(
+                        cache,
+                        slot_id=slot_id,
+                        kv_head=kv_head,
+                        page_size=candidate_page_size,
+                    ).to(
+                        dtype=torch.float32,
+                    )
+                )
+            key_tensor = torch.stack(keys, dim=0)
             query_vec = query[token_idx, head_idx].to(dtype=torch.float32)
             weights = torch.softmax(torch.matmul(key_tensor, query_vec) * scale, dim=0)
             out[token_idx, head_idx] = torch.sum(
@@ -124,6 +205,18 @@ def _hydralisk_sparse_mla_fallback(
                 dim=0,
             ).to(dtype=out.dtype)
 '''
+
+
+def _replace_existing_helper(source: str) -> str:
+    start = source.find("_HYDRALISK_SPARSE_MLA_FALLBACK_ENV =")
+    if start == -1:
+        raise ValueError("could not locate existing Hydralisk sparse MLA helper")
+    end = source.find("\ndef _get_flashinfer_dsv4_workspace", start)
+    if end == -1:
+        end = source.find("\n\nclass DeepseekV4FlashInferMLAAttention", start)
+    if end == -1:
+        raise ValueError("could not locate end of existing Hydralisk sparse MLA helper")
+    return source[:start] + HELPER_BLOCK.lstrip("\n") + source[end:]
 
 
 DECODE_CALL = '''            flashinfer_trtllm_batch_decode_sparse_mla_dsv4(
@@ -216,13 +309,24 @@ PREFILL_BRANCH = '''            if _hydralisk_sparse_mla_fallback_enabled():
 
 
 def patch_source(source: str, *, target: str = str(TARGET_RELATIVE_PATH)) -> tuple[str, PatchResult]:
-    if PATCH_SENTINEL in source:
+    if PATCH_VERSION_SENTINEL in source:
         return source, PatchResult(
             patched=False,
             already_patched=True,
             target=target,
             inserted_import=False,
             inserted_helpers=False,
+            decode_branch_patched=False,
+            prefill_branch_patched=False,
+        )
+
+    if PATCH_SENTINEL in source:
+        return _replace_existing_helper(source), PatchResult(
+            patched=True,
+            already_patched=False,
+            target=target,
+            inserted_import=False,
+            inserted_helpers=True,
             decode_branch_patched=False,
             prefill_branch_patched=False,
         )

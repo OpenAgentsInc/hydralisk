@@ -7,6 +7,7 @@ import pytest
 from hydralisk.admission.deepseek_v4_sparse_mla_vllm_patch import (
     DECODE_CALL,
     PATCH_SENTINEL,
+    PATCH_VERSION_SENTINEL,
     PREFILL_CALL,
     build_report,
     patch_source,
@@ -24,8 +25,12 @@ def test_vllm_sparse_mla_patcher_inserts_fail_closed_fallback_branch() -> None:
     assert result.prefill_branch_patched is True
     assert f'os.getenv(_HYDRALISK_SPARSE_MLA_FALLBACK_ENV) == "1"' in patched
     assert "_hydralisk_sparse_mla_fallback(" in patched
-    assert "only supports bf16 query" in patched
-    assert "only supports bf16 KV caches" in patched
+    assert "_hydralisk_sparse_mla_floatable_dtype" in patched
+    assert "unsupported query dtype" in patched
+    assert "unsupported KV cache dtypes" in patched
+    assert "convertible to fp32" in patched
+    assert "_hydralisk_sparse_mla_cache_layout" in patched
+    assert "[pages, page, dim] or [pages, kv_heads, page, dim]" in patched
     assert "one-token decode" in patched
     assert patched.count("flashinfer_trtllm_batch_decode_sparse_mla_dsv4(") == 2
 
@@ -38,6 +43,21 @@ def test_vllm_sparse_mla_patcher_is_idempotent() -> None:
     assert second.patched is False
     assert second.already_patched is True
     assert patched_again == patched
+
+
+def test_vllm_sparse_mla_patcher_upgrades_legacy_helper() -> None:
+    patched, first = patch_source(_fixture_source())
+    legacy = patched.replace(PATCH_VERSION_SENTINEL, "legacy-cache-layout")
+
+    upgraded, second = patch_source(legacy)
+
+    assert first.patched is True
+    assert second.patched is True
+    assert second.already_patched is False
+    assert second.decode_branch_patched is False
+    assert second.prefill_branch_patched is False
+    assert PATCH_VERSION_SENTINEL in upgraded
+    assert "_hydralisk_sparse_mla_cache_layout" in upgraded
 
 
 def test_vllm_sparse_mla_patcher_fails_when_call_site_changes() -> None:

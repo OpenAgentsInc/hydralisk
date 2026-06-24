@@ -238,6 +238,7 @@ def test_provider_stack_probe_script_is_public_safe_and_target_scoped(
     assert "install_deepgemm.sh" in evidence
     assert "DeepSeek sparse MLA fallback patch: `0`" in evidence
     assert "DeepSeek sparse MLA fallback runtime: `0`" in evidence
+    assert "CUDA launch blocking: `0`" in evidence
     assert "--enable-expert-parallel" in evidence
     assert "Contains weights: false" in evidence
 
@@ -321,12 +322,21 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
         "--build-arg \"HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH=$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH\""
         in script
     )
+    assert (
+        "--build-arg \"HYDRALISK_DEEPSEEK_INDEXER_PATCH=$HYDRALISK_DEEPSEEK_INDEXER_PATCH\""
+        in script
+    )
     assert "pull_args+=(--pull)" in script
     assert "p.is_device_capability_family(120)" in script
     assert "Hydralisk issue #19 E8M0 CUDA Triton upcast" in script
     assert "Hydralisk issue #20 DeepSeek NVFP4 o_proj provider patch" in script
     assert "patch_sparse_mla.py" in script
+    assert "patch_sparse_indexer.py" in script
     assert "patched {path} for Hydralisk sparse MLA fallback" in script
+    assert "patched {path} for Hydralisk SWA-only indexer fallback" in script
+    assert "Hydralisk SWA-only indexer metadata fallback" in script
+    assert "HYDRALISK_DEEPSEEK_INDEXER_SWA_ONLY_METADATA" in script
+    assert "self.scheduler_metadata_buffer.zero_()" in script
     assert "HYDRALISK_O_PROJ_SHAPE_TRACE" in script
     assert "HYDRALISK_O_PROJ_RHS_TRACE" in script
     assert "HYDRALISK_O_PROJ_BYPASS_TRACE" in script
@@ -345,16 +355,29 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'COMPLETION_TIMEOUT_SECONDS\\t%s' in script
     assert 'CONTAINER_START_TIMEOUT_SECONDS\\t%s' in script
     assert 'VLLM_E8M0_TRITON_UPCAST\\t%s' in script
+    assert 'CUDA_LAUNCH_BLOCKING\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK\\t%s' in script
+    assert 'HYDRALISK_DEEPSEEK_INDEXER_PATCH\\t%s' in script
+    assert 'HYDRALISK_DEEPSEEK_INDEXER_SWA_ONLY\\t%s' in script
     assert 'record["sparseMlaFallbackPatched"]' in script
+    assert 'record["indexerSwaOnlyEnv"]' in script
+    assert "unsupported query dtype" in script
+    assert "_hydralisk_sparse_mla_floatable_dtype" in script
+    assert "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK_CACHE_LAYOUT_V2" in script
+    assert "upgraded {path} for Hydralisk sparse MLA fallback" in script
     assert (
         '-e "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=$HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"'
         in script
     )
+    assert (
+        '-e "HYDRALISK_DEEPSEEK_INDEXER_SWA_ONLY=$HYDRALISK_DEEPSEEK_INDEXER_SWA_ONLY"'
+        in script
+    )
+    assert '-e "CUDA_LAUNCH_BLOCKING=$CUDA_LAUNCH_BLOCKING"' in script
     assert '"${hf_env_args[@]}"' in script
     assert 'linear_backend_args+=(--linear-backend "$VLLM_LINEAR_BACKEND")' in script
     assert 'expert_parallel_flags+=(--enable-expert-parallel)' in script
@@ -456,14 +479,21 @@ def test_b12x_g4_probe_script_is_public_safe_in_dry_run(
     assert "vLLM expert parallel: `0`" in evidence
     assert "vLLM enforce eager: `0`" in evidence
     assert "vLLM attention backend: `auto`" in evidence
+    assert "DeepSeek o_proj shape trace: `0`" in evidence
     assert "DeepSeek sparse MLA fallback patch: `0`" in evidence
     assert "DeepSeek sparse MLA fallback runtime: `0`" in evidence
+    assert "DeepSeek indexer patch: `0`" in evidence
+    assert "DeepSeek indexer SWA-only runtime: `0`" in evidence
     assert "gcloud auth preflight: `1`" in evidence
     assert "Completion timeout seconds: `180`" in evidence
     assert "Container start timeout seconds: `180`" in evidence
     assert "Contains weights: false" in evidence
     assert 'GCLOUD_AUTH_PREFLIGHT="${GCLOUD_AUTH_PREFLIGHT:-1}"' in script_text
     assert 'GCLOUD_IAM_PREFLIGHT="${GCLOUD_IAM_PREFLIGHT:-1}"' in script_text
+    assert (
+        'HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE="${HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE:-0}"'
+        in script_text
+    )
     assert "gcloud auth print-access-token > /dev/null" in script_text
     assert "testIamPermissions" in script_text
     assert "blocked_auth" in script_text
@@ -477,6 +507,14 @@ def test_b12x_g4_probe_script_is_public_safe_in_dry_run(
     )
     assert (
         "HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH=\"$HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH\""
+        in script_text
+    )
+    assert (
+        "HYDRALISK_DEEPSEEK_INDEXER_SWA_ONLY=\"$HYDRALISK_DEEPSEEK_INDEXER_SWA_ONLY\""
+        in script_text
+    )
+    assert (
+        "HYDRALISK_DEEPSEEK_INDEXER_PATCH=\"$HYDRALISK_DEEPSEEK_INDEXER_PATCH\""
         in script_text
     )
     assert "COMPLETION_TIMEOUT_SECONDS=\"$COMPLETION_TIMEOUT_SECONDS\"" in script_text
@@ -1052,7 +1090,7 @@ printf '{"permissions":[]}'
     assert not list((tmp_path / "out").glob("token-*"))
 
 
-def test_flashinfer_dsv4_g4_wrapper_sets_issue_59_defaults(
+def test_flashinfer_dsv4_g4_wrapper_sets_issue_60_defaults(
     tmp_path: Path,
 ) -> None:
     repo_root = Path(__file__).resolve().parents[1]
@@ -1077,7 +1115,7 @@ def test_flashinfer_dsv4_g4_wrapper_sets_issue_59_defaults(
     script_text = script.read_text()
 
     assert "Wrote" in result.stdout
-    assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/59" in evidence
+    assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/60" in evidence
     assert (
         "gcloud account override: `oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com`"
         in evidence
@@ -1085,15 +1123,18 @@ def test_flashinfer_dsv4_g4_wrapper_sets_issue_59_defaults(
     assert "gcloud IAM preflight: `1`" in evidence
     assert "vLLM enforce eager: `1`" in evidence
     assert "vLLM attention backend: `FLASHINFER_MLA_SPARSE_DSV4`" in evidence
+    assert "DeepSeek o_proj shape trace: `0`" in evidence
     assert "DeepSeek o_proj fallback: `bf16_einsum`" in evidence
     assert "DeepSeek sparse MLA fallback patch: `1`" in evidence
     assert "DeepSeek sparse MLA fallback runtime: `1`" in evidence
+    assert "DeepSeek indexer patch: `1`" in evidence
+    assert "DeepSeek indexer SWA-only runtime: `1`" in evidence
     assert "B12x clamp patch: `1`" in evidence
     assert "B12x clamp limit: `10.0`" in evidence
     assert "Max model length: `2048`" in evidence
     assert "Max batched tokens: `512`" in evidence
     assert "GPU memory utilization: `0.95`" in evidence
-    assert "ISSUE_NUMBER=\"${ISSUE_NUMBER:-59}\"" in script_text
+    assert "ISSUE_NUMBER=\"${ISSUE_NUMBER:-60}\"" in script_text
     assert 'GCLOUD_ACCOUNT="${GCLOUD_ACCOUNT:-${CLOUDSDK_CORE_ACCOUNT:-}}"' in script_text
     assert "FLASHINFER_MLA_SPARSE_DSV4" in script_text
     assert (
@@ -1102,6 +1143,18 @@ def test_flashinfer_dsv4_g4_wrapper_sets_issue_59_defaults(
     )
     assert (
         'HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH="${HYDRALISK_DEEPSEEK_SPARSE_MLA_PATCH:-1}"'
+        in script_text
+    )
+    assert (
+        'HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE="${HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE:-0}"'
+        in script_text
+    )
+    assert (
+        'HYDRALISK_DEEPSEEK_INDEXER_SWA_ONLY="${HYDRALISK_DEEPSEEK_INDEXER_SWA_ONLY:-1}"'
+        in script_text
+    )
+    assert (
+        'HYDRALISK_DEEPSEEK_INDEXER_PATCH="${HYDRALISK_DEEPSEEK_INDEXER_PATCH:-1}"'
         in script_text
     )
     assert "probe-deepseek-v4-b12x-g4-gce.sh" in script_text
@@ -1154,7 +1207,7 @@ exit 99
     assert "Wrote" in result.stdout
     assert not compute_called.exists()
     assert account_seen.read_text() == "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com"
-    assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/59" in evidence
+    assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/60" in evidence
     assert "Status: `blocked_auth`" in evidence
     assert "FLASHINFER_MLA_SPARSE_DSV4" in evidence
     assert "bf16_einsum" in evidence

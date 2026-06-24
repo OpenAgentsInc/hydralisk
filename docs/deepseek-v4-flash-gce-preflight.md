@@ -133,6 +133,9 @@ DeepSeek V4 sparse MLA patched-vLLM G4 live-smoke evidence:
 DeepSeek V4 sparse MLA full 8 x G4 smoke evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md`](evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md)
 
+DeepSeek V4 issue #60 8 x G4 MVP smoke evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md`](evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -1091,6 +1094,19 @@ through NCCL with CUDA failure 800 `operation not permitted` on the PCIe-only
 G4 topology. The next issue should isolate this with a minimal 8-rank
 Torch/NCCL all-gather fixture under the same Docker/runtime envelope, then test
 safe NCCL transport toggles if the fixture reproduces the error.
+
+Issue #60 proved the suspected NCCL blocker was not generic: a minimal 8-rank
+Torch/NCCL all-gather fixture passed on the same G4 Docker/runtime envelope.
+The full-model path then needed two additional Hydralisk fallbacks for SM120:
+an SWA-only sparse attention indexer bypass and a matching MLA indexer metadata
+bypass. With those enabled, the derived image
+`hydralisk-deepseek-v4-b12x-g4-vllm-issue60-metadata:20260624170016`
+(`sha256:ace20aadf862812912b4b63ff9bd19f8b04d335680f2983a1200ebf6eaf47418`)
+reached `/v1/models` and completed one public-safe `/v1/chat/completions`
+request against `nvidia/DeepSeek-V4-Flash-NVFP4` on 8 x RTX PRO 6000. This is
+an MVP execution proof only: `max_model_len=2048`, one sequence, no quality or
+throughput eval, and `HYDRALISK_DEEPSEEK_INDEXER_SWA_ONLY=1` disables the
+compressed sparse top-k indexer path.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable

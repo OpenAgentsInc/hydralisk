@@ -216,6 +216,14 @@ Initial targets:
   PCIe-only G4 topology. The next useful issue is an 8-rank Torch/NCCL
   all-gather fixture under the same Docker/runtime envelope, then safe NCCL
   transport toggles if the fixture reproduces the error.
+  Issue #60 proved the all-gather path itself passes on the same 8 x G4
+  Docker/runtime envelope, then patched the remaining SM120 DeepGEMM sparse
+  indexer/metadata blockers behind `HYDRALISK_DEEPSEEK_INDEXER_SWA_ONLY=1`.
+  The derived image now reaches `/v1/models` and completes a public-safe
+  `/v1/chat/completions` smoke for `nvidia/DeepSeek-V4-Flash-NVFP4` on the
+  same 8 x RTX PRO 6000 host. This is an MVP execution proof, not a production
+  serving claim: it is capped at `max_model_len=2048`, one sequence, and
+  SWA-only sparse attention without quality or throughput gates.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -274,6 +282,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-b12x-full-model-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-full-model-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-eager-mla-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-eager-mla-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md`](docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md)
 - [`docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md`](docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md)
 - [`docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md`](docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md`](docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md)

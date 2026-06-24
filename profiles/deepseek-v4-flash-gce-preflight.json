@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "deepseek_v4_sparse_mla_full_8x_g4_blocked_on_nccl_all_gather_cuda_800",
+  "status": "deepseek_v4_nvfp4_8x_g4_public_safe_completion_smoke_passed_mvp_swa_only_indexer",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -118,7 +118,7 @@
     "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-flash-gce-preflight.md"
   },
   "loadSmoke": {
-    "status": "blocked_before_ready",
+    "status": "passed_public_safe_completion_smoke_mvp_swa_only_indexer",
     "issues": [
       "https://github.com/OpenAgentsInc/hydralisk/issues/6",
       "https://github.com/OpenAgentsInc/hydralisk/issues/7",
@@ -171,7 +171,10 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/54",
       "https://github.com/OpenAgentsInc/hydralisk/issues/55",
       "https://github.com/OpenAgentsInc/hydralisk/issues/56",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/57"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/57",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/58",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/59",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/60"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -226,7 +229,9 @@
       "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-fallback-smoke.md",
       "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-patch.md",
       "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-fallback-smoke.md",
-      "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-g4-live-smoke.md"
+      "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-g4-live-smoke.md",
+      "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md",
+      "docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -2718,6 +2723,71 @@
       "occurredDuring": "vLLM dummy sampler/profile run before /v1/models readiness"
     },
     "plainEnglishNext": "Run a minimal 8-rank Torch/NCCL all-gather fixture on the same G4 Docker/runtime envelope, then test safe NCCL transport toggles if it reproduces CUDA failure 800.",
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekV4Issue60G4MvpSmoke": {
+    "status": "passed_public_safe_completion_smoke_mvp_swa_only_indexer",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/60",
+    "script": "scripts/probe-deepseek-v4-flashinfer-dsv4-g4-gce.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md",
+    "generatedReport": ".hydralisk/deepseek-v4-issue60-20260624-issue60-metadata-170011/deepseek-v4-b12x-g4-probe.md",
+    "providerReport": ".hydralisk/deepseek-v4-issue60-20260624-issue60-metadata-170011/provider-stack/provider-stack-probe.md",
+    "target": {
+      "instance": "hydralisk-deepseek-v4-b12x-g4-8g-b-20260624155352",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-384",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 8,
+      "provisioningModel": "SPOT",
+      "externalIp": null
+    },
+    "container": {
+      "baseImage": "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-indexer:20260624165303",
+      "baseImageDigest": "sha256:e0f9b1bd5880797273880b541cd1bc6770aed15e7b310d8027f061ae70f44673",
+      "derivedImage": "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-metadata:20260624170016",
+      "derivedImageDigest": "sha256:ace20aadf862812912b4b63ff9bd19f8b04d335680f2983a1200ebf6eaf47418",
+      "vllmVersion": "0.23.0",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "localPatches": [
+        "inherited_b12x_clamp",
+        "inherited_oproj_bf16_einsum_fallback",
+        "inherited_sparse_mla_cache_layout_v2_fallback",
+        "swa_only_sparse_indexer_topk_bypass",
+        "swa_only_mla_indexer_metadata_bypass"
+      ]
+    },
+    "modelSmoke": {
+      "model": "nvidia/DeepSeek-V4-Flash-NVFP4",
+      "revision": "e3cd60e7de98e9867116860d522499a728de1cf9",
+      "ready": true,
+      "completionStatus": "ok",
+      "finishReason": "stop",
+      "promptTokens": 9,
+      "completionTokens": 3,
+      "totalTokens": 12,
+      "tensorParallelSize": 8,
+      "maxModelLen": 2048,
+      "maxNumSeqs": 1,
+      "maxNumBatchedTokens": 512,
+      "moeBackend": "flashinfer_b12x",
+      "linearBackend": "triton",
+      "attentionBackend": "FLASHINFER_MLA_SPARSE_DSV4",
+      "sparseMlaFallbackRuntime": true,
+      "indexerSwaOnlyRuntime": true,
+      "oProjFallback": "bf16_einsum"
+    },
+    "servingBoundary": {
+      "publicServingClaim": false,
+      "why": "This proves an MVP OpenAI-compatible completion on 8 x G4 only. The sparse indexer is SWA-only, max_model_len is 2048, and no quality, throughput, or long-context eval has passed.",
+      "nextProbe": "replace or validate the SWA-only sparse indexer fallback on SM120, then run repeated warm and cold chat completions plus a small quality/latency gate"
+    },
     "publicSafety": {
       "containsSecrets": false,
       "containsPrompts": false,
