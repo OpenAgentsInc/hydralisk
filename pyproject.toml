@@ -8,6 +8,7 @@ dependencies = [
   "fastapi>=0.115.0,<1",
   "httpx>=0.28.0,<1",
   "pydantic>=2.10.0,<3",
+  "safetensors>=0.5.0,<1",
   "uvicorn[standard]>=0.34.0,<1",
 ]
 
@@ -31,6 +32,7 @@ hydralisk-deepseek-v4-fable-load-canary = "hydralisk.admission.deepseek_v4_fable
 hydralisk-deepseek-v4-fable-lab-eval = "hydralisk.admission.deepseek_v4_fable:lab_eval_main"
 hydralisk-deepseek-v4-fable-retarget-plan = "hydralisk.admission.deepseek_v4_fable:retarget_plan_main"
 hydralisk-deepseek-v4-fable-o-proj-ownership = "hydralisk.admission.deepseek_v4_fable:o_proj_ownership_main"
+hydralisk-deepseek-v4-fable-transform-smoke = "hydralisk.admission.deepseek_v4_fable:transform_smoke_main"
 
 [build-system]
 requires = ["hatchling"]

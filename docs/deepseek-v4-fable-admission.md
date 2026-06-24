@@ -26,6 +26,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md`](evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md)
 - `o_proj` ownership evidence:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-o-proj-ownership.md`](evidence/2026-06-24-deepseek-v4-fable-o-proj-ownership.md)
+- Packed-LoRA transform smoke evidence:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md`](evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md)
 
 ## Summary
 
@@ -337,17 +339,49 @@ the actual offline packed-LoRA tensor transform smoke:
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-o-proj-ownership.md`](evidence/2026-06-24-deepseek-v4-fable-o-proj-ownership.md)
 
+## Issue #73 result
+
+Issue #73 downloaded the real `adapter_model.safetensors` only into ignored
+`.hydralisk` evidence space and inspected the safetensors header. It did not
+commit adapter bytes, tensor values, prompts, responses, or weights.
+
+The result is `blocked_adapter_config_payload_mismatch`.
+
+The actual adapter payload has:
+
+- 382 tensors;
+- 191 complete LoRA module pairs;
+- MLP/shared-expert `gate_proj`, `up_proj`, and `down_proj` pairs on layers
+  0-42;
+- attention-compressor `gate_proj` pairs, including
+  `self_attn.compressor.gate_proj` and
+  `self_attn.compressor.indexer.gate_proj`;
+- no `q_proj`, `k_proj`, `v_proj`, or `o_proj` LoRA pairs.
+
+That means the path is not the previously assumed packed q/k/v/o transform.
+The next useful implementation issue is either:
+
+1. Map the actual adapter payload contexts against the runtime, especially
+   compressor/indexer `gate_proj` into the runtime's `fused_wkv_wgate` family
+   and MLP shared-expert gate/up/down into the packed MLP path; or
+2. Pivot to a canonical `DeepSeek-V4-Flash` runtime and see whether the
+   published adapter can load there exactly as shipped.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md`](evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
 The adapter compatibility probe now rejects the current G4 runtime path before
 load, and the final lab-eval gate rejects the profile because no private load
-canary was admitted. `o_proj` ownership is now proven as a kernel/provider
-path, so the next useful technical step is an offline packed-LoRA transform
-smoke. If packed tensor surgery stalls, pivot to a canonical base/runtime path
-that exposes the Fable target module names. Even if a future probe succeeds,
-Fable should remain an authorized-security research capability, not a general
-Khala model and not a public inference product.
+canary was admitted. `o_proj` ownership is proven as a kernel/provider path,
+but the real adapter payload does not include the q/k/v/o tensors implied by
+the adapter config. The next useful technical step is to map the actual payload
+contexts, not the config target list. If that stalls, pivot to a canonical
+base/runtime path that can load the adapter as published. Even if a future
+probe succeeds, Fable should remain an authorized-security research
+capability, not a general Khala model and not a public inference product.
 
 ## Public safety
 

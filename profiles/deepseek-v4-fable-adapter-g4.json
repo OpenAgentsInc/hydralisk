@@ -108,12 +108,30 @@
     "canUseVanillaPeftOProj": false,
     "canProceedToPackedLoraTransformSmoke": true
   },
+  "transformSmoke": {
+    "status": "blocked_adapter_config_payload_mismatch",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/73",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md",
+    "adapterPayloadInspected": true,
+    "headerOnly": true,
+    "tensorValuesRead": false,
+    "missingTargets": [
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj"
+    ],
+    "unsupportedContexts": [
+      "self_attn.compressor.gate_proj",
+      "self_attn.compressor.indexer.gate_proj"
+    ]
+  },
   "finalDecision": {
     "status": "rejected_runtime_unstable",
     "admittedPrivateAuthorizedSecurityLabCanary": false,
     "publicAliasesAllowed": false,
     "khalaGeneralRouteAllowed": false,
     "mppPublicSaleAllowed": false,
-    "nextStep": "implement_offline_packed_lora_delta_transform_smoke"
+    "nextStep": "map_actual_adapter_payload_contexts_or_pivot_canonical_runtime"
   }
 }

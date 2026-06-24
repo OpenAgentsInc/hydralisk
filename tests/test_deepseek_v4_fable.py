@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+import struct
 
 import pytest
 
@@ -12,12 +13,14 @@ from hydralisk.admission.deepseek_v4_fable import (
     FABLE_RETARGET_SCHEMA,
     FABLE_SCHEMA,
     FABLE_LOAD_CANARY_SCHEMA,
+    FABLE_TRANSFORM_SMOKE_SCHEMA,
     FableProbeError,
     build_lab_eval_report,
     build_load_canary_report,
     build_o_proj_ownership_report,
     build_retarget_plan_report,
     build_report,
+    build_transform_smoke_report,
     compare_adapter_targets,
     lab_eval_main,
     load_metadata_from_dir,
@@ -30,7 +33,9 @@ from hydralisk.admission.deepseek_v4_fable import (
     render_markdown,
     render_o_proj_ownership_markdown,
     render_retarget_plan_markdown,
+    render_transform_smoke_markdown,
     retarget_plan_main,
+    transform_smoke_main,
     validate_requested_files,
 )
 
@@ -323,6 +328,69 @@ def test_o_proj_ownership_cli_writes_public_safe_report(tmp_path: Path) -> None:
     assert "Contains weights: false" in evidence
 
 
+def test_transform_smoke_accepts_complete_fake_adapter(tmp_path: Path) -> None:
+    adapter_path = tmp_path / "adapter_model.safetensors"
+    _write_fake_fable_adapter(adapter_path, layers=(0, 1))
+
+    report = build_transform_smoke_report(
+        adapter_path=adapter_path,
+        created_at=datetime(2026, 6, 24, tzinfo=UTC),
+    )
+    rendered = render_transform_smoke_markdown(report)
+
+    assert report["schema"] == FABLE_TRANSFORM_SMOKE_SCHEMA
+    assert report["status"] == "shape_manifest_ready_for_transform_writer"
+    assert report["adapter"]["tensorValuesRead"] is False
+    assert report["targets"]["q_proj"]["completePairCount"] == 2
+    assert report["targets"]["q_proj"]["ranks"] == [4]
+    assert report["packedFamilies"]["attention_fused_wqa_wkv"]["complete"] is True
+    assert report["packedFamilies"]["swiglu_gate_up_proj"]["complete"] is True
+    assert report["packedFamilies"]["attention_output_o_proj"]["complete"] is True
+    assert report["decision"]["canWritePackedDeltaNow"] is False
+    assert report["decision"]["canImplementPackedDeltaWriter"] is True
+    assert "Contains tensor values: false" in rendered
+
+
+def test_transform_smoke_blocks_missing_target(tmp_path: Path) -> None:
+    adapter_path = tmp_path / "adapter_model.safetensors"
+    _write_fake_fable_adapter(adapter_path, layers=(0,), omit_targets=("o_proj",))
+
+    report = build_transform_smoke_report(
+        adapter_path=adapter_path,
+        created_at=datetime(2026, 6, 24, tzinfo=UTC),
+    )
+    rendered = render_transform_smoke_markdown(report)
+
+    assert report["status"] == "blocked_adapter_config_payload_mismatch"
+    assert report["decision"]["canImplementPackedDeltaWriter"] is False
+    assert "does not match the module-family assumptions" in rendered
+    assert any(
+        blocker["target"] == "o_proj" and blocker["code"] == "missing_lora_pairs"
+        for blocker in report["blockers"]
+    )
+
+
+def test_transform_smoke_cli_writes_public_safe_report(tmp_path: Path) -> None:
+    adapter_path = tmp_path / "adapter_model.safetensors"
+    _write_fake_fable_adapter(adapter_path, layers=(0,))
+    output_dir = tmp_path / "out"
+
+    status = transform_smoke_main(
+        [
+            "--adapter-path",
+            str(adapter_path),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert status == 0
+    evidence = (output_dir / "deepseek-v4-fable-transform-smoke.md").read_text()
+    assert "Status: `shape_manifest_ready_for_transform_writer`" in evidence
+    assert "Packed delta writer can be implemented from this manifest: `true`" in evidence
+    assert "Contains weights: false" in evidence
+
+
 def _write_fable_metadata(directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "adapter_config.json").write_text(
@@ -469,3 +537,60 @@ def _o_proj_source_inventory() -> dict:
             },
         ],
     }
+
+
+def _write_fake_fable_adapter(
+    path: Path,
+    *,
+    layers: tuple[int, ...],
+    omit_targets: tuple[str, ...] = (),
+) -> None:
+    entries: dict[str, tuple[str, list[int]]] = {}
+    for layer in layers:
+        for target in (
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ):
+            if target in omit_targets:
+                continue
+            module = f"base_model.model.model.layers.{layer}.self_attn.{target}"
+            if target in {"gate_proj", "up_proj", "down_proj"}:
+                module = f"base_model.model.model.layers.{layer}.mlp.{target}"
+            entries[f"{module}.lora_A.weight"] = ("F32", [4, 8])
+            entries[f"{module}.lora_B.weight"] = ("F32", [16, 4])
+    _write_fake_safetensors(path, entries)
+
+
+def _write_fake_safetensors(
+    path: Path,
+    entries: dict[str, tuple[str, list[int]]],
+) -> None:
+    offset = 0
+    header: dict[str, dict] = {}
+    payload_parts: list[bytes] = []
+    for key, (dtype, shape) in sorted(entries.items()):
+        size = _fake_tensor_size(dtype, shape)
+        header[key] = {
+            "dtype": dtype,
+            "shape": shape,
+            "data_offsets": [offset, offset + size],
+        }
+        payload_parts.append(b"\0" * size)
+        offset += size
+    header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
+    path.write_bytes(
+        struct.pack("<Q", len(header_bytes)) + header_bytes + b"".join(payload_parts)
+    )
+
+
+def _fake_tensor_size(dtype: str, shape: list[int]) -> int:
+    dtype_bytes = {"F32": 4, "BF16": 2, "F16": 2}
+    size = dtype_bytes[dtype]
+    for dimension in shape:
+        size *= dimension
+    return size

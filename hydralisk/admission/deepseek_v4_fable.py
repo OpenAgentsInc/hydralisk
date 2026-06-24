@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import struct
 from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -18,6 +19,7 @@ FABLE_LOAD_CANARY_SCHEMA = "hydralisk.deepseek-v4-fable.load-canary.v1"
 FABLE_LAB_EVAL_SCHEMA = "hydralisk.deepseek-v4-fable.lab-eval-decision.v1"
 FABLE_RETARGET_SCHEMA = "hydralisk.deepseek-v4-fable.retarget-plan.v1"
 FABLE_OPROJ_OWNERSHIP_SCHEMA = "hydralisk.deepseek-v4-fable.o-proj-ownership.v1"
+FABLE_TRANSFORM_SMOKE_SCHEMA = "hydralisk.deepseek-v4-fable.transform-smoke.v1"
 FABLE_REPO = "Chunjiang-Intelligence/DeepSeek-v4-Fable"
 FABLE_REVISION = "999909137c15e0b5539fee887431824fa7cb5b10"
 FABLE_BASE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
@@ -28,6 +30,7 @@ POLICY_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/69"
 LAB_EVAL_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/70"
 RETARGET_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/71"
 OPROJ_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/72"
+TRANSFORM_SMOKE_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/73"
 
 SMALL_METADATA_FILES = (
     "adapter_config.json",
@@ -39,6 +42,32 @@ SMALL_METADATA_FILES = (
 ADAPTER_FILE = "adapter_model.safetensors"
 DEFAULT_RECORDED_FILES = (*SMALL_METADATA_FILES, ADAPTER_FILE)
 MERGED_SHARD_RE = re.compile(r"^model-\d{5}-of-\d{5}\.safetensors$")
+LORA_KEY_RE = re.compile(r"^(?P<module>.+)\.lora_(?P<side>A|B)(?:\.[^.]+)?\.weight$")
+LAYER_RE = re.compile(r"(?:^|\.)layers\.(\d+)(?:\.|$)")
+FABLE_LORA_TARGETS = (
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj",
+)
+FABLE_PACKED_FAMILIES = {
+    "attention_fused_wqa_wkv": ("q_proj", "k_proj", "v_proj"),
+    "swiglu_gate_up_proj": ("gate_proj", "up_proj"),
+    "attention_output_o_proj": ("o_proj",),
+    "direct_down_proj": ("down_proj",),
+}
+EXPECTED_LORA_CONTEXTS = {
+    "q_proj": ("attention",),
+    "k_proj": ("attention",),
+    "v_proj": ("attention",),
+    "o_proj": ("attention",),
+    "gate_proj": ("mlp",),
+    "up_proj": ("mlp",),
+    "down_proj": ("mlp",),
+}
 
 
 class FableProbeError(ValueError):
@@ -1303,6 +1332,453 @@ def write_o_proj_ownership_report(
     return json_path, md_path
 
 
+def read_safetensors_header(path: Path) -> dict[str, Any]:
+    with path.open("rb") as handle:
+        raw_length = handle.read(8)
+        if len(raw_length) != 8:
+            raise FableProbeError(f"{path} is too small to be a safetensors file")
+        (header_length,) = struct.unpack("<Q", raw_length)
+        header_bytes = handle.read(header_length)
+        if len(header_bytes) != header_length:
+            raise FableProbeError(f"{path} has a truncated safetensors header")
+    try:
+        header = json.loads(header_bytes.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise FableProbeError(f"{path} has an invalid safetensors header") from exc
+    if not isinstance(header, dict):
+        raise FableProbeError(f"{path} safetensors header is not an object")
+    return header
+
+
+def safetensor_manifest_from_header(header: dict[str, Any]) -> list[dict[str, Any]]:
+    manifest: list[dict[str, Any]] = []
+    for key, value in sorted(header.items()):
+        if key == "__metadata__":
+            continue
+        if not isinstance(value, dict):
+            raise FableProbeError(f"safetensors entry {key} is not an object")
+        shape = value.get("shape")
+        offsets = value.get("data_offsets")
+        if not isinstance(shape, list) or not all(isinstance(item, int) for item in shape):
+            raise FableProbeError(f"safetensors entry {key} has invalid shape")
+        if (
+            not isinstance(offsets, list)
+            or len(offsets) != 2
+            or not all(isinstance(item, int) for item in offsets)
+        ):
+            raise FableProbeError(f"safetensors entry {key} has invalid data offsets")
+        manifest.append(
+            {
+                "key": key,
+                "dtype": str(value.get("dtype")),
+                "shape": shape,
+                "dataOffsets": offsets,
+                "bytes": offsets[1] - offsets[0],
+            }
+        )
+    return manifest
+
+
+def collect_lora_pairs(manifest: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    pairs: dict[str, dict[str, Any]] = {}
+    for tensor in manifest:
+        key = tensor["key"]
+        match = LORA_KEY_RE.match(key)
+        if not match:
+            continue
+        module_path = match.group("module")
+        side = match.group("side")
+        target = _target_from_module_path(module_path)
+        if target is None:
+            continue
+        layer_match = LAYER_RE.search(module_path)
+        module = pairs.setdefault(
+            module_path,
+            {
+                "module": module_path,
+                "target": target,
+                "layer": int(layer_match.group(1)) if layer_match else None,
+                "context": _lora_context(module_path),
+                "loraA": None,
+                "loraB": None,
+            },
+        )
+        module[f"lora{side}"] = {
+            "key": key,
+            "dtype": tensor["dtype"],
+            "shape": tensor["shape"],
+            "bytes": tensor["bytes"],
+        }
+    return pairs
+
+
+def build_transform_smoke_report(
+    *,
+    adapter_path: Path,
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    created_at = created_at or datetime.now(UTC)
+    header = read_safetensors_header(adapter_path)
+    manifest = safetensor_manifest_from_header(header)
+    pairs = collect_lora_pairs(manifest)
+    target_summaries = _summarize_lora_targets(pairs)
+    family_summaries = _summarize_packed_families(target_summaries)
+    blockers = [
+        blocker
+        for family in family_summaries.values()
+        for blocker in family["blockers"]
+    ]
+    if blockers:
+        status = (
+            "blocked_adapter_config_payload_mismatch"
+            if _has_config_payload_mismatch(blockers)
+            else "blocked_adapter_shape_manifest_incomplete"
+        )
+        next_step = (
+            "map_actual_adapter_payload_contexts_or_pivot_canonical_runtime"
+            if status == "blocked_adapter_config_payload_mismatch"
+            else "fix_or_reinspect_adapter_shape_manifest"
+        )
+    else:
+        status = "shape_manifest_ready_for_transform_writer"
+        next_step = "implement_actual_packed_lora_delta_writer"
+
+    return {
+        "schema": FABLE_TRANSFORM_SMOKE_SCHEMA,
+        "createdAt": created_at.isoformat().replace("+00:00", "Z"),
+        "issue": TRANSFORM_SMOKE_ISSUE_URL,
+        "dependsOn": [OPROJ_ISSUE_URL],
+        "profileRef": PROFILE_REF,
+        "status": status,
+        "adapter": {
+            "path": str(adapter_path),
+            "fileBytes": adapter_path.stat().st_size,
+            "tensorCount": len(manifest),
+            "loraModuleCount": len(pairs),
+            "tensorValuesRead": False,
+            "headerOnly": True,
+        },
+        "targets": target_summaries,
+        "packedFamilies": family_summaries,
+        "blockers": blockers,
+        "decision": {
+            "status": status,
+            "canWritePackedDeltaNow": False,
+            "canImplementPackedDeltaWriter": not blockers,
+            "canRouteKhalaGeneralTraffic": False,
+            "canExposePublicAliases": False,
+            "canExposeMppPublicSale": False,
+            "nextStep": next_step,
+        },
+        "publicSafety": {
+            "containsSecrets": False,
+            "containsPrompts": False,
+            "containsResponses": False,
+            "containsWeights": False,
+            "containsTensorValues": False,
+            "containsHiddenReasoning": False,
+            "containsExploitPayloads": False,
+            "containsTargetDetails": False,
+        },
+    }
+
+
+def _target_from_module_path(module_path: str) -> str | None:
+    segments = module_path.split(".")
+    for target in FABLE_LORA_TARGETS:
+        if target in segments:
+            return target
+    return None
+
+
+def _summarize_lora_targets(pairs: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    summaries: dict[str, Any] = {}
+    for target in FABLE_LORA_TARGETS:
+        modules = [
+            module
+            for module in sorted(pairs.values(), key=lambda item: item["module"])
+            if module["target"] == target
+        ]
+        complete = [module for module in modules if module["loraA"] and module["loraB"]]
+        bad_shape = [
+            module["module"]
+            for module in complete
+            if not _lora_shapes_compatible(module["loraA"]["shape"], module["loraB"]["shape"])
+        ]
+        context_counts = {
+            context: sum(1 for module in modules if module["context"] == context)
+            for context in sorted({module["context"] for module in modules})
+        }
+        unsupported_contexts = [
+            module["module"]
+            for module in modules
+            if module["context"] not in EXPECTED_LORA_CONTEXTS[target]
+        ]
+        ranks = sorted(
+            {
+                module["loraA"]["shape"][0]
+                for module in complete
+                if len(module["loraA"]["shape"]) == 2
+            }
+        )
+        summaries[target] = {
+            "moduleCount": len(modules),
+            "completePairCount": len(complete),
+            "missingPairCount": len(modules) - len(complete),
+            "ranks": ranks,
+            "contextCounts": context_counts,
+            "layers": sorted(
+                {
+                    module["layer"]
+                    for module in modules
+                    if module["layer"] is not None
+                }
+            ),
+            "shapeCompatible": not bad_shape,
+            "badShapeModules": bad_shape,
+            "unsupportedContextModules": unsupported_contexts,
+            "sampleModules": [module["module"] for module in modules[:3]],
+        }
+    return summaries
+
+
+def _lora_shapes_compatible(shape_a: list[int], shape_b: list[int]) -> bool:
+    return (
+        len(shape_a) == 2
+        and len(shape_b) == 2
+        and shape_a[0] > 0
+        and shape_b[1] > 0
+        and shape_a[0] == shape_b[1]
+    )
+
+
+def _summarize_packed_families(target_summaries: dict[str, Any]) -> dict[str, Any]:
+    families: dict[str, Any] = {}
+    for family, targets in FABLE_PACKED_FAMILIES.items():
+        blockers = []
+        layers_by_target = {
+            target: set(target_summaries[target]["layers"])
+            for target in targets
+        }
+        for target in targets:
+            summary = target_summaries[target]
+            if summary["completePairCount"] == 0:
+                blockers.append(
+                    {
+                        "code": "missing_lora_pairs",
+                        "target": target,
+                        "message": f"No complete LoRA A/B pairs found for {target}.",
+                    }
+                )
+            if summary["missingPairCount"]:
+                blockers.append(
+                    {
+                        "code": "incomplete_lora_pairs",
+                        "target": target,
+                        "message": f"Incomplete LoRA A/B pairs found for {target}.",
+                    }
+                )
+            if not summary["shapeCompatible"]:
+                blockers.append(
+                    {
+                        "code": "incompatible_lora_shapes",
+                        "target": target,
+                        "message": f"LoRA A/B rank dimensions do not match for {target}.",
+                    }
+                )
+            if summary["unsupportedContextModules"]:
+                blockers.append(
+                    {
+                        "code": "unsupported_lora_context",
+                        "target": target,
+                        "message": (
+                            f"{target} appears in unsupported adapter contexts for "
+                            "the current packed-family transform smoke."
+                        ),
+                    }
+                )
+        if len(targets) > 1:
+            layer_sets = [layers for layers in layers_by_target.values() if layers]
+            if layer_sets and any(layers != layer_sets[0] for layers in layer_sets):
+                blockers.append(
+                    {
+                        "code": "target_layer_sets_differ",
+                        "target": ",".join(targets),
+                        "message": (
+                            "Packed-family targets are present on different layer sets."
+                        ),
+                    }
+                )
+        families[family] = {
+            "targets": list(targets),
+            "complete": not blockers,
+            "layers": sorted(set().union(*layers_by_target.values()))
+            if layers_by_target
+            else [],
+            "blockers": blockers,
+        }
+    return families
+
+
+def _has_config_payload_mismatch(blockers: list[dict[str, str]]) -> bool:
+    mismatch_targets = {"q_proj", "k_proj", "v_proj", "o_proj"}
+    return any(
+        blocker["code"] == "missing_lora_pairs" and blocker["target"] in mismatch_targets
+        for blocker in blockers
+    ) or any(blocker["code"] == "unsupported_lora_context" for blocker in blockers)
+
+
+def _lora_context(module_path: str) -> str:
+    if ".mlp." in module_path:
+        return "mlp"
+    if ".self_attn.compressor.indexer." in module_path:
+        return "attention_compressor_indexer"
+    if ".self_attn.compressor." in module_path:
+        return "attention_compressor"
+    if ".self_attn." in module_path:
+        return "attention"
+    return "unknown"
+
+
+def render_transform_smoke_markdown(report: dict[str, Any]) -> str:
+    if report["status"] == "blocked_adapter_config_payload_mismatch":
+        interpretation = """This smoke inspects only safetensors header metadata: tensor keys, dtypes,
+shapes, and byte ranges. It does not record tensor values and it does not write
+transformed model artifacts.
+
+The adapter payload does not match the module-family assumptions needed by the
+current packed-LoRA transform plan. The next step is to map the actual adapter
+payload contexts against the runtime, especially attention-compressor and
+shared-expert MLP targets, or pivot to a canonical runtime that can load the
+adapter as published."""
+    elif report["status"] == "shape_manifest_ready_for_transform_writer":
+        interpretation = """This smoke inspects only safetensors header metadata: tensor keys, dtypes,
+shapes, and byte ranges. It does not record tensor values and it does not write
+transformed model artifacts.
+
+The shape manifest is complete enough to implement the actual packed delta
+writer for `fused_wqa_wkv`, `gate_up_proj`, and the kernel/provider-owned
+`o_proj` path, then rerun a private no-public-ingress load canary."""
+    else:
+        interpretation = """This smoke inspects only safetensors header metadata: tensor keys, dtypes,
+shapes, and byte ranges. It does not record tensor values and it does not write
+transformed model artifacts.
+
+The manifest is incomplete or internally inconsistent. Reinspect the adapter
+payload and fix the shape manifest before implementing a packed delta writer."""
+    target_rows = [
+        "| Target | Modules | Complete pairs | Contexts | Ranks | Layers | Shape compatible |",
+        "| --- | ---: | ---: | --- | --- | --- | --- |",
+    ]
+    for target, summary in report["targets"].items():
+        contexts = ", ".join(
+            f"{context}:{count}"
+            for context, count in sorted(summary["contextCounts"].items())
+        )
+        target_rows.append(
+            "| `{target}` | {modules} | {pairs} | `{contexts}` | `{ranks}` | `{layers}` | `{shape}` |".format(
+                target=target,
+                modules=summary["moduleCount"],
+                pairs=summary["completePairCount"],
+                contexts=contexts or "none",
+                ranks=", ".join(str(rank) for rank in summary["ranks"]) or "none",
+                layers=", ".join(str(layer) for layer in summary["layers"]) or "none",
+                shape=str(summary["shapeCompatible"]).lower(),
+            )
+        )
+    family_rows = [
+        "| Family | Targets | Complete | Layers | Blockers |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for family, summary in report["packedFamilies"].items():
+        blocker_codes = ", ".join(blocker["code"] for blocker in summary["blockers"])
+        family_rows.append(
+            "| `{family}` | `{targets}` | `{complete}` | `{layers}` | {blockers} |".format(
+                family=family,
+                targets=", ".join(summary["targets"]),
+                complete=str(summary["complete"]).lower(),
+                layers=", ".join(str(layer) for layer in summary["layers"]) or "none",
+                blockers=blocker_codes or "-",
+            )
+        )
+    target_table = "\n".join(target_rows)
+    family_table = "\n".join(family_rows)
+    blocker_lines = "\n".join(
+        f"- `{item['code']}` on `{item['target']}`: {item['message']}"
+        for item in report["blockers"]
+    ) or "- None"
+
+    return f"""# DeepSeek-V4-Fable packed-LoRA transform smoke
+
+Date: {report["createdAt"]}
+
+Issue: {report["issue"]}
+
+Depends on: {", ".join(report["dependsOn"])}
+
+Profile: `{report["profileRef"]}`
+
+Status: `{report["status"]}`
+
+## Decision
+
+- Packed delta can be written now: `{str(report["decision"]["canWritePackedDeltaNow"]).lower()}`
+- Packed delta writer can be implemented from this manifest: `{str(report["decision"]["canImplementPackedDeltaWriter"]).lower()}`
+- Khala general route allowed: `{str(report["decision"]["canRouteKhalaGeneralTraffic"]).lower()}`
+- Public aliases allowed: `{str(report["decision"]["canExposePublicAliases"]).lower()}`
+- MPP public sale allowed: `{str(report["decision"]["canExposeMppPublicSale"]).lower()}`
+- Next step: `{report["decision"]["nextStep"]}`
+
+## Adapter inspection
+
+- Adapter path: `{report["adapter"]["path"]}`
+- Adapter file bytes: `{report["adapter"]["fileBytes"]}`
+- Tensor count: `{report["adapter"]["tensorCount"]}`
+- LoRA module count: `{report["adapter"]["loraModuleCount"]}`
+- Header-only inspection: `{str(report["adapter"]["headerOnly"]).lower()}`
+- Tensor values read: `{str(report["adapter"]["tensorValuesRead"]).lower()}`
+
+## Target shape summary
+
+{target_table}
+
+## Packed family summary
+
+{family_table}
+
+## Blockers
+
+{blocker_lines}
+
+## Interpretation
+
+{interpretation}
+
+## Public safety
+
+- Contains secrets: false
+- Contains prompts: false
+- Contains responses: false
+- Contains weights: false
+- Contains tensor values: false
+- Contains hidden reasoning: false
+- Contains exploit payloads: false
+- Contains target details: false
+"""
+
+
+def write_transform_smoke_report(
+    report: dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "deepseek-v4-fable-transform-smoke.json"
+    md_path = output_dir / "deepseek-v4-fable-transform-smoke.md"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    md_path.write_text(render_transform_smoke_markdown(report))
+    return json_path, md_path
+
+
 def _hf_resolve_url(repo: str, revision: str, filename: str) -> str:
     return f"https://huggingface.co/{repo}/resolve/{revision}/{filename}"
 
@@ -1502,6 +1978,29 @@ def o_proj_ownership_main(argv: list[str] | None = None) -> int:
     json_path, md_path = write_o_proj_ownership_report(report, args.output_dir)
     print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
     return 0 if report["decision"]["canProceedToPackedLoraTransformSmoke"] else 2
+
+
+def transform_smoke_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Emit a public-safe DeepSeek-V4-Fable packed-LoRA transform smoke."
+    )
+    parser.add_argument(
+        "--adapter-path",
+        type=Path,
+        required=True,
+        help="Local Fable adapter_model.safetensors path in ignored evidence space.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(".hydralisk/deepseek-v4-fable-transform-smoke"),
+    )
+    args = parser.parse_args(argv)
+
+    report = build_transform_smoke_report(adapter_path=args.adapter_path)
+    json_path, md_path = write_transform_smoke_report(report, args.output_dir)
+    print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
+    return 0 if report["decision"]["canImplementPackedDeltaWriter"] else 2
 
 
 if __name__ == "__main__":  # pragma: no cover
