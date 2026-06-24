@@ -79,6 +79,9 @@ B12x clamp and expert-shard evidence:
 B12x local expert-shard remap evidence:
 [`docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md`](evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md)
 
+B12x local-shard reference fixture evidence:
+[`docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md`](evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -644,6 +647,23 @@ stock flag trial; it is a correctness and integration problem:
    IDs and supplies resident local-shard weights;
 3. verify a nonzero tiny MoE fixture against a PyTorch reference before any
    full-model retry.
+
+The local reference fixture now exists in Hydralisk as
+`hydralisk/admission/deepseek_v4_moe.py`. It is intentionally pure Python and
+small: no Torch dependency, no model weights, no prompts, and no GPU required.
+It codifies the next correctness boundary:
+
+```text
+gate = clamp(gate, max=limit)
+up = clamp(up, min=-limit, max=limit)
+output = silu(gate) * up
+```
+
+The fixture also maps global expert IDs into a rank-local interval, skips
+nonlocal experts, and accumulates routed local experts on a nonzero deterministic
+toy MoE. This means the next GPU issue has a pass/fail target: a B12x wrapper,
+shim, or upgraded FlashInfer path must match the reference on the tiny local
+shard before Hydralisk retries DeepSeek-V4 weights.
 
 ## Promotion boundary
 

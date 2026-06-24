@@ -125,7 +125,9 @@ Initial targets:
   shard when global expert IDs are remapped to a local 32-expert domain
   (`globalNumExperts=256`, `kernelNumExperts=32`, `localNumExperts=32`). That
   leaves clamp semantics plus dispatcher/offload correctness as the next real
-  implementation step.
+  implementation step. Hydralisk now has a pure-Python local-shard reference
+  fixture for that boundary: DeepSeek/vLLM SwiGLU clamp, global-to-local expert
+  remap, nonlocal expert skipping, and deterministic nonzero routed output.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -172,6 +174,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-full-shape-g4.md`](docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-full-shape-g4.md)
 - [`docs/evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md)
 - [`docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md`](docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

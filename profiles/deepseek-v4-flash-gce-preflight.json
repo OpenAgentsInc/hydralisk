@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "blocked_b12x_missing_clamp_and_dispatcher_correctness_on_wide_g4_sm120",
+  "status": "blocked_b12x_gpu_clamp_surface_and_dispatcher_integration_on_wide_g4_sm120",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -142,7 +142,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/25",
       "https://github.com/OpenAgentsInc/hydralisk/issues/26",
       "https://github.com/OpenAgentsInc/hydralisk/issues/27",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/28"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/28",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/29"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -167,7 +168,8 @@
       "docs/evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md",
       "docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-full-shape-g4.md",
       "docs/evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md",
-      "docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md"
+      "docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md",
+      "docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -989,6 +991,33 @@
       "nextProbe": "test a newer FlashInfer/vLLM B12x wrapper or implement a Hydralisk-local dispatcher shim with a nonzero PyTorch reference correctness fixture for local-shard remap plus clamp semantics"
     }
   },
+  "deepseekB12xLocalShardReferenceFixture": {
+    "status": "reference_fixture_added",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/29",
+    "module": "hydralisk/admission/deepseek_v4_moe.py",
+    "tests": "tests/test_deepseek_v4_moe.py",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md",
+    "semantics": {
+      "swigluLimit": "gate=max-clamped to limit, up=clamped to [-limit, limit], output=silu(gate)*up",
+      "expertRouting": "global expert IDs are mapped into a rank-owned local interval; nonlocal experts are skipped",
+      "w1Convention": "first half of GEMM1 output is linear/up, second half is gate"
+    },
+    "publicSafety": {
+      "loadsModelWeights": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "requiresGpu": false
+    },
+    "validation": {
+      "focused": ".venv/bin/python -m pytest tests/test_deepseek_v4_moe.py -q",
+      "focusedResult": "4 passed"
+    },
+    "blocker": {
+      "stage": "gpu_b12x_clamp_surface_or_wrapper_upgrade",
+      "message": "The local correctness target now exists. The next GPU path must prove a B12x wrapper or shim matches this reference on nonzero local-shard inputs with clamp semantics before any full-model retry.",
+      "nextProbe": "test newer FlashInfer/vLLM B12x wrapper support or implement a Hydralisk-local GPU shim and compare tiny outputs against the reference fixture"
+    }
+  },
   "promotionGates": [
     "exact model revision or local artifact digest pinned",
     "engine version and container image digest pinned",
@@ -999,8 +1028,8 @@
     "public-safe Hydralisk receipt is emitted"
   ],
   "recommendation": {
-    "nextLane": "b12x_clamp_plus_dispatcher_correctness_sm120",
-    "why": "Google admitted the two-card and eight-card G4 lanes, and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects unsupported MoE backends for this G4 configuration unless the backend implements the model's swiglu_limit=10.0 clamp. A derived-image SM120 gate patch advances the FlashInfer TRTLLM NVFP4 path into vLLM startup. Cloud NAT fixes private outbound artifact access without restoring a VM external IP, and HF_HUB_DISABLE_XET=1 avoids the prior transfer wedge. Forcing --linear-backend triton with the E8M0 upcast patch clears the dense FP8 CUTLASS blocker. The provider-image o_proj patch confirms the valid two-card TRTLLM path is blocked by DeepGEMM scale-factor layout, and an invalid zero-o_proj load-only bypass exposes a second blocker in FlashInfer TRTLLM NVFP4 MoE GEMM on the SM100-family kernel path. The synthetic FlashInfer TRTLLM repro reproduces that MoE GEMM failure without model weights, Hugging Face transfer, vLLM scheduling, prompts, or o_proj. The B12x probe shows a better SM120 synthetic kernel path when all experts are local, but the wide-G4 full-model attempt proved that current vLLM rejects B12x for DeepSeek-V4 because B12x does not apply the required SwiGLU clamp. The clamp-backend wide-G4 probe removes flashinfer_cutlass for the same clamp reason and confirms flashinfer_trtllm is the remaining credible stock-ish backend on RTX PRO 6000. The explicit bf16_einsum o_proj fallback moves the full model past DeepGEMM o_proj on all eight ranks. The exact full-model MoE shape then fails synthetically without weights or vLLM scheduling, proving stock FlashInfer TRTLLM NVFP4 MoE is blocked on SM120: trtllm_batched_gemm_runner.cu:286, numBatches=32, GemmMNK=512 4096 4096, clamped SwiGLU SM100-family kernel. The B12x viability probe shows B12x is still the promising SM120 kernel direction, but current FlashInfer 0.6.12 exposes no swiglu_limit clamp surface and rejects the exact direct 32/256 expert-parallel call. The local-shard remap probe then proves B12x can run the exact per-rank shard when global expert IDs are remapped to a local 32-expert kernel domain. Therefore the next G4 work is narrower: implement or upgrade to B12x clamp semantics, then correctness-test a dispatcher/offload shim that maps global experts to local IDs before any full-model retry.",
+    "nextLane": "gpu_b12x_clamp_surface_or_wrapper_upgrade_sm120",
+    "why": "Google admitted the two-card and eight-card G4 lanes, and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects unsupported MoE backends for this G4 configuration unless the backend implements the model's swiglu_limit=10.0 clamp. A derived-image SM120 gate patch advances the FlashInfer TRTLLM NVFP4 path into vLLM startup. Cloud NAT fixes private outbound artifact access without restoring a VM external IP, and HF_HUB_DISABLE_XET=1 avoids the prior transfer wedge. Forcing --linear-backend triton with the E8M0 upcast patch clears the dense FP8 CUTLASS blocker. The provider-image o_proj patch confirms the valid two-card TRTLLM path is blocked by DeepGEMM scale-factor layout, and an invalid zero-o_proj load-only bypass exposes a second blocker in FlashInfer TRTLLM NVFP4 MoE GEMM on the SM100-family kernel path. The synthetic FlashInfer TRTLLM repro reproduces that MoE GEMM failure without model weights, Hugging Face transfer, vLLM scheduling, prompts, or o_proj. The B12x probe shows a better SM120 synthetic kernel path when all experts are local, but the wide-G4 full-model attempt proved that current vLLM rejects B12x for DeepSeek-V4 because B12x does not apply the required SwiGLU clamp. The clamp-backend wide-G4 probe removes flashinfer_cutlass for the same clamp reason and confirms flashinfer_trtllm is the remaining credible stock-ish backend on RTX PRO 6000. The explicit bf16_einsum o_proj fallback moves the full model past DeepGEMM o_proj on all eight ranks. The exact full-model MoE shape then fails synthetically without weights or vLLM scheduling, proving stock FlashInfer TRTLLM NVFP4 MoE is blocked on SM120: trtllm_batched_gemm_runner.cu:286, numBatches=32, GemmMNK=512 4096 4096, clamped SwiGLU SM100-family kernel. The B12x viability probe shows B12x is still the promising SM120 kernel direction, but current FlashInfer 0.6.12 exposes no swiglu_limit clamp surface and rejects the exact direct 32/256 expert-parallel call. The local-shard remap probe then proves B12x can run the exact per-rank shard when global expert IDs are remapped to a local 32-expert kernel domain. Hydralisk now has a pure-Python nonzero reference fixture for DeepSeek clamp plus local expert remap semantics. Therefore the next G4 work is to test or build a GPU B12x clamp surface and compare a tiny local-shard output against that reference before any full-model retry.",
     "publicClaim": "none"
   },
   "publicSafety": {
