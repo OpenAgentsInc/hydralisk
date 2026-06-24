@@ -220,12 +220,32 @@
     "privateLoadCanaryAllowed": true,
     "publicServingAllowed": false
   },
+  "mergedCheckpointCanary": {
+    "status": "blocked_runtime_loader_backend_selection",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/80",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-merged-canary.md",
+    "targetInstance": "hydralisk-deepseek-v4-b12x-g4-8g-b-20260624155352",
+    "zone": "us-central1-b",
+    "targetPath": "/opt/hydralisk/models/deepseek-v4-fable-merged",
+    "containerImage": "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:20260624v3vector2",
+    "tokenizer": "nvidia/DeepSeek-V4-Flash-NVFP4",
+    "tokenizerRevision": "e3cd60e7de98e9867116860d522499a728de1cf9",
+    "moeBackend": "flashinfer_b12x",
+    "ready": false,
+    "modelsEndpointReached": false,
+    "generationAttempted": false,
+    "ttftMeasured": false,
+    "decodeTokensPerSecondMeasured": false,
+    "blockerClass": "runtime_loader_backend_selection",
+    "blocker": "vLLM selected its MXFP4 MoE backend selector for the staged Fable checkpoint and rejected moe_backend='flashinfer_b12x'.",
+    "publicServingAllowed": false
+  },
   "finalDecision": {
     "status": "rejected_runtime_unstable",
     "admittedPrivateAuthorizedSecurityLabCanary": false,
     "publicAliasesAllowed": false,
     "khalaGeneralRouteAllowed": false,
     "mppPublicSaleAllowed": false,
-    "nextStep": "run_fable_merged_checkpoint_private_g4_canary"
+    "nextStep": "probe_supported_fable_moe_backend_or_build_mxfp4_b12x_support"
   }
 }

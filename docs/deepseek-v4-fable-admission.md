@@ -42,6 +42,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-staging.md`](evidence/2026-06-24-deepseek-v4-fable-merged-staging.md)
 - Merged-checkpoint staging manifest:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-staging-manifest.tsv`](evidence/2026-06-24-deepseek-v4-fable-merged-staging-manifest.tsv)
+- Merged-checkpoint private canary:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-canary.md`](evidence/2026-06-24-deepseek-v4-fable-merged-canary.md)
 
 ## Summary
 
@@ -596,6 +598,40 @@ Evidence:
 Manifest:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-staging-manifest.tsv`](evidence/2026-06-24-deepseek-v4-fable-merged-staging-manifest.tsv)
 
+## Issue #80 result
+
+Issue #80 ran a private, localhost-only canary against the staged merged
+checkpoint using the current DeepSeek-V4 G4 image/runtime envelope.
+
+The result is `blocked_runtime_loader_backend_selection`.
+
+The canary used:
+
+- model path: `/opt/hydralisk/models/deepseek-v4-fable-merged`;
+- image:
+  `hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:20260624v3vector2`;
+- tokenizer: `nvidia/DeepSeek-V4-Flash-NVFP4`;
+- MoE backend: `flashinfer_b12x`;
+- host binding: `127.0.0.1:8000`;
+- tensor parallel size: `8`.
+
+It did not reach `/v1/models`, did not attempt generation, and produced no
+TTFT or tokens/sec measurement. vLLM failed during worker/model construction:
+
+```text
+ValueError: moe_backend='flashinfer_b12x' is not supported for MXFP4 MoE.
+```
+
+The staged checkpoint config reports FP8 metadata
+(`quant_method=fp8`, `fmt=e4m3`, `scale_fmt=ue8m0`), but the installed vLLM
+DeepSeek-V4 quantization path maps this MoE construction through its MXFP4
+backend selector and rejects the B12x backend. This classifies the blocker as
+runtime loader/backend selection, not storage, memory, NCCL/topology, or
+quality/latency.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-merged-canary.md`](evidence/2026-06-24-deepseek-v4-fable-merged-canary.md)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
@@ -612,10 +648,13 @@ SHA. The next honest path is either to obtain a nonzero adapter artifact or
 intentionally evaluate the full 47-shard merged checkpoint path before a
 semantic canary. The merged-checkpoint G4 preflight says staging is feasible
 but high-risk because it is an FP8 merged artifact on a patched NVFP4 G4 lane,
-and the full checkpoint is now staged with verified hashes. The next step is a
-private-only load/generation canary. Even if a future probe succeeds, Fable
-should remain an authorized-security research capability, not a general Khala
-model and not a public inference product.
+and the full checkpoint is now staged with verified hashes. The first
+private-only load canary fails before readiness because the current B12x G4
+runtime envelope is not accepted by vLLM's MoE backend selector for this
+checkpoint. The next step is a supported-backend probe, likely `triton` first
+for correctness, or B12x support for this quantization path. Even if a future
+probe succeeds, Fable should remain an authorized-security research capability,
+not a general Khala model and not a public inference product.
 
 ## Public safety
 
