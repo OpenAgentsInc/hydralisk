@@ -1718,6 +1718,24 @@ def test_o_proj_rhs_scale_patch_script_is_public_safe_and_target_scoped(
     assert "fresh hydralisk-deepseek-v4" in rejected.stderr
 
 
+def test_khala_readiness_probe_is_public_safe_and_metric_bearing() -> None:
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts/probe-deepseek-v4-khala-readiness-gce.sh"
+    ).read_text()
+
+    assert "BENCH_PROMPT_FILE" in script
+    assert "BENCH_PROMPT_B64" in script
+    assert "promptSha256" in script
+    assert "containsPromptText" in script
+    assert "containsResponseText" in script
+    assert "ttftP95Seconds" in script
+    assert "decodeTokensPerSecondP50" in script
+    assert "khalaReadinessGatePassed" in script
+    assert "Generate a long" not in script
+    assert "Reply with READY" not in script
+
+
 def _write_tiny_gguf(path: Path) -> None:
     entries = [
         ("general.architecture", 8, "deepseek4"),

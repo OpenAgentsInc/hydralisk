@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "deepseek_v4_nvfp4_8x_g4_vector_gather_warm_timing_gate_candidate",
+  "status": "deepseek_v4_nvfp4_8x_g4_khala_timing_gate_passed_quality_pending",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -175,7 +175,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/58",
       "https://github.com/OpenAgentsInc/hydralisk/issues/59",
       "https://github.com/OpenAgentsInc/hydralisk/issues/60",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/61"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/61",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/62"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -233,7 +234,8 @@
       "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-g4-live-smoke.md",
       "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md",
-      "docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md"
+      "docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md",
+      "docs/evidence/2026-06-24-deepseek-v4-khala-readiness-g4-gate.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -2862,6 +2864,73 @@
       "khalaReady": false,
       "why": "Warm single-request latency is now plausible, but startup, first warmup, repeated-run stability, quality, concurrency, long context, and the SWA-only sparse-indexer bypass remain ungated.",
       "nextProbe": "run a resident-server readiness harness with warmup, repeated streaming requests, p50/p95 TTFT and decode throughput, and a small public-safe quality gate without committing raw prompts or responses"
+    },
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekV4Issue62KhalaReadinessTimingGate": {
+    "status": "passed_resident_server_timing_gate_quality_pending",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/62",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-khala-readiness-g4-gate.md",
+    "script": "scripts/probe-deepseek-v4-khala-readiness-gce.sh",
+    "generatedReport": ".hydralisk/deepseek-v4-khala-readiness-20260624issue62gate1/readiness-report.md",
+    "generatedJson": ".hydralisk/deepseek-v4-khala-readiness-20260624issue62gate1/readiness-public.json",
+    "remoteLogDir": "/var/log/hydralisk/deepseek-khala-readiness-20260624issue62gate1",
+    "target": {
+      "instance": "hydralisk-deepseek-v4-b12x-g4-8g-b-20260624155352",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-384",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 8,
+      "provisioningModel": "SPOT",
+      "externalIp": null
+    },
+    "container": {
+      "derivedImage": "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:20260624v3vector2",
+      "derivedImageDigest": "sha256:a43653081fe01ab53901ecdff7415d2d8c40a6ea76b5c923aaff1b0e0e661451"
+    },
+    "promptEvidence": {
+      "promptBytes": 121,
+      "promptSha256": "3b19edc4cddb35982c1558c552341c6cbbdc7e42153d9cc0f2f58ff4fe02bdc5",
+      "promptTextTracked": false,
+      "responseTextTracked": false
+    },
+    "thresholds": {
+      "maxReadySeconds": 180.0,
+      "maxWarmupSeconds": 45.0,
+      "maxTtftP95Seconds": 2.0,
+      "minDecodeTokensPerSecondP50": 8.0,
+      "minEndToEndTokensPerSecondP50": 8.0,
+      "minSuccessfulRequests": 5
+    },
+    "summary": {
+      "khalaReadinessGatePassed": true,
+      "serverStartToReadyWallSeconds": 116,
+      "warmupMaxSeconds": 30.157707,
+      "successfulRequests": 5,
+      "ttftP50Seconds": 0.277751,
+      "ttftP95Seconds": 0.2892222,
+      "decodeTokensPerSecondP50": 11.328077,
+      "decodeTokensPerSecondP95": 11.3945372,
+      "endToEndTokensPerSecondP50": 10.616448,
+      "endToEndTokensPerSecondP95": 10.6470746
+    },
+    "remainingGatesBeforeKhalaServingClaim": [
+      "small public-safe quality gate",
+      "longer output shape",
+      "longer context within or above current max_model_len=2048",
+      "concurrency greater than max_num_seqs=1",
+      "restore or explicitly qualify the SWA-only sparse-indexer bypass"
+    ],
+    "servingBoundary": {
+      "khalaIntegrationCandidate": true,
+      "khalaReadyToServe": false,
+      "why": "The resident timing gate passed for repeated warmed short streaming requests, but quality, longer outputs/context, concurrency, and sparse-indexer correctness remain ungated."
     },
     "publicSafety": {
       "containsSecrets": false,

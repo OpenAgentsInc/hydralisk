@@ -139,6 +139,9 @@ DeepSeek V4 issue #60 8 x G4 MVP smoke evidence:
 DeepSeek V4 issue #61 vector-gather G4 timing evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md`](evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md)
 
+DeepSeek V4 issue #62 Khala readiness timing gate evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-khala-readiness-g4-gate.md`](evidence/2026-06-24-deepseek-v4-khala-readiness-g4-gate.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -1123,6 +1126,14 @@ streaming from 13.115 s TTFT / 0.885 tok/s decode to 0.317 s TTFT /
 Khala serving claim: startup is still roughly 116 s, first warmup is roughly
 30 s, `max_model_len=2048`, `max_num_seqs=1`, and no repeated-run stability,
 quality, concurrency, or long-context gate has passed.
+
+Issue #62 added a resident-server timing gate and ran it live against the same
+v3 image. With one warmup and five repeated 32-token streaming requests, the
+gate passed: start-to-ready 116 s, warmup 30.158 s, TTFT p95 0.289 s,
+decode p50 11.328 tok/s, and end-to-end p50 10.616 tok/s. This is enough to
+justify continuing toward a Khala integration candidate. It is still not a
+serving claim: answer quality, longer outputs, longer context, concurrency,
+and the SWA-only sparse-indexer bypass remain open gates.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable

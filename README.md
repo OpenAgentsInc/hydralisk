@@ -230,6 +230,11 @@ Initial targets:
   `0.89 tok/s`. That makes it worth a Khala readiness gate, but not a Khala
   serving promise: startup, first warmup, concurrency, long context, and quality
   still need to pass.
+  Issue #62 added that first resident-server timing gate. The v3 image passed
+  five repeated warmed streaming requests with `0.289s` TTFT p95 and
+  `11.3 tok/s` decode p50. DeepSeek V4 Flash is now a Khala integration
+  candidate, but quality, longer output/context, concurrency, and the SWA-only
+  sparse-indexer bypass still block a serving claim.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -290,6 +295,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md`](docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md`](docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-khala-readiness-g4-gate.md`](docs/evidence/2026-06-24-deepseek-v4-khala-readiness-g4-gate.md)
 - [`docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md`](docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md)
 - [`docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md`](docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md`](docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md)
