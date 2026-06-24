@@ -22,6 +22,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-authorized-security-policy.md`](evidence/2026-06-24-deepseek-v4-fable-authorized-security-policy.md)
 - Lab eval decision evidence:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-lab-eval-decision.md`](evidence/2026-06-24-deepseek-v4-fable-lab-eval-decision.md)
+- Packed-runtime retargeting evidence:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md`](evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md)
 
 ## Summary
 
@@ -279,16 +281,47 @@ public alias, or an MPP/public-sale product.
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-lab-eval-decision.md`](evidence/2026-06-24-deepseek-v4-fable-lab-eval-decision.md)
 
+## Issue #71 result
+
+Issue #71 added a public-safe packed-runtime retargeting planner. The planner
+confirms the next path is not a normal PEFT adapter load. On the current G4
+runtime:
+
+| Fable target | Current status |
+| --- | --- |
+| `down_proj` | directly attachable by suffix |
+| `q_proj`, `k_proj`, `v_proj` | require packed attention transform into `fused_wqa_wkv` |
+| `gate_proj`, `up_proj` | require paired SwiGLU transform into `gate_up_proj` |
+| `o_proj` | blocked pending source-level attention output projection ownership |
+
+So the shortest honest path is:
+
+1. Prove where `o_proj` lives in the NVIDIA runtime source or live module
+   inventory.
+2. Implement a packed-LoRA delta transform that can repack Fable adapter
+   tensors into `fused_wqa_wkv`, `gate_up_proj`, and the proven `o_proj`
+   owner.
+3. Run a private no-public-ingress transform smoke and then rerun #68/#70.
+
+The fallback path is a canonical `DeepSeek-V4-Flash` base runtime probe that
+exposes `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, and
+`down_proj` directly, then reruns admission from scratch. That path may be
+slower or less compatible with the G4 NVFP4 work we already made live, but it
+avoids packed tensor surgery.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md`](evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
 The adapter compatibility probe now rejects the current G4 runtime path before
 load, and the final lab-eval gate rejects the profile because no private load
-canary was admitted. The next useful technical step is an explicit
-adapter-to-packed-runtime mapping, or a different base/runtime path that
-exposes the Fable target module names. Even if a future probe succeeds, Fable
-should remain an authorized-security research capability, not a general Khala
-model and not a public inference product.
+canary was admitted. The next useful technical step is to prove `o_proj`
+ownership and implement a packed-LoRA transform smoke. If that stalls, pivot to
+a canonical base/runtime path that exposes the Fable target module names. Even
+if a future probe succeeds, Fable should remain an authorized-security research
+capability, not a general Khala model and not a public inference product.
 
 ## Public safety
 

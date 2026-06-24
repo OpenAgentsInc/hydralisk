@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 FABLE_SCHEMA = "hydralisk.deepseek-v4-fable.adapter-compatibility.v1"
 FABLE_LOAD_CANARY_SCHEMA = "hydralisk.deepseek-v4-fable.load-canary.v1"
 FABLE_LAB_EVAL_SCHEMA = "hydralisk.deepseek-v4-fable.lab-eval-decision.v1"
+FABLE_RETARGET_SCHEMA = "hydralisk.deepseek-v4-fable.retarget-plan.v1"
 FABLE_REPO = "Chunjiang-Intelligence/DeepSeek-v4-Fable"
 FABLE_REVISION = "999909137c15e0b5539fee887431824fa7cb5b10"
 FABLE_BASE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
@@ -24,6 +25,7 @@ ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/67"
 LOAD_CANARY_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/68"
 POLICY_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/69"
 LAB_EVAL_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/70"
+RETARGET_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/71"
 
 SMALL_METADATA_FILES = (
     "adapter_config.json",
@@ -765,6 +767,304 @@ def write_lab_eval_report(
     return json_path, md_path
 
 
+def build_retarget_plan_report(
+    *,
+    compatibility_report: dict[str, Any],
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    created_at = created_at or datetime.now(UTC)
+    target_matches = {
+        item["target"]: tuple(item.get("matchedRuntimeModules") or ())
+        for item in (compatibility_report.get("targetCompatibility") or {}).get(
+            "matches",
+            [],
+        )
+    }
+    runtime_modules = tuple(
+        str(item)
+        for item in (compatibility_report.get("runtime") or {}).get("moduleNames", [])
+    )
+    targets = tuple((compatibility_report.get("adapter") or {}).get("targetModules", []))
+    classifications = [
+        _classify_retarget_target(
+            str(target),
+            direct_matches=target_matches.get(str(target), ()),
+            runtime_modules=runtime_modules,
+        )
+        for target in targets
+    ]
+    source_inventory_required = [
+        item["target"]
+        for item in classifications
+        if item["status"] == "source_inventory_required"
+    ]
+    packed_required = [
+        item["target"]
+        for item in classifications
+        if item["status"] == "packed_transform_required"
+    ]
+    unknown = [
+        item["target"]
+        for item in classifications
+        if item["status"] == "unmapped_unknown"
+    ]
+
+    if source_inventory_required or unknown:
+        status = "blocked_source_inventory_required"
+        next_step = "prove_attention_output_projection_owner_then_build_packed_lora_transform"
+        primary_path = "packed_runtime_retarget_after_source_inventory"
+    elif packed_required:
+        status = "blocked_packed_transform_implementation_missing"
+        next_step = "implement_packed_lora_tensor_transform_smoke"
+        primary_path = "packed_runtime_retarget"
+    else:
+        status = "ready_for_private_adapter_load_canary"
+        next_step = "rerun_private_adapter_load_canary"
+        primary_path = "direct_peft_adapter_load"
+
+    return {
+        "schema": FABLE_RETARGET_SCHEMA,
+        "createdAt": created_at.isoformat().replace("+00:00", "Z"),
+        "issue": RETARGET_ISSUE_URL,
+        "dependsOn": [ISSUE_URL, LOAD_CANARY_ISSUE_URL, LAB_EVAL_ISSUE_URL],
+        "profileRef": PROFILE_REF,
+        "status": status,
+        "model": compatibility_report.get("model", {}),
+        "compatibility": {
+            "status": compatibility_report.get("status"),
+            "runtimeSource": (compatibility_report.get("runtime") or {}).get("source"),
+            "runtimeModuleCount": len(runtime_modules),
+            "missingTargets": (
+                compatibility_report.get("targetCompatibility") or {}
+            ).get("missingTargets", []),
+        },
+        "retargetPlan": {
+            "primaryPath": primary_path,
+            "fallbackPath": "canonical_base_runtime_feasibility_probe",
+            "targetClassifications": classifications,
+            "packedTransformRequiredTargets": packed_required,
+            "sourceInventoryRequiredTargets": source_inventory_required,
+            "unknownTargets": unknown,
+            "weightsRead": False,
+            "adapterPayloadDownloaded": False,
+            "transformImplemented": False,
+        },
+        "decision": {
+            "status": status,
+            "canAttemptPackedRetargetSmoke": status == "ready_for_private_adapter_load_canary",
+            "canAttemptCanonicalRuntimeProbe": True,
+            "canRouteKhalaGeneralTraffic": False,
+            "canExposePublicAliases": False,
+            "canExposeMppPublicSale": False,
+            "nextStep": next_step,
+        },
+        "publicSafety": {
+            "containsSecrets": False,
+            "containsPrompts": False,
+            "containsResponses": False,
+            "containsWeights": False,
+            "containsHiddenReasoning": False,
+            "containsExploitPayloads": False,
+            "containsTargetDetails": False,
+        },
+    }
+
+
+def _classify_retarget_target(
+    target: str,
+    *,
+    direct_matches: tuple[str, ...],
+    runtime_modules: tuple[str, ...],
+) -> dict[str, Any]:
+    if direct_matches:
+        return {
+            "target": target,
+            "status": "direct_attachable",
+            "runtimeModules": list(direct_matches),
+            "packedFamily": None,
+            "requiredWork": "rerun_private_adapter_load_canary",
+            "implementationReady": True,
+            "notes": [
+                "Exact suffix match exists in the inspected runtime module inventory."
+            ],
+        }
+
+    if target in {"q_proj", "k_proj", "v_proj"}:
+        modules = _runtime_modules_ending(runtime_modules, ".attn.fused_wqa_wkv")
+        return {
+            "target": target,
+            "status": "packed_transform_required",
+            "runtimeModules": list(modules),
+            "packedFamily": "attention_fused_wqa_wkv",
+            "requiredWork": (
+                "derive DeepSeek-V4 MLA projection slice ownership, then repack "
+                "the LoRA delta into the fused attention input projection"
+            ),
+            "implementationReady": False,
+            "notes": [
+                "The current NVIDIA runtime packs attention projection ownership into fused_wqa_wkv.",
+                "Vanilla PEFT cannot attach this target by module name.",
+            ],
+        }
+
+    if target in {"gate_proj", "up_proj"}:
+        modules = _runtime_modules_ending(runtime_modules, ".mlp.gate_up_proj")
+        modules = (*modules, *_runtime_modules_ending(runtime_modules, ".mlp.shared_experts.gate_up_proj"))
+        return {
+            "target": target,
+            "status": "packed_transform_required",
+            "runtimeModules": list(dict.fromkeys(modules)),
+            "packedFamily": "swiglu_gate_up_proj",
+            "requiredWork": (
+                "prove gate/up ordering and repack paired SwiGLU LoRA deltas "
+                "into fused gate_up_proj weights"
+            ),
+            "implementationReady": False,
+            "notes": [
+                "The current NVIDIA runtime fuses gate_proj and up_proj as gate_up_proj.",
+                "A transform must preserve SwiGLU ordering and expert/shared-expert ownership.",
+            ],
+        }
+
+    if target == "o_proj":
+        return {
+            "target": target,
+            "status": "source_inventory_required",
+            "runtimeModules": [],
+            "packedFamily": "attention_output_o_proj",
+            "requiredWork": (
+                "inspect the runtime source for attention output projection ownership; "
+                "local evidence shows an o_proj provider/kernel path but no "
+                "adapter-addressable module inventory entry"
+            ),
+            "implementationReady": False,
+            "notes": [
+                "The G4 evidence contains vllm.models.deepseek_v4.nvidia.ops.o_proj traces.",
+                "The model module inventory used by the adapter probe did not expose an o_proj module.",
+            ],
+        }
+
+    return {
+        "target": target,
+        "status": "unmapped_unknown",
+        "runtimeModules": [],
+        "packedFamily": None,
+        "requiredWork": "add an explicit target mapping before any adapter load",
+        "implementationReady": False,
+        "notes": ["No direct or known packed-runtime mapping is encoded for this target."],
+    }
+
+
+def _runtime_modules_ending(
+    runtime_modules: tuple[str, ...],
+    suffix: str,
+) -> tuple[str, ...]:
+    return tuple(module for module in runtime_modules if module.endswith(suffix))
+
+
+def render_retarget_plan_markdown(report: dict[str, Any]) -> str:
+    target_rows = [
+        "| Adapter target | Status | Packed family | Runtime modules | Required work |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for item in report["retargetPlan"]["targetClassifications"]:
+        modules = ", ".join(f"`{module}`" for module in item["runtimeModules"]) or "-"
+        target_rows.append(
+            "| `{target}` | `{status}` | `{family}` | {modules} | {work} |".format(
+                target=item["target"],
+                status=item["status"],
+                family=item["packedFamily"] or "-",
+                modules=modules,
+                work=item["requiredWork"].replace("|", "/"),
+            )
+        )
+    target_table = "\n".join(target_rows)
+    packed = ", ".join(report["retargetPlan"]["packedTransformRequiredTargets"]) or "none"
+    source_required = (
+        ", ".join(report["retargetPlan"]["sourceInventoryRequiredTargets"]) or "none"
+    )
+    unknown = ", ".join(report["retargetPlan"]["unknownTargets"]) or "none"
+
+    return f"""# DeepSeek-V4-Fable packed-runtime retargeting plan
+
+Date: {report["createdAt"]}
+
+Issue: {report["issue"]}
+
+Depends on: {", ".join(report["dependsOn"])}
+
+Profile: `{report["profileRef"]}`
+
+Status: `{report["status"]}`
+
+## Decision
+
+- Packed retarget smoke can be attempted: `{str(report["decision"]["canAttemptPackedRetargetSmoke"]).lower()}`
+- Canonical runtime probe can be attempted: `{str(report["decision"]["canAttemptCanonicalRuntimeProbe"]).lower()}`
+- Khala general route allowed: `{str(report["decision"]["canRouteKhalaGeneralTraffic"]).lower()}`
+- Public aliases allowed: `{str(report["decision"]["canExposePublicAliases"]).lower()}`
+- MPP public sale allowed: `{str(report["decision"]["canExposeMppPublicSale"]).lower()}`
+- Next step: `{report["decision"]["nextStep"]}`
+
+## Compatibility input
+
+- Compatibility status: `{report["compatibility"]["status"]}`
+- Runtime source: `{report["compatibility"]["runtimeSource"]}`
+- Runtime module count: `{report["compatibility"]["runtimeModuleCount"]}`
+- Missing targets from direct match probe: `{", ".join(report["compatibility"]["missingTargets"]) or "none"}`
+
+## Target retargeting plan
+
+{target_table}
+
+Packed transform required targets:
+`{packed}`
+
+Source inventory required targets:
+`{source_required}`
+
+Unknown targets:
+`{unknown}`
+
+## Interpretation
+
+The path to getting Fable working on the current Google G4 lane is a packed
+LoRA retarget, not a vanilla PEFT adapter load. The current runtime can only
+claim `down_proj` as directly attachable. Attention `q_proj`, `k_proj`, and
+`v_proj` need an architecture-aware transform into `fused_wqa_wkv`; MLP
+`gate_proj` and `up_proj` need a paired SwiGLU transform into `gate_up_proj`.
+`o_proj` remains blocked until the attention output projection owner is proven
+from runtime source or a live module inventory, because current evidence shows
+an `o_proj` kernel/provider path but no adapter-addressable module entry.
+
+If `o_proj` ownership cannot be proven quickly, the fallback path is a
+canonical DeepSeek-V4-Flash base runtime feasibility probe that exposes the
+Fable PEFT target names and reruns admission from scratch.
+
+## Public safety
+
+- Contains secrets: false
+- Contains prompts: false
+- Contains responses: false
+- Contains weights: false
+- Contains hidden reasoning: false
+- Contains exploit payloads: false
+- Contains target details: false
+"""
+
+
+def write_retarget_plan_report(
+    report: dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "deepseek-v4-fable-retarget-plan.json"
+    md_path = output_dir / "deepseek-v4-fable-retarget-plan.md"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    md_path.write_text(render_retarget_plan_markdown(report))
+    return json_path, md_path
+
+
 def _hf_resolve_url(repo: str, revision: str, filename: str) -> str:
     return f"https://huggingface.co/{repo}/resolve/{revision}/{filename}"
 
@@ -916,6 +1216,30 @@ def lab_eval_main(argv: list[str] | None = None) -> int:
     json_path, md_path = write_lab_eval_report(report, args.output_dir)
     print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
     return 0 if report["decision"]["admittedPrivateAuthorizedSecurityLabCanary"] else 2
+
+
+def retarget_plan_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Emit a public-safe DeepSeek-V4-Fable packed-runtime retargeting plan."
+    )
+    parser.add_argument(
+        "--compatibility-report",
+        type=Path,
+        required=True,
+        help="JSON report from hydralisk-deepseek-v4-fable-adapter-probe.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(".hydralisk/deepseek-v4-fable-retarget-plan"),
+    )
+    args = parser.parse_args(argv)
+
+    compatibility_report = json.loads(args.compatibility_report.read_text())
+    report = build_retarget_plan_report(compatibility_report=compatibility_report)
+    json_path, md_path = write_retarget_plan_report(report, args.output_dir)
+    print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
+    return 0 if report["decision"]["canAttemptPackedRetargetSmoke"] else 2
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -79,12 +79,32 @@
     "attempted": false,
     "reason": "Issue #68 blocked the private load canary before runtime/model interaction, so issue #70 did not run authorized-security lab eval traffic or collect quality/timing metrics."
   },
+  "retargetPlan": {
+    "status": "blocked_source_inventory_required",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/71",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md",
+    "primaryPath": "packed_runtime_retarget_after_source_inventory",
+    "fallbackPath": "canonical_base_runtime_feasibility_probe",
+    "packedTransformRequiredTargets": [
+      "v_proj",
+      "q_proj",
+      "up_proj",
+      "k_proj",
+      "gate_proj"
+    ],
+    "sourceInventoryRequiredTargets": [
+      "o_proj"
+    ],
+    "directAttachableTargets": [
+      "down_proj"
+    ]
+  },
   "finalDecision": {
     "status": "rejected_runtime_unstable",
     "admittedPrivateAuthorizedSecurityLabCanary": false,
     "publicAliasesAllowed": false,
     "khalaGeneralRouteAllowed": false,
     "mppPublicSaleAllowed": false,
-    "nextStep": "map_or_retarget_fable_lora_modules_before_any_lab_eval"
+    "nextStep": "prove_attention_output_projection_owner_then_build_packed_lora_transform"
   }
 }

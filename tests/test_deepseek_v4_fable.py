@@ -8,11 +8,13 @@ import pytest
 
 from hydralisk.admission.deepseek_v4_fable import (
     FABLE_LAB_EVAL_SCHEMA,
+    FABLE_RETARGET_SCHEMA,
     FABLE_SCHEMA,
     FABLE_LOAD_CANARY_SCHEMA,
     FableProbeError,
     build_lab_eval_report,
     build_load_canary_report,
+    build_retarget_plan_report,
     build_report,
     compare_adapter_targets,
     lab_eval_main,
@@ -23,6 +25,8 @@ from hydralisk.admission.deepseek_v4_fable import (
     render_load_canary_markdown,
     render_lab_eval_markdown,
     render_markdown,
+    render_retarget_plan_markdown,
+    retarget_plan_main,
     validate_requested_files,
 )
 
@@ -223,6 +227,56 @@ def test_lab_eval_cli_writes_public_safe_rejection_report(tmp_path: Path) -> Non
     assert "Status: `rejected_runtime_unstable`" in evidence
     assert "Attempted: `false`" in evidence
     assert "Contains target details: false" in evidence
+
+
+def test_retarget_plan_classifies_packed_runtime_blockers(tmp_path: Path) -> None:
+    compatibility = _rejected_compatibility_report(tmp_path)
+
+    report = build_retarget_plan_report(
+        compatibility_report=compatibility,
+        created_at=datetime(2026, 6, 24, tzinfo=UTC),
+    )
+    rendered = render_retarget_plan_markdown(report)
+    targets = {
+        item["target"]: item
+        for item in report["retargetPlan"]["targetClassifications"]
+    }
+
+    assert report["schema"] == FABLE_RETARGET_SCHEMA
+    assert report["status"] == "blocked_source_inventory_required"
+    assert report["decision"]["canAttemptPackedRetargetSmoke"] is False
+    assert report["decision"]["canAttemptCanonicalRuntimeProbe"] is True
+    assert targets["q_proj"]["status"] == "packed_transform_required"
+    assert targets["q_proj"]["packedFamily"] == "attention_fused_wqa_wkv"
+    assert targets["gate_proj"]["status"] == "packed_transform_required"
+    assert targets["gate_proj"]["packedFamily"] == "swiglu_gate_up_proj"
+    assert targets["down_proj"]["status"] == "direct_attachable"
+    assert targets["o_proj"]["status"] == "source_inventory_required"
+    assert report["retargetPlan"]["sourceInventoryRequiredTargets"] == ["o_proj"]
+    assert "canonical DeepSeek-V4-Flash base runtime feasibility probe" in rendered
+    assert "Contains weights: false" in rendered
+
+
+def test_retarget_plan_cli_writes_public_safe_report(tmp_path: Path) -> None:
+    compatibility = _rejected_compatibility_report(tmp_path)
+    compatibility_path = tmp_path / "compatibility.json"
+    compatibility_path.write_text(json.dumps(compatibility))
+    output_dir = tmp_path / "out"
+
+    status = retarget_plan_main(
+        [
+            "--compatibility-report",
+            str(compatibility_path),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert status == 2
+    evidence = (output_dir / "deepseek-v4-fable-retarget-plan.md").read_text()
+    assert "Status: `blocked_source_inventory_required`" in evidence
+    assert "Packed retarget smoke can be attempted: `false`" in evidence
+    assert "Contains prompts: false" in evidence
 
 
 def _write_fable_metadata(directory: Path) -> Path:
