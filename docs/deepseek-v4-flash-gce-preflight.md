@@ -85,6 +85,9 @@ B12x local-shard reference fixture evidence:
 B12x wrapper-surface evidence:
 [`docs/evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md`](evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md)
 
+B12x nightly wrapper evidence:
+[`docs/evidence/2026-06-24-flashinfer-b12x-nightly-wrapper-g4.md`](evidence/2026-06-24-flashinfer-b12x-nightly-wrapper-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -689,6 +692,33 @@ So the next issue is not another full-model launch. The next issue should
 either probe a newer FlashInfer/vLLM B12x wrapper on RTX PRO 6000 or implement
 a Hydralisk-local B12x shim that supplies local-offset routing plus DeepSeek's
 SwiGLU clamp and compares against the reference fixture.
+
+The newer-wrapper probe then removed the easiest shortcut. Installing only
+`flashinfer-python` nightly failed because the base image still carried
+`flashinfer-cubin 0.6.12`; installing `flashinfer-python flashinfer-cubin`
+nightly then failed because the base image still carried
+`flashinfer-jit-cache 0.6.12+cu130`. The matched install that worked was:
+
+```text
+flashinfer-python flashinfer-cubin flashinfer-jit-cache
+--index-url https://flashinfer.ai/whl/nightly/
+--extra-index-url https://flashinfer.ai/whl/nightly/cu130
+```
+
+That reached FlashInfer `0.6.13.dev20260612` on the same RTX PRO 6000 host,
+but the B12x surface was unchanged for Hydralisk's blocker:
+
+```text
+supportsLocalExpertOffsetKwarg: false
+supportsSwigluLimitKwarg: false
+b12x_fused_moe swiglu_limit probe: TypeError
+global 256 / local 32 expert-parallel call: NotImplementedError
+local-shard remap control: ok, outShape=[512,4096]
+```
+
+So the next implementation issue should stop waiting for wrapper discovery and
+build the Hydralisk-local dispatcher/clamp shim against the reference fixture.
+Package upgrade alone is not a credible full-model retry path on this image.
 
 ## Promotion boundary
 

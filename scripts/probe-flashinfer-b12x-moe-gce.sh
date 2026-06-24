@@ -4,8 +4,16 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-openagentsgemini}"
 TARGET_INSTANCE="${TARGET_INSTANCE:-}"
 TARGET_ZONE="${TARGET_ZONE:-}"
-ISSUE_NUMBER="${ISSUE_NUMBER:-30}"
+ISSUE_NUMBER="${ISSUE_NUMBER:-31}"
 IMAGE="${IMAGE:-hydralisk-deepseek-v4-oproj-fallback-g4-vllm:20260624095206}"
+FLASHINFER_INSTALL_MODE="${FLASHINFER_INSTALL_MODE:-none}"
+FLASHINFER_PIP_PACKAGE="${FLASHINFER_PIP_PACKAGE:-flashinfer-python}"
+FLASHINFER_PIP_PACKAGES="${FLASHINFER_PIP_PACKAGES:-$FLASHINFER_PIP_PACKAGE}"
+FLASHINFER_PIP_INDEX_URL="${FLASHINFER_PIP_INDEX_URL:-}"
+FLASHINFER_PIP_EXTRA_INDEX_URL="${FLASHINFER_PIP_EXTRA_INDEX_URL:-}"
+FLASHINFER_PIP_PRE="${FLASHINFER_PIP_PRE:-1}"
+FLASHINFER_PIP_NO_DEPS="${FLASHINFER_PIP_NO_DEPS:-1}"
+FLASHINFER_INSTALL_TIMEOUT_SECONDS="${FLASHINFER_INSTALL_TIMEOUT_SECONDS:-600}"
 SEQ_LEN="${SEQ_LEN:-512}"
 HIDDEN_SIZE="${HIDDEN_SIZE:-4096}"
 INTERMEDIATE_SIZE="${INTERMEDIATE_SIZE:-2048}"
@@ -42,6 +50,13 @@ render_markdown() {
     echo "- Target instance: \`$TARGET_INSTANCE\`"
     echo "- Target zone: \`$TARGET_ZONE\`"
     echo "- Image: \`$IMAGE\`"
+    echo "- FlashInfer install mode: \`$FLASHINFER_INSTALL_MODE\`"
+    echo "- FlashInfer pip package: \`$FLASHINFER_PIP_PACKAGE\`"
+    echo "- FlashInfer pip packages: \`$FLASHINFER_PIP_PACKAGES\`"
+    echo "- FlashInfer pip index URL: \`${FLASHINFER_PIP_INDEX_URL:-default}\`"
+    echo "- FlashInfer pip extra index URL: \`${FLASHINFER_PIP_EXTRA_INDEX_URL:-none}\`"
+    echo "- FlashInfer pip pre-release: \`$FLASHINFER_PIP_PRE\`"
+    echo "- FlashInfer pip no-deps: \`$FLASHINFER_PIP_NO_DEPS\`"
     echo "- Sequence length: \`$SEQ_LEN\`"
     echo "- Hidden size: \`$HIDDEN_SIZE\`"
     echo "- Intermediate size: \`$INTERMEDIATE_SIZE\`"
@@ -94,6 +109,14 @@ fi
 
 remote_script="$(
   printf 'IMAGE=%q\n' "$IMAGE"
+  printf 'FLASHINFER_INSTALL_MODE=%q\n' "$FLASHINFER_INSTALL_MODE"
+  printf 'FLASHINFER_PIP_PACKAGE=%q\n' "$FLASHINFER_PIP_PACKAGE"
+  printf 'FLASHINFER_PIP_PACKAGES=%q\n' "$FLASHINFER_PIP_PACKAGES"
+  printf 'FLASHINFER_PIP_INDEX_URL=%q\n' "$FLASHINFER_PIP_INDEX_URL"
+  printf 'FLASHINFER_PIP_EXTRA_INDEX_URL=%q\n' "$FLASHINFER_PIP_EXTRA_INDEX_URL"
+  printf 'FLASHINFER_PIP_PRE=%q\n' "$FLASHINFER_PIP_PRE"
+  printf 'FLASHINFER_PIP_NO_DEPS=%q\n' "$FLASHINFER_PIP_NO_DEPS"
+  printf 'FLASHINFER_INSTALL_TIMEOUT_SECONDS=%q\n' "$FLASHINFER_INSTALL_TIMEOUT_SECONDS"
   printf 'SEQ_LEN=%q\n' "$SEQ_LEN"
   printf 'HIDDEN_SIZE=%q\n' "$HIDDEN_SIZE"
   printf 'INTERMEDIATE_SIZE=%q\n' "$INTERMEDIATE_SIZE"
@@ -147,6 +170,7 @@ def module_record() -> dict:
         "b12x_fused_moe",
         "convert_sf_to_mma_layout",
         "Sm120B12xBlockScaledDenseGemmKernel",
+        "Sm121B12xBlockScaledDenseGemmKernel",
         "Sm120BlockScaledDenseGemmKernel",
     ]
     record = {
@@ -468,7 +492,122 @@ if os.environ.get("RUN_NO_EP_CASE", "1") == "1":
     )
 PY
 
+cat > "$REMOTE_LOG_DIR/run-probe.py" <<'PY'
+import json
+import os
+import subprocess
+import sys
+import time
+
+
+def emit(record: dict) -> None:
+    print(json.dumps(record, sort_keys=True), flush=True)
+
+
+def env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value not in {"0", "false", "False", "no", "NO"}
+
+
+mode = os.environ.get("FLASHINFER_INSTALL_MODE", "none")
+package = os.environ.get("FLASHINFER_PIP_PACKAGE", "flashinfer-python")
+packages = [
+    item
+    for item in os.environ.get("FLASHINFER_PIP_PACKAGES", package).split()
+    if item
+]
+index_url = os.environ.get("FLASHINFER_PIP_INDEX_URL", "")
+if mode == "nightly" and not index_url:
+    index_url = "https://flashinfer.ai/whl/nightly/"
+extra_index_url = os.environ.get("FLASHINFER_PIP_EXTRA_INDEX_URL", "")
+
+install_record = {
+    "schema": "hydralisk.flashinfer.b12x-moe.install.v1",
+    "case": "flashinfer_install",
+    "mode": mode,
+    "package": package,
+    "packages": packages,
+    "indexUrl": index_url or None,
+    "extraIndexUrl": extra_index_url or None,
+    "preRelease": env_bool("FLASHINFER_PIP_PRE", True),
+    "noDeps": env_bool("FLASHINFER_PIP_NO_DEPS", True),
+    "timeoutSeconds": int(os.environ.get("FLASHINFER_INSTALL_TIMEOUT_SECONDS", "600")),
+    "publicSafety": {
+        "containsSecrets": False,
+        "containsPrompts": False,
+        "containsResponses": False,
+        "containsWeights": False,
+        "containsHiddenReasoning": False,
+    },
+}
+
+if mode != "none":
+    cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "--disable-pip-version-check",
+        "--no-input",
+    ]
+    if install_record["preRelease"]:
+        cmd.append("--pre")
+    if index_url:
+        cmd.extend(["--index-url", index_url])
+    if extra_index_url:
+        cmd.extend(["--extra-index-url", extra_index_url])
+    if install_record["noDeps"]:
+        cmd.append("--no-deps")
+    cmd.extend(packages)
+    install_record["argv"] = cmd[:]
+    start = time.monotonic()
+    try:
+        completed = subprocess.run(
+            cmd,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=install_record["timeoutSeconds"],
+        )
+        install_record.update(
+            {
+                "ok": completed.returncode == 0,
+                "returncode": completed.returncode,
+                "elapsedSeconds": round(time.monotonic() - start, 3),
+                "stdoutLineCount": len(completed.stdout.splitlines()),
+                "stderrLineCount": len(completed.stderr.splitlines()),
+            }
+        )
+    except subprocess.TimeoutExpired as exc:
+        install_record.update(
+            {
+                "ok": False,
+                "timedOut": True,
+                "elapsedSeconds": round(time.monotonic() - start, 3),
+                "stdoutLineCount": len((exc.stdout or "").splitlines()),
+                "stderrLineCount": len((exc.stderr or "").splitlines()),
+            }
+        )
+else:
+    install_record["ok"] = True
+
+emit(install_record)
+subprocess.run([sys.executable, "/tmp/repro.py"], check=False)
+PY
+
 sudo docker run --rm --gpus all --ipc=host --network host \
+  -e "FLASHINFER_INSTALL_MODE=$FLASHINFER_INSTALL_MODE" \
+  -e "FLASHINFER_PIP_PACKAGE=$FLASHINFER_PIP_PACKAGE" \
+  -e "FLASHINFER_PIP_PACKAGES=$FLASHINFER_PIP_PACKAGES" \
+  -e "FLASHINFER_PIP_INDEX_URL=$FLASHINFER_PIP_INDEX_URL" \
+  -e "FLASHINFER_PIP_EXTRA_INDEX_URL=$FLASHINFER_PIP_EXTRA_INDEX_URL" \
+  -e "FLASHINFER_PIP_PRE=$FLASHINFER_PIP_PRE" \
+  -e "FLASHINFER_PIP_NO_DEPS=$FLASHINFER_PIP_NO_DEPS" \
+  -e "FLASHINFER_INSTALL_TIMEOUT_SECONDS=$FLASHINFER_INSTALL_TIMEOUT_SECONDS" \
   -e "SEQ_LEN=$SEQ_LEN" \
   -e "HIDDEN_SIZE=$HIDDEN_SIZE" \
   -e "INTERMEDIATE_SIZE=$INTERMEDIATE_SIZE" \
@@ -479,7 +618,8 @@ sudo docker run --rm --gpus all --ipc=host --network host \
   -e "RUN_LOCAL_SHARD_REMAP_CASE=$RUN_LOCAL_SHARD_REMAP_CASE" \
   -e "RUN_NO_EP_CASE=$RUN_NO_EP_CASE" \
   -v "$REMOTE_LOG_DIR/repro.py:/tmp/repro.py:ro" \
-  --entrypoint python3 "$IMAGE" /tmp/repro.py \
+  -v "$REMOTE_LOG_DIR/run-probe.py:/tmp/run-probe.py:ro" \
+  --entrypoint python3 "$IMAGE" /tmp/run-probe.py \
   > "$REMOTE_LOG_DIR/flashinfer-b12x-result.jsonl" \
   2> "$REMOTE_LOG_DIR/flashinfer-b12x-stderr.txt" || true
 REMOTE

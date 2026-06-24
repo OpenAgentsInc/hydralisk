@@ -132,7 +132,13 @@ Initial targets:
   FlashInfer `0.6.12` image, but it only exposes `num_local_experts`; it lacks
   both `local_expert_offset` and `swiglu_limit`, so the G4 path still needs a
   wrapper upgrade or a Hydralisk-local B12x dispatcher/clamp shim before any
-  full-model retry.
+  full-model retry. A matched FlashInfer nightly upgrade
+  (`flashinfer-python`, `flashinfer-cubin`, and `flashinfer-jit-cache`) reached
+  `0.6.13.dev20260612` on the same G4 host, but the B12x wrapper surface was
+  unchanged for our blocker: no `local_expert_offset`, no `swiglu_limit`, and
+  the direct `256 / 32` expert-parallel call still rejects before launch. The
+  next G4 issue should therefore build the Hydralisk-local dispatcher/clamp
+  shim against the reference fixture.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -181,6 +187,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md`](docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md)
 - [`docs/evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md)
+- [`docs/evidence/2026-06-24-flashinfer-b12x-nightly-wrapper-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-nightly-wrapper-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 
