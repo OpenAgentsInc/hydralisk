@@ -830,6 +830,33 @@ on the same 8 x G4 host. That run must still prove model weight load,
 `/v1/models` readiness, and eventually a public-safe generation receipt before
 any serving claim.
 
+The full-model B12x load smoke then built that derived image and exercised the
+pinned NVFP4 model on the same private 8 x G4 host. The image build now has a
+version-tolerant SM120 NVFP4 guard verifier plus real static, dynamic, and
+micro B12x clamp operations. The direct run reached vLLM startup with
+`moe_backend=flashinfer_b12x`, but stopped at the previously known valid
+DeepSeek NVIDIA `o_proj` path:
+
+```text
+RuntimeError: Assertion error (csrc/apis/layout.hpp:59): Unknown SF transformation
+```
+
+The B12x wrapper script now propagates the existing default-off
+`HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK` knob. Rerunning with the earlier
+correctness-first `HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum` path moved
+the model past `o_proj` on all eight ranks and into vLLM memory profiling. The
+new blocker is DeepSeek MLA attention metadata on SM120:
+
+```text
+vllm/v1/attention/backends/mla/indexer.py build
+vllm/utils/deep_gemm.py get_paged_mqa_logits_metadata
+RuntimeError: Assertion error (csrc/apis/attention.hpp:219): Unsupported architecture
+```
+
+So the remaining full-model G4 blocker is no longer B12x clamp plumbing. The
+next issue should find or add an SM120-safe MLA metadata/backend fallback before
+another `/v1/models` readiness retry.
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this

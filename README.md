@@ -155,9 +155,16 @@ Initial targets:
   is now a real GPU proof. The follow-up dynamic fixture then patched
   `moe_dynamic_kernel.py` and ran the 512-token DeepSeek-shaped masked
   local-shard case (`kernelNumExperts=32`, `globalNumExperts=256`, `topK=6`)
-  with finite nonzero output. The remaining B12x work is full-model vLLM
-  integration, exact FP4/reference correctness, and any decode/micro-path
-  clamp coverage needed for generation.
+  with finite nonzero output. The clamp-patched B12x full-model image now
+  builds, imports on all eight G4 GPUs, and starts vLLM with
+  `moe_backend=flashinfer_b12x`. With the existing `bf16_einsum` `o_proj`
+  fallback enabled, execution moves past the old `o_proj` DeepGEMM blocker and
+  stops in DeepSeek MLA attention metadata during vLLM cudagraph memory
+  profiling: `get_paged_mqa_logits_metadata` fails with
+  `attention.hpp:219: Unsupported architecture` on SM120. The remaining work
+  is therefore an SM120-safe MLA metadata/backend fallback, exact
+  FP4/reference correctness, and any decode/micro-path clamp coverage needed
+  for generation.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -213,6 +220,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-b12x-clamp-overlay.md`](docs/evidence/2026-06-24-deepseek-b12x-clamp-overlay.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-b12x-full-model-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-full-model-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

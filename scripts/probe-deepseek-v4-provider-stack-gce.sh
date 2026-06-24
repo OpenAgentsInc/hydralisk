@@ -20,6 +20,8 @@ HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS="${HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS:-0}"
 HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE="${HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE:-raw_e8m0}"
 HYDRALISK_DEEPSEEK_O_PROJ_BYPASS="${HYDRALISK_DEEPSEEK_O_PROJ_BYPASS:-off}"
 HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK="${HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK:-off}"
+HYDRALISK_B12X_CLAMP_PATCH="${HYDRALISK_B12X_CLAMP_PATCH:-0}"
+HYDRALISK_B12X_CLAMP_LIMIT="${HYDRALISK_B12X_CLAMP_LIMIT:-10.0}"
 HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-0}"
 HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-0}"
 HF_XET_NUM_CONCURRENT_RANGE_GETS="${HF_XET_NUM_CONCURRENT_RANGE_GETS:-}"
@@ -77,6 +79,8 @@ render_markdown() {
     echo "- DeepSeek o_proj RHS scale mode: \`$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE\`"
     echo "- DeepSeek o_proj bypass: \`$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\`"
     echo "- DeepSeek o_proj fallback: \`$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\`"
+    echo "- B12x clamp patch: \`$HYDRALISK_B12X_CLAMP_PATCH\`"
+    echo "- B12x clamp limit: \`$HYDRALISK_B12X_CLAMP_LIMIT\`"
     echo "- HF Hub disable Xet: \`$HF_HUB_DISABLE_XET\`"
     echo "- HF Xet high performance: \`$HF_XET_HIGH_PERFORMANCE\`"
     echo "- HF Xet concurrent range gets: \`${HF_XET_NUM_CONCURRENT_RANGE_GETS:-default}\`"
@@ -193,6 +197,8 @@ remote_script="$(
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK"
+  printf 'HYDRALISK_B12X_CLAMP_PATCH=%q\n' "$HYDRALISK_B12X_CLAMP_PATCH"
+  printf 'HYDRALISK_B12X_CLAMP_LIMIT=%q\n' "$HYDRALISK_B12X_CLAMP_LIMIT"
   printf 'HF_HUB_DISABLE_XET=%q\n' "$HF_HUB_DISABLE_XET"
   printf 'HF_XET_HIGH_PERFORMANCE=%q\n' "$HF_XET_HIGH_PERFORMANCE"
   printf 'HF_XET_NUM_CONCURRENT_RANGE_GETS=%q\n' "$HF_XET_NUM_CONCURRENT_RANGE_GETS"
@@ -239,6 +245,7 @@ sudo systemctl enable --now docker >> "$REMOTE_LOG_DIR/provider-stack-docker-set
 
 build_ctx="$(mktemp -d /tmp/hydralisk-provider-stack.XXXXXX)"
 cat > "$build_ctx/patch_o_proj.py" <<'PY'
+import os
 import py_compile
 from pathlib import Path
 
@@ -525,6 +532,223 @@ py_compile.compile(str(path), doraise=True)
 print(f"patched {path} for Hydralisk issue #20 o_proj provider probe")
 PY
 
+cat > "$build_ctx/patch_b12x_clamp.py" <<'PY'
+import os
+import py_compile
+from pathlib import Path
+
+import flashinfer
+import vllm.model_executor.layers.fused_moe.experts.flashinfer_b12x_moe as b12x_vllm
+import vllm.model_executor.layers.fused_moe.oracle.nvfp4 as nvfp4_oracle
+
+
+LIMIT = os.environ.get("HYDRALISK_B12X_CLAMP_LIMIT", "10.0")
+flashinfer_root = Path(flashinfer.__file__).resolve().parent
+
+
+def replace_once(path: Path, old: str, new: str, label: str) -> None:
+    text = path.read_text()
+    if new in text:
+        print(f"{label}: already patched")
+        return
+    if old not in text:
+        raise RuntimeError(f"{label}: patch target missing in {path}")
+    path.write_text(text.replace(old, new, 1))
+    py_compile.compile(str(path), doraise=True)
+    print(f"{label}: patched {path}")
+
+
+api_path = flashinfer_root / "fused_moe/cute_dsl/b12x_moe.py"
+dispatch_path = (
+    flashinfer_root / "fused_moe/cute_dsl/blackwell_sm12x/moe_dispatch.py"
+)
+static_path = (
+    flashinfer_root / "fused_moe/cute_dsl/blackwell_sm12x/moe_static_kernel.py"
+)
+dynamic_path = (
+    flashinfer_root / "fused_moe/cute_dsl/blackwell_sm12x/moe_dynamic_kernel.py"
+)
+micro_path = (
+    flashinfer_root / "fused_moe/cute_dsl/blackwell_sm12x/moe_micro_kernel.py"
+)
+
+replace_once(
+    api_path,
+    '    quant_mode: Optional[str] = None,\n'
+    '    source_format: str = "modelopt",\n'
+    ") -> torch.Tensor:\n",
+    '    quant_mode: Optional[str] = None,\n'
+    '    source_format: str = "modelopt",\n'
+    "    swiglu_limit: Optional[float] = None,\n"
+    ") -> torch.Tensor:\n",
+    "b12x api swiglu_limit parameter",
+)
+replace_once(
+    api_path,
+    "        quant_mode=quant_mode,\n"
+    "        source_format=source_format,\n"
+    "    )\n",
+    "        quant_mode=quant_mode,\n"
+    "        source_format=source_format,\n"
+    "        swiglu_limit=swiglu_limit,\n"
+    "    )\n",
+    "b12x api forwards swiglu_limit",
+)
+replace_once(
+    api_path,
+    '        quant_mode: Optional[str] = None,\n'
+    '        source_format: str = "modelopt",\n'
+    "    ):\n",
+    '        quant_mode: Optional[str] = None,\n'
+    '        source_format: str = "modelopt",\n'
+    "        swiglu_limit: Optional[float] = None,\n"
+    "    ):\n",
+    "b12x wrapper swiglu_limit parameter",
+)
+replace_once(
+    api_path,
+    "        self.source_format = source_format\n",
+    "        self.source_format = source_format\n"
+    "        self.swiglu_limit = swiglu_limit\n",
+    "b12x wrapper stores swiglu_limit",
+)
+replace_once(
+    api_path,
+    "            quant_mode=self.quant_mode,\n"
+    "            source_format=self.source_format,\n"
+    "            _workspace=workspace,\n",
+    "            quant_mode=self.quant_mode,\n"
+    "            source_format=self.source_format,\n"
+    "            swiglu_limit=self.swiglu_limit,\n"
+    "            _workspace=workspace,\n",
+    "b12x wrapper forwards swiglu_limit",
+)
+replace_once(
+    dispatch_path,
+    '    quant_mode: str | None = None,\n'
+    '    source_format: str = "modelopt",\n'
+    "    _workspace=None,\n",
+    '    quant_mode: str | None = None,\n'
+    '    source_format: str = "modelopt",\n'
+    "    swiglu_limit: float | None = None,\n"
+    "    _workspace=None,\n",
+    "b12x dispatch swiglu_limit parameter",
+)
+replace_once(
+    dispatch_path,
+    "    quant_mode = _normalize_quant_mode(quant_mode, activation_precision)\n"
+    "    source_format = _normalize_source_format_for_quant_mode(source_format, quant_mode)\n"
+    "    activation_precision = _activation_precision_from_quant_mode(quant_mode)\n",
+    "    quant_mode = _normalize_quant_mode(quant_mode, activation_precision)\n"
+    "    source_format = _normalize_source_format_for_quant_mode(source_format, quant_mode)\n"
+    "    activation_precision = _activation_precision_from_quant_mode(quant_mode)\n"
+    "    swiglu_limit = float(swiglu_limit or 0.0)\n",
+    "b12x dispatch normalizes swiglu_limit",
+)
+
+
+def patch_kernel(path: Path, label: str) -> None:
+    text = path.read_text()
+    if "fmin_f32" not in text.split("from flashinfer.cute_dsl.fp4_common import", 1)[1].split(")", 1)[0]:
+        text = text.replace("fmax_f32,\n", "fmax_f32,\n    fmin_f32,\n", 1)
+    lines = text.splitlines(keepends=True)
+    for index in range(len(lines) - 2):
+        if (
+            lines[index].lstrip().startswith(
+                "g = alpha_value * gate_slice[elem_idx]"
+            )
+            and lines[index + 1].lstrip().startswith(
+                "u = alpha_value * up_slice[elem_idx]"
+            )
+            and lines[index + 2].lstrip().startswith("sigmoid_g =")
+        ):
+            window = "".join(lines[index : index + 5])
+            if "fmin_f32(g, cutlass.Float32(" in window:
+                print(f"{label}: already patched")
+                return
+            indent = lines[index][: len(lines[index]) - len(lines[index].lstrip())]
+            lines[index + 2 : index + 2] = [
+                indent
+                + "# HYDRALISK_B12X_SWIGLU_CLAMP_PATCH_POINT: runtime clamp for "
+                + f"DeepSeek swiglu_limit={LIMIT}.\n",
+                indent + f"g = fmin_f32(g, cutlass.Float32({LIMIT}))\n",
+                indent
+                + f"u = fmin_f32(fmax_f32(u, cutlass.Float32(-{LIMIT})), "
+                + f"cutlass.Float32({LIMIT}))\n",
+            ]
+            path.write_text("".join(lines))
+            py_compile.compile(str(path), doraise=True)
+            print(f"{label}: patched {path}")
+            return
+    raise RuntimeError(f"{label}: clamp activation block missing in {path}")
+
+
+patch_kernel(static_path, "b12x static clamp")
+patch_kernel(dynamic_path, "b12x dynamic clamp")
+patch_kernel(micro_path, "b12x micro clamp")
+
+vllm_b12x_path = Path(b12x_vllm.__file__)
+replace_once(
+    vllm_b12x_path,
+    "        self._fc2_input_scale: torch.Tensor | None = None\n",
+    "        self._fc2_input_scale: torch.Tensor | None = None\n"
+    "        self.gemm1_clamp_limit = quant_config.gemm1_clamp_limit\n",
+    "vllm b12x stores gemm1_clamp_limit",
+)
+replace_once(
+    vllm_b12x_path,
+    "            output_dtype=self.out_dtype,\n"
+    "            output=output,\n",
+    "            output_dtype=self.out_dtype,\n"
+    "            output=output,\n"
+    "            swiglu_limit=self.gemm1_clamp_limit,\n",
+    "vllm b12x forwards swiglu_limit",
+)
+
+oracle_path = Path(nvfp4_oracle.__file__)
+replace_once(
+    oracle_path,
+    "    NVFP4_BACKENDS_WITH_CLAMP = {\n"
+    "        NvFp4MoeBackend.FLASHINFER_TRTLLM,\n"
+    "    }\n",
+    "    NVFP4_BACKENDS_WITH_CLAMP = {\n"
+    "        NvFp4MoeBackend.FLASHINFER_TRTLLM,\n"
+    "        NvFp4MoeBackend.FLASHINFER_B12X,\n"
+    "    }\n",
+    "vllm nvfp4 oracle marks b12x clamp-capable",
+)
+PY
+
+cat > "$build_ctx/patch_nvfp4_sm120.py" <<'PY'
+import py_compile
+from pathlib import Path
+
+import vllm.model_executor.layers.fused_moe.experts.trtllm_nvfp4_moe as mod
+
+
+path = Path(mod.__file__)
+text = path.read_text()
+old = (
+    "p.is_device_capability_family(100)\n"
+    "            and has_flashinfer_trtllm_fused_moe()"
+)
+new = (
+    "(p.is_device_capability_family(100)\n"
+    "             or p.is_device_capability_family(120))\n"
+    "            and has_flashinfer_trtllm_fused_moe()"
+)
+if new in text:
+    print(f"{path} already permits NVFP4 SM120")
+elif "is_device_capability_family(120)" in text and "has_flashinfer_trtllm_fused_moe()" in text:
+    print(f"{path} appears to permit NVFP4 SM120")
+elif old in text:
+    path.write_text(text.replace(old, new, 1))
+    py_compile.compile(str(path), doraise=True)
+    print(f"patched {path} for NVFP4 SM120 probe")
+else:
+    raise RuntimeError(f"SM120 guard patch target not found in {path}")
+PY
+
 cat > "$build_ctx/Dockerfile" <<'DOCKERFILE'
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
@@ -533,7 +757,11 @@ ARG INSTALL_DEEPGEMM=1
 ARG ALLOW_NVFP4_SM120=0
 ARG VLLM_E8M0_TRITON_UPCAST=0
 ARG HYDRALISK_DEEPSEEK_O_PROJ_PATCH=0
+ARG HYDRALISK_B12X_CLAMP_PATCH=0
+ARG HYDRALISK_B12X_CLAMP_LIMIT=10.0
 COPY patch_o_proj.py /tmp/patch_o_proj.py
+COPY patch_b12x_clamp.py /tmp/patch_b12x_clamp.py
+COPY patch_nvfp4_sm120.py /tmp/patch_nvfp4_sm120.py
 RUN if [[ "$INSTALL_DEEPGEMM" == "1" ]]; then \
       apt-get update && \
       apt-get install -y --no-install-recommends ca-certificates git cuda-libraries-dev-13-0 && \
@@ -544,13 +772,16 @@ RUN if [[ "$INSTALL_DEEPGEMM" == "1" ]]; then \
       UV_SYSTEM_PYTHON=1 bash /tmp/install_deepgemm.sh; \
     fi
 RUN if [[ "$ALLOW_NVFP4_SM120" == "1" ]]; then \
-      python3 -c "from pathlib import Path; import vllm.model_executor.layers.fused_moe.experts.trtllm_nvfp4_moe as mod; path = Path(mod.__file__); text = path.read_text(); old = 'p.is_device_capability_family(100)\\n            and has_flashinfer_trtllm_fused_moe()'; new = '(p.is_device_capability_family(100)\\n             or p.is_device_capability_family(120))\\n            and has_flashinfer_trtllm_fused_moe()'; assert old in text, f'SM120 guard patch target not found in {path}'; path.write_text(text.replace(old, new)); print(f'patched {path} for NVFP4 SM120 probe')"; \
+      python3 /tmp/patch_nvfp4_sm120.py; \
     fi
 RUN if [[ "$VLLM_E8M0_TRITON_UPCAST" == "1" ]]; then \
       python3 -c "from pathlib import Path; import py_compile; import vllm.model_executor.layers.quantization.utils.fp8_utils as mod; path = Path(mod.__file__); text = path.read_text(); marker = 'Hydralisk issue #19 E8M0 CUDA Triton upcast'; old = '''    # Triton cannot currently bind E8M0 scale tensors directly. On ROCm,\n    # DeepSeek-V4 checkpoints store block scales in exponent-only E8M0 format,\n    # so decode them to fp32 before launching the kernel.\n    if current_platform.is_rocm() or current_platform.is_xpu():\n        if As.dtype == torch.float8_e8m0fnu:\n            As = _upcast_e8m0_to_fp32(As).contiguous()\n        if Bs.dtype == torch.float8_e8m0fnu:\n            Bs = _upcast_e8m0_to_fp32(Bs).contiguous()\n'''; new = '''    # Triton cannot currently bind E8M0 scale tensors directly. DeepSeek-V4\n    # checkpoints can store block scales in exponent-only E8M0 format.\n    # Hydralisk issue #19 E8M0 CUDA Triton upcast: decode these scales to fp32\n    # before launching Triton on CUDA as well as ROCm/XPU. Derived-image patch.\n    if As.dtype == torch.float8_e8m0fnu:\n        As = _upcast_e8m0_to_fp32(As).contiguous()\n    if Bs.dtype == torch.float8_e8m0fnu:\n        Bs = _upcast_e8m0_to_fp32(Bs).contiguous()\n'''; assert marker in text or old in text, f'E8M0 upcast patch target not found in {path}'; path.write_text(text if marker in text else text.replace(old, new)); py_compile.compile(str(path), doraise=True); print(f'patched {path} for CUDA Triton E8M0 upcast probe')"; \
     fi
 RUN if [[ "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH" == "1" ]]; then \
       python3 /tmp/patch_o_proj.py; \
+    fi
+RUN if [[ "$HYDRALISK_B12X_CLAMP_PATCH" == "1" ]]; then \
+      HYDRALISK_B12X_CLAMP_LIMIT="$HYDRALISK_B12X_CLAMP_LIMIT" python3 /tmp/patch_b12x_clamp.py; \
     fi
 DOCKERFILE
 
@@ -566,6 +797,8 @@ timeout "$STACK_BUILD_TIMEOUT_SECONDS"s sudo docker build \
   --build-arg "ALLOW_NVFP4_SM120=$ALLOW_NVFP4_SM120" \
   --build-arg "VLLM_E8M0_TRITON_UPCAST=$VLLM_E8M0_TRITON_UPCAST" \
   --build-arg "HYDRALISK_DEEPSEEK_O_PROJ_PATCH=$HYDRALISK_DEEPSEEK_O_PROJ_PATCH" \
+  --build-arg "HYDRALISK_B12X_CLAMP_PATCH=$HYDRALISK_B12X_CLAMP_PATCH" \
+  --build-arg "HYDRALISK_B12X_CLAMP_LIMIT=$HYDRALISK_B12X_CLAMP_LIMIT" \
   -t "$DERIVED_IMAGE" \
   -f "$build_ctx/Dockerfile" \
   "$build_ctx" > "$REMOTE_LOG_DIR/provider-stack-build.log" 2>&1 || build_rc=$?
@@ -578,6 +811,8 @@ rm -rf "$build_ctx"
   printf "VLLM_E8M0_TRITON_UPCAST\t%s\n" "$VLLM_E8M0_TRITON_UPCAST"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_PATCH\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK"
+  printf "HYDRALISK_B12X_CLAMP_PATCH\t%s\n" "$HYDRALISK_B12X_CLAMP_PATCH"
+  printf "HYDRALISK_B12X_CLAMP_LIMIT\t%s\n" "$HYDRALISK_B12X_CLAMP_LIMIT"
   printf "DOCKER_BUILD_PULL\t%s\n" "$DOCKER_BUILD_PULL"
   printf "BUILD_RC\t%s\n" "$build_rc"
   printf "BASE_IMAGE_INSPECT_BEGIN\n"
@@ -705,6 +940,8 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK"
+  printf "HYDRALISK_B12X_CLAMP_PATCH\t%s\n" "$HYDRALISK_B12X_CLAMP_PATCH"
+  printf "HYDRALISK_B12X_CLAMP_LIMIT\t%s\n" "$HYDRALISK_B12X_CLAMP_LIMIT"
   printf "HF_HUB_DISABLE_XET\t%s\n" "$HF_HUB_DISABLE_XET"
   printf "HF_XET_HIGH_PERFORMANCE\t%s\n" "$HF_XET_HIGH_PERFORMANCE"
   printf "HF_XET_NUM_CONCURRENT_RANGE_GETS\t%s\n" "${HF_XET_NUM_CONCURRENT_RANGE_GETS:-default}"
@@ -715,7 +952,11 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "MAX_NUM_SEQS\t%s\n" "$MAX_NUM_SEQS"
   printf "MAX_NUM_BATCHED_TOKENS\t%s\n" "$MAX_NUM_BATCHED_TOKENS"
   printf "GPU_MEMORY_UTILIZATION\t%s\n" "$GPU_MEMORY_UTILIZATION"
-  printf "LOCAL_SITE_PACKAGES_PATCHES\tfalse\n"
+  if [[ "$HYDRALISK_B12X_CLAMP_PATCH" = "1" ]]; then
+    printf "LOCAL_SITE_PACKAGES_PATCHES\tb12x_clamp\n"
+  else
+    printf "LOCAL_SITE_PACKAGES_PATCHES\tfalse\n"
+  fi
   expert_parallel_flags=()
   if [[ "$VLLM_ENABLE_EXPERT_PARALLEL" = "1" ]]; then
     expert_parallel_flags+=(--enable-expert-parallel)
