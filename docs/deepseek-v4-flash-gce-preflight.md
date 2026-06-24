@@ -1026,6 +1026,14 @@ and explicit impersonation for both service accounts fails before permission
 checks. That leaves no local Google credential surface that can run or grant the
 issue #41 DeepSeek G4 smoke.
 
+Issue #51 then tested explicit local service-account JSON key files inside
+isolated temporary gcloud configs:
+[`docs/evidence/2026-06-24-deepseek-service-account-key-probe.md`](evidence/2026-06-24-deepseek-service-account-key-probe.md).
+Both keys activate and mint access tokens, which proves the blocker is not stale
+local gcloud auth-store state. They still map to the same two service accounts,
+and both lack the G4 runner permissions and grant-authority permissions. There
+is now no known local Google credential surface that can run or grant issue #41.
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this

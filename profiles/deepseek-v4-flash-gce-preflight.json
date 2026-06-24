@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "blocked_no_local_google_credential_surface_can_launch_or_grant",
+  "status": "blocked_no_local_google_identity_or_key_can_launch_or_grant",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -164,7 +164,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/47",
       "https://github.com/OpenAgentsInc/hydralisk/issues/48",
       "https://github.com/OpenAgentsInc/hydralisk/issues/49",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/50"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/50",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/51"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -210,7 +211,8 @@
       "docs/evidence/2026-06-24-deepseek-g4-iam-grant-helper.md",
       "docs/evidence/2026-06-24-deepseek-g4-grant-authority-preflight.md",
       "docs/evidence/2026-06-24-deepseek-gcloud-credential-authority-probe.md",
-      "docs/evidence/2026-06-24-deepseek-google-alt-credential-probe.md"
+      "docs/evidence/2026-06-24-deepseek-google-alt-credential-probe.md",
+      "docs/evidence/2026-06-24-deepseek-service-account-key-probe.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -2260,6 +2262,47 @@
     "plainEnglishNext": "Refresh gcloud user or ADC credentials, or run the IAM grant helper from an IAM-capable account, then rerun issue #41.",
     "publicSafety": {
       "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekServiceAccountKeyProbe": {
+    "status": "blocked_keys_valid_but_missing_runner_and_grant_iam",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/51",
+    "script": "scripts/probe-deepseek-v4-service-account-keys.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-service-account-key-probe.md",
+    "keyFilePathsWrittenToEvidence": false,
+    "privateKeyMaterialWrittenToEvidence": false,
+    "tokensWrittenToEvidence": false,
+    "keys": [
+      {
+        "keyLabel": "key-1",
+        "clientEmail": "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com",
+        "projectId": "openagentsgemini",
+        "metadataStatus": "ok",
+        "activationStatus": "ok",
+        "runnerStatus": "missing_permissions",
+        "grantStatus": "missing_permissions",
+        "recommendation": "this key cannot run or grant the DeepSeek G4 smoke"
+      },
+      {
+        "keyLabel": "key-2",
+        "clientEmail": "nexus-mainnet@openagentsgemini.iam.gserviceaccount.com",
+        "projectId": "openagentsgemini",
+        "metadataStatus": "ok",
+        "activationStatus": "ok",
+        "runnerStatus": "missing_permissions",
+        "grantStatus": "missing_permissions",
+        "recommendation": "this key cannot run or grant the DeepSeek G4 smoke"
+      }
+    ],
+    "plainEnglishNext": "There is no known local Google identity or key that can launch or grant issue #41. Refresh user/ADC auth or use an IAM-capable operator account to grant runner permissions, then rerun the issue #41 wrapper.",
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsKeyFilePaths": false,
+      "containsPrivateKeyMaterial": false,
       "containsPrompts": false,
       "containsResponses": false,
       "containsWeights": false,
