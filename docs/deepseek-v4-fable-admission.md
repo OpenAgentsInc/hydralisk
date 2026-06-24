@@ -16,6 +16,8 @@ Source:
   [`docs/deepseek-v4-flash-gce-preflight.md`](deepseek-v4-flash-gce-preflight.md)
 - Adapter compatibility evidence:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md`](evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md)
+- Load canary evidence:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-load-canary.md`](evidence/2026-06-24-deepseek-v4-fable-load-canary.md)
 
 ## Summary
 
@@ -232,6 +234,17 @@ an explicit adapter-to-runtime mapping or a different base/runtime path.
 
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md`](evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md)
+
+## Issue #68 result
+
+Issue #68 added the private load-canary decision artifact. Because issue #67
+rejected the adapter-to-runtime mapping, the load canary status is
+`blocked_adapter_incompatible`. Hydralisk did not start vLLM, did not download
+adapter payload bytes, did not serve the merged checkpoint, and did not run
+timing traffic.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-load-canary.md`](evidence/2026-06-24-deepseek-v4-fable-load-canary.md)
 
 ## Decision
 

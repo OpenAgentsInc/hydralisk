@@ -318,6 +318,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md`](docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-khala-readiness-g4-gate.md`](docs/evidence/2026-06-24-deepseek-v4-khala-readiness-g4-gate.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md`](docs/evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-fable-load-canary.md`](docs/evidence/2026-06-24-deepseek-v4-fable-load-canary.md)
 - [`docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md`](docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md)
 - [`docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md`](docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md`](docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md)

@@ -49,6 +49,13 @@
     "reason": "The admitted patched DeepSeek V4 runtime packs or renames most Fable LoRA target modules; only down_proj maps by exact suffix in the inspected runtime inventory.",
     "nextStep": "stop_before_load_until_adapter_runtime_mapping_exists"
   },
+  "loadCanary": {
+    "status": "blocked_adapter_incompatible",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/68",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-load-canary.md",
+    "attempted": false,
+    "reason": "Issue #67 rejected the adapter before load, so issue #68 did not start vLLM, fetch adapter payload bytes, or interact with the G4 model host."
+  },
   "policy": {
     "publicSharedServing": false,
     "khalaGeneralRouteAllowed": false,

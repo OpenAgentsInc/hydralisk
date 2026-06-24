@@ -14,11 +14,13 @@ from urllib.request import Request, urlopen
 
 
 FABLE_SCHEMA = "hydralisk.deepseek-v4-fable.adapter-compatibility.v1"
+FABLE_LOAD_CANARY_SCHEMA = "hydralisk.deepseek-v4-fable.load-canary.v1"
 FABLE_REPO = "Chunjiang-Intelligence/DeepSeek-v4-Fable"
 FABLE_REVISION = "999909137c15e0b5539fee887431824fa7cb5b10"
 FABLE_BASE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 PROFILE_REF = "profiles/deepseek-v4-fable-adapter-g4.json"
 ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/67"
+LOAD_CANARY_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/68"
 
 SMALL_METADATA_FILES = (
     "adapter_config.json",
@@ -402,6 +404,168 @@ def write_report(report: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
     return json_path, md_path
 
 
+def build_load_canary_report(
+    *,
+    compatibility_report: dict[str, Any],
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    created_at = created_at or datetime.now(UTC)
+    compatibility_status = str(compatibility_report.get("status"))
+    can_attempt = bool(
+        (compatibility_report.get("decision") or {}).get("canAttemptPrivateAdapterLoad")
+    )
+    if can_attempt:
+        status = "ready_for_private_adapter_load_canary"
+        blocker = None
+        next_step = "run_private_no_public_ingress_load_smoke"
+    else:
+        status = "blocked_adapter_incompatible"
+        blocker = {
+            "code": "adapter_runtime_targets_missing",
+            "message": (
+                "Compatibility issue #67 did not admit the Fable adapter target "
+                "modules on the current patched G4 runtime."
+            ),
+            "missingTargets": (
+                compatibility_report.get("targetCompatibility") or {}
+            ).get("missingTargets", []),
+        }
+        next_step = "do_not_start_load_smoke_until_adapter_mapping_exists"
+
+    return {
+        "schema": FABLE_LOAD_CANARY_SCHEMA,
+        "createdAt": created_at.isoformat().replace("+00:00", "Z"),
+        "issue": LOAD_CANARY_ISSUE_URL,
+        "dependsOn": [ISSUE_URL],
+        "profileRef": PROFILE_REF,
+        "status": status,
+        "model": compatibility_report.get("model", {}),
+        "compatibility": {
+            "status": compatibility_status,
+            "reportSchema": compatibility_report.get("schema"),
+            "reportIssue": compatibility_report.get("issue"),
+            "missingTargets": (
+                compatibility_report.get("targetCompatibility") or {}
+            ).get("missingTargets", []),
+        },
+        "loadCanary": {
+            "attempted": False,
+            "noPublicIngress": True,
+            "mergedCheckpointServed": False,
+            "adapterPayloadRequired": False,
+            "reason": (
+                "blocked_by_adapter_compatibility"
+                if not can_attempt
+                else "awaiting_live_private_canary_operator"
+            ),
+            "timing": {
+                "ttftP50Seconds": None,
+                "ttftP95Seconds": None,
+                "decodeTokensPerSecondP50": None,
+                "decodeTokensPerSecondP95": None,
+                "endToEndTokensPerSecondP50": None,
+                "endToEndTokensPerSecondP95": None,
+            },
+        },
+        "blockers": [blocker] if blocker else [],
+        "decision": {
+            "status": status,
+            "canAttemptPrivateAdapterLoad": can_attempt,
+            "canRouteKhalaGeneralTraffic": False,
+            "canExposePublicAliases": False,
+            "canExposeMppPublicSale": False,
+            "nextStep": next_step,
+        },
+        "publicSafety": {
+            "containsSecrets": False,
+            "containsPrompts": False,
+            "containsResponses": False,
+            "containsWeights": False,
+            "containsHiddenReasoning": False,
+            "containsExploitPayloads": False,
+        },
+    }
+
+
+def render_load_canary_markdown(report: dict[str, Any]) -> str:
+    blockers = report.get("blockers") or []
+    if blockers:
+        blocker_lines = "\n".join(
+            f"- `{item['code']}`: {item['message']}"
+            for item in blockers
+        )
+    else:
+        blocker_lines = "- None"
+    missing = ", ".join(report["compatibility"].get("missingTargets") or ()) or "none"
+    return f"""# DeepSeek-V4-Fable private load canary evidence
+
+Date: {report["createdAt"]}
+
+Issue: {report["issue"]}
+
+Depends on: {", ".join(report["dependsOn"])}
+
+Profile: `{report["profileRef"]}`
+
+Status: `{report["status"]}`
+
+## Decision
+
+- Private adapter load can be attempted: `{str(report["decision"]["canAttemptPrivateAdapterLoad"]).lower()}`
+- Khala general route allowed: `{str(report["decision"]["canRouteKhalaGeneralTraffic"]).lower()}`
+- Public aliases allowed: `{str(report["decision"]["canExposePublicAliases"]).lower()}`
+- MPP public sale allowed: `{str(report["decision"]["canExposeMppPublicSale"]).lower()}`
+- Next step: `{report["decision"]["nextStep"]}`
+
+## Compatibility input
+
+- Compatibility status: `{report["compatibility"]["status"]}`
+- Compatibility issue: {report["compatibility"]["reportIssue"]}
+- Missing adapter targets: `{missing}`
+
+## Load canary
+
+- Attempted: `{str(report["loadCanary"]["attempted"]).lower()}`
+- No public ingress: `{str(report["loadCanary"]["noPublicIngress"]).lower()}`
+- Merged checkpoint served: `{str(report["loadCanary"]["mergedCheckpointServed"]).lower()}`
+- Adapter payload required by this gate: `{str(report["loadCanary"]["adapterPayloadRequired"]).lower()}`
+- Reason: `{report["loadCanary"]["reason"]}`
+
+Timing metrics are intentionally empty because the canary did not start.
+
+## Blockers
+
+{blocker_lines}
+
+## Interpretation
+
+The private load canary is blocked before host/model interaction because the
+adapter compatibility gate did not admit the Fable LoRA targets on the current
+patched G4 runtime. This is the expected safe outcome after issue #67.
+
+## Public safety
+
+- Contains secrets: false
+- Contains prompts: false
+- Contains responses: false
+- Contains weights: false
+- Contains hidden reasoning: false
+- Contains exploit payloads: false
+"""
+
+
+def write_load_canary_report(
+    report: dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "deepseek-v4-fable-load-canary.json"
+    md_path = output_dir / "deepseek-v4-fable-load-canary.md"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    md_path.write_text(render_load_canary_markdown(report))
+    return json_path, md_path
+
+
 def _hf_resolve_url(repo: str, revision: str, filename: str) -> str:
     return f"https://huggingface.co/{repo}/resolve/{revision}/{filename}"
 
@@ -495,6 +659,30 @@ def main(argv: list[str] | None = None) -> int:
         runtime_source=args.runtime_source_label or str(args.runtime_modules_file),
     )
     json_path, md_path = write_report(report, args.output_dir)
+    print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
+    return 0 if report["decision"]["canAttemptPrivateAdapterLoad"] else 2
+
+
+def load_canary_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Emit a public-safe DeepSeek-V4-Fable private load canary decision."
+    )
+    parser.add_argument(
+        "--compatibility-report",
+        type=Path,
+        required=True,
+        help="JSON report from hydralisk-deepseek-v4-fable-adapter-probe.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(".hydralisk/deepseek-v4-fable-load-canary"),
+    )
+    args = parser.parse_args(argv)
+
+    compatibility_report = json.loads(args.compatibility_report.read_text())
+    report = build_load_canary_report(compatibility_report=compatibility_report)
+    json_path, md_path = write_load_canary_report(report, args.output_dir)
     print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
     return 0 if report["decision"]["canAttemptPrivateAdapterLoad"] else 2
 
