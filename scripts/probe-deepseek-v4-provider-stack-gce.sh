@@ -11,6 +11,7 @@ MOE_BACKEND="${MOE_BACKEND:-auto}"
 ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"
 DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"
 VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"
+VLLM_ENABLE_EXPERT_PARALLEL="${VLLM_ENABLE_EXPERT_PARALLEL:-1}"
 VLLM_E8M0_TRITON_UPCAST="${VLLM_E8M0_TRITON_UPCAST:-0}"
 HYDRALISK_DEEPSEEK_O_PROJ_PATCH="${HYDRALISK_DEEPSEEK_O_PROJ_PATCH:-0}"
 HYDRALISK_DEEPSEEK_O_PROJ_RECIPE="${HYDRALISK_DEEPSEEK_O_PROJ_RECIPE:-auto}"
@@ -66,6 +67,7 @@ render_markdown() {
     echo "- Allow NVFP4 SM120 guard patch: \`$ALLOW_NVFP4_SM120\`"
     echo "- Docker build pull: \`$DOCKER_BUILD_PULL\`"
     echo "- vLLM linear backend: \`$VLLM_LINEAR_BACKEND\`"
+    echo "- vLLM expert parallel: \`$VLLM_ENABLE_EXPERT_PARALLEL\`"
     echo "- vLLM E8M0 Triton upcast patch: \`$VLLM_E8M0_TRITON_UPCAST\`"
     echo "- DeepSeek o_proj provider patch: \`$HYDRALISK_DEEPSEEK_O_PROJ_PATCH\`"
     echo "- DeepSeek o_proj recipe: \`$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE\`"
@@ -180,6 +182,7 @@ remote_script="$(
   printf 'ALLOW_NVFP4_SM120=%q\n' "$ALLOW_NVFP4_SM120"
   printf 'DOCKER_BUILD_PULL=%q\n' "$DOCKER_BUILD_PULL"
   printf 'VLLM_LINEAR_BACKEND=%q\n' "$VLLM_LINEAR_BACKEND"
+  printf 'VLLM_ENABLE_EXPERT_PARALLEL=%q\n' "$VLLM_ENABLE_EXPERT_PARALLEL"
   printf 'VLLM_E8M0_TRITON_UPCAST=%q\n' "$VLLM_E8M0_TRITON_UPCAST"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE"
@@ -629,6 +632,7 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "MOE_BACKEND\t%s\n" "$MOE_BACKEND"
   printf "ALLOW_NVFP4_SM120\t%s\n" "$ALLOW_NVFP4_SM120"
   printf "VLLM_LINEAR_BACKEND\t%s\n" "$VLLM_LINEAR_BACKEND"
+  printf "VLLM_ENABLE_EXPERT_PARALLEL\t%s\n" "$VLLM_ENABLE_EXPERT_PARALLEL"
   printf "VLLM_E8M0_TRITON_UPCAST\t%s\n" "$VLLM_E8M0_TRITON_UPCAST"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_PATCH\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_RECIPE\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE"
@@ -647,7 +651,11 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "MAX_NUM_BATCHED_TOKENS\t%s\n" "$MAX_NUM_BATCHED_TOKENS"
   printf "GPU_MEMORY_UTILIZATION\t%s\n" "$GPU_MEMORY_UTILIZATION"
   printf "LOCAL_SITE_PACKAGES_PATCHES\tfalse\n"
-  printf "PROVIDER_FLAGS\t--kv-cache-dtype fp8 --block-size 256 --enable-expert-parallel --tensor-parallel-size %s --linear-backend %s\n" "$gpu_count" "$VLLM_LINEAR_BACKEND"
+  expert_parallel_flags=()
+  if [[ "$VLLM_ENABLE_EXPERT_PARALLEL" = "1" ]]; then
+    expert_parallel_flags+=(--enable-expert-parallel)
+  fi
+  printf "PROVIDER_FLAGS\t--kv-cache-dtype fp8 --block-size 256 %s --tensor-parallel-size %s --linear-backend %s\n" "${expert_parallel_flags[*]:-}" "$gpu_count" "$VLLM_LINEAR_BACKEND"
 } > "$REMOTE_LOG_DIR/provider-stack-engine.txt"
 
 sudo docker rm -f "$container_name" >/dev/null 2>&1 || true
@@ -681,7 +689,7 @@ sudo docker run --rm --gpus all --ipc=host --network host \
   --kv-cache-dtype fp8 \
   --block-size 256 \
   --tensor-parallel-size "$gpu_count" \
-  --enable-expert-parallel \
+  "${expert_parallel_flags[@]}" \
   --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \
   --max-model-len "$MAX_MODEL_LEN" \
   --max-num-seqs "$MAX_NUM_SEQS" \

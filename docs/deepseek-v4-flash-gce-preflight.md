@@ -61,6 +61,9 @@ FlashInfer TRTLLM NVFP4 MoE G4 evidence:
 FlashInfer B12x SM12x MoE G4 evidence:
 [`docs/evidence/2026-06-24-flashinfer-b12x-moe-g4.md`](evidence/2026-06-24-flashinfer-b12x-moe-g4.md)
 
+B12x wide-G4 full-model evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-b12x-wide-g4.md`](evidence/2026-06-24-deepseek-v4-flash-b12x-wide-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -475,11 +478,27 @@ so the next honest step is upstream/kernel work, a custom SGLang/offload path,
 or known-good H100/H200/B200/GB200/DGX-class hardware rather than more
 stock-vLLM G4 flag trials.
 
-The B12x result narrows the next G4 work further. The useful next full-model
-attempt is a B12x/no-EP vLLM run on a wider G4 host, where tensor parallelism
-may reduce per-rank memory enough to avoid expert parallelism. If that cannot
-fit, the remaining G4 path is B12x expert-parallel support or the custom
-expert offload/prefetch design.
+The B12x wide-G4 full-model attempt then proved a more specific blocker. Google
+admitted an 8 x RTX PRO 6000 `g4-standard-384` host, the provider-style
+vLLM/DeepGEMM image built successfully, and vLLM selected
+`moe_backend='flashinfer_b12x'` with tensor parallel size 8 and expert
+parallel disabled. It still failed before `/v1/models` because DeepSeek-V4
+sets `swiglu_limit=10.0` and vLLM rejects B12x for this model:
+
+```text
+ValueError:
+Model sets swiglu_limit=10.0, but the explicitly requested
+moe_backend='flashinfer_b12x' does not apply the SwiGLU clamp.
+Use 'flashinfer_trtllm' or 'flashinfer_cutlass' instead.
+```
+
+That makes B12x a useful SM120 kernel research path, not the next immediate
+stock-vLLM full-model route. The next executable issue should try the
+clamp-capable provider-supported MoE backends on the same private 8 x G4 shape:
+`flashinfer_cutlass` first, then `flashinfer_trtllm` if needed. If those fail
+on SM120, the remaining G4 path is custom kernel work: add B12x SwiGLU clamp
+support, add B12x expert parallel/offload support, or build the SGLang-style
+expert repack and prefetch lane.
 
 ## Promotion boundary
 

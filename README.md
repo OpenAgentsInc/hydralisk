@@ -141,6 +141,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-oproj-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-oproj-g4.md)
 - [`docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-g4.md`](docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-g4.md)
 - [`docs/evidence/2026-06-24-flashinfer-b12x-moe-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-moe-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-b12x-wide-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-b12x-wide-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

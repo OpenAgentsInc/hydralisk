@@ -266,6 +266,7 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"' in script
     assert 'DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"' in script
     assert 'VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"' in script
+    assert 'VLLM_ENABLE_EXPERT_PARALLEL="${VLLM_ENABLE_EXPERT_PARALLEL:-1}"' in script
     assert 'VLLM_E8M0_TRITON_UPCAST="${VLLM_E8M0_TRITON_UPCAST:-0}"' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH="${HYDRALISK_DEEPSEEK_O_PROJ_PATCH:-0}"' in script
     assert (
@@ -310,14 +311,16 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'HF_HUB_DISABLE_XET\\t%s' in script
     assert 'HF_XET_NUM_CONCURRENT_RANGE_GETS\\t%s' in script
     assert 'VLLM_LINEAR_BACKEND\\t%s' in script
+    assert 'VLLM_ENABLE_EXPERT_PARALLEL\\t%s' in script
     assert 'VLLM_E8M0_TRITON_UPCAST\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\\t%s' in script
     assert '"${hf_env_args[@]}"' in script
     assert 'linear_backend_args+=(--linear-backend "$VLLM_LINEAR_BACKEND")' in script
+    assert 'expert_parallel_flags+=(--enable-expert-parallel)' in script
     assert "--kv-cache-dtype fp8" in script
     assert "--block-size 256" in script
-    assert "--enable-expert-parallel" in script
+    assert '"${expert_parallel_flags[@]}"' in script
     assert "--tensor-parallel-size \"$gpu_count\"" in script
 
 
@@ -367,6 +370,58 @@ def test_nvfp4_g4_probe_script_is_public_safe_in_dry_run(
     assert "hydralisk-gptoss" not in plan
     assert "khala" not in plan.lower()
     assert "Contains weights: false" in evidence
+
+
+def test_b12x_g4_probe_script_is_public_safe_in_dry_run(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-deepseek-v4-b12x-g4-gce.sh"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path),
+            "TS": "20260624000000",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "deepseek-v4-b12x-g4-probe.md").read_text()
+    plan = (tmp_path / "b12x-g4-plan.tsv").read_text()
+    script_text = script.read_text()
+
+    assert "Wrote" in result.stdout
+    assert "g4-standard-384" in plan
+    assert "g4-standard-192" in plan
+    assert "flashinfer_b12x" in evidence
+    assert "vLLM expert parallel: `0`" in evidence
+    assert "Contains weights: false" in evidence
+    assert "VLLM_ENABLE_EXPERT_PARALLEL=\"$VLLM_ENABLE_EXPERT_PARALLEL\"" in script_text
+    assert "hydralisk-gptoss" not in plan
+    assert "khala" not in plan.lower()
+
+    rejected = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path / "rejected"),
+            "TARGET_INSTANCE": "hydralisk-gptoss20b-l4-prod",
+            "TARGET_ZONE": "us-central1-a",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert rejected.returncode == 2
+    assert "fresh hydralisk-deepseek-v4" in rejected.stderr
 
 
 def test_nvfp4_g4_probe_refuses_non_probe_targets(tmp_path: Path) -> None:
