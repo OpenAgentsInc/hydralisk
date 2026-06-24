@@ -80,7 +80,11 @@ Initial targets:
   remaining G4 path starts at the FlashInfer TRTLLM NVFP4 device gate. A
   default-off SM120 gate patch advances the two-card G4 probe into vLLM startup
   with `flashinfer_trtllm`, but the private-only host now blocks on Hugging
-  Face artifact access before weight load.
+  Face artifact access before weight load. Cloud NAT for the `default`
+  `us-central1` subnet fixed private config/artifact egress without restoring
+  a VM external IP, and the rerun advanced into real model load with
+  `FLASHINFER_TRTLLM`; it then stalled in the Hugging Face Xet / vLLM load path
+  before `/v1/models`.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -115,6 +119,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md`](docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-sm120-g4-probe.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-sm120-g4-probe.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

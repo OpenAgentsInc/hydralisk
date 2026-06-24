@@ -43,6 +43,9 @@ NVFP4 G4 evidence:
 NVFP4 SM120 G4 evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-sm120-g4-probe.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-sm120-g4-probe.md)
 
+NVFP4 private-egress G4 evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -238,6 +241,28 @@ subnet or pre-stage the pinned HF snapshot under
 yet prove or disprove weight load, memory fit, or the actual FlashInfer TRTLLM
 kernel on RTX PRO 6000.
 
+The private-egress probe then created a Cloud Router/NAT pair for the `default`
+network in `us-central1`:
+
+```text
+hydralisk-default-router-us-central1
+hydralisk-default-nat-us-central1
+```
+
+The G4 VM kept no external IP, but the derived container could fetch the pinned
+model config over private outbound egress. The rerun advanced into real load:
+vLLM resolved `DeepseekV4ForCausalLM`, used tensor/expert parallel world size
+2, placed 128 of 256 experts on each rank, selected
+`FLASHINFER_TRTLLM`, and held about `80781 MiB` on each RTX PRO 6000. The HF
+cache grew to about `95G`.
+
+It still did not reach `/v1/models`. The process appeared wedged with no vLLM
+log writes after `08:19:03Z`, no Xet log writes after `08:21:44Z`, defunct
+worker processes, and the parent process still alive holding GPU memory. The
+next useful step is to make snapshot acquisition deterministic: use an
+out-of-band `HF_TOKEN`, disable Xet if supported by the installed HF stack, or
+pre-stage the complete pinned snapshot before starting vLLM.
+
 The first viable lanes are:
 
 1. `g4-standard-96`, 2 x RTX PRO 6000. Google admitted this lane; it clears
@@ -321,7 +346,9 @@ H100/H100 Mega/H200/B200/GB200 quota in this project. The NVFP4 stock-vLLM
 route is currently blocked by vLLM/FlashInfer backend support for this exact
 G4 device/configuration, not by the prior FP8 CUTLASS scaled-mm signature. The
 patched SM120 probe gets past that first device gate but is now blocked on
-private-host artifact access before it can test weight load.
+private-host artifact access before it can test weight load. After Cloud NAT,
+private artifact access is fixed enough to start model load, but the current
+blocker is a stalled Hugging Face Xet / vLLM load path before readiness.
 
 ## Promotion boundary
 
