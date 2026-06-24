@@ -73,6 +73,9 @@ o_proj fallback wide-G4 evidence:
 Full-shape TRTLLM NVFP4 MoE repro evidence:
 [`docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-full-shape-g4.md`](evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-full-shape-g4.md)
 
+B12x clamp and expert-shard evidence:
+[`docs/evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md`](evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -572,6 +575,39 @@ should be a kernel-route decision: patch/avoid TRTLLM SM100-family NVFP4 MoE
 for SM120, add B12x clamp plus expert-parallel/offload support, build the
 SGLang-style offload/prefetch lane, or obtain known-good H100/H200/B200/GB200
 hardware.
+
+The B12x clamp and expert-shard probe then made that route decision sharper.
+On the same private 8 x G4 host and issue #25 derived image, live FlashInfer
+`0.6.12` exposes `b12x_fused_moe`, `num_local_experts`, and the SM120 B12x
+dense GEMM kernel, but it does not expose a DeepSeek-style clamp surface:
+
+```text
+supportsSwigluLimitKwarg: false
+mentionsSwigluLimit: false
+b12x_fused_moe() got an unexpected keyword argument 'swiglu_limit'
+```
+
+The exact full-model eight-way shard also still fails before kernel launch:
+
+```text
+seq_len=512, hidden=4096, intermediate=2048,
+num_experts=256, local_experts=32, top_k=6
+
+NotImplementedError:
+b12x_fused_moe does not yet support Expert Parallelism
+(num_local_experts=32 != num_experts=256)
+```
+
+The positive control still matters: all-local B12x runs the DeepSeek-like shape
+on RTX PRO 6000 when `local_experts=256`, producing `[512, 4096]` output with
+about 3.7 GB peak synthetic allocation. So B12x is not dead; it is a custom
+implementation lane. It needs both DeepSeek's `swiglu_limit=10.0` semantics and
+expert parallelism or an expert-offload scheduler before it can be retried as a
+serving path.
+
+The next issue should therefore implement one of those missing B12x pieces or
+the SGLang-style expert repack/offload path. More stock vLLM G4 flag trials are
+not a credible path to readiness.
 
 ## Promotion boundary
 

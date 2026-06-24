@@ -115,7 +115,12 @@ Initial targets:
   `GemmMNK=512 4096 4096`. That exact full-model MoE shape is now reproduced
   synthetically without weights or vLLM scheduling, so stock
   `flashinfer_trtllm` is no longer a near-serving G4 lane by wrapper changes
-  alone.
+  alone. The follow-up B12x viability probe shows the only positive SM120 MoE
+  path is also not ready as-is: FlashInfer B12x has no `swiglu_limit` clamp
+  surface, rejects the exact `32 / 256` expert-parallel shard, and only runs
+  the DeepSeek-like synthetic shape when all 256 experts are local. The next G4
+  work must be real kernel/scheduler work: B12x clamp, B12x expert
+  parallelism/offload, or a SGLang-style expert repack plus prefetch lane.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -160,6 +165,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md)
 - [`docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-full-shape-g4.md`](docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-full-shape-g4.md)
+- [`docs/evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

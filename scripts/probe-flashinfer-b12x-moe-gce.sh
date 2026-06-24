@@ -4,14 +4,15 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-openagentsgemini}"
 TARGET_INSTANCE="${TARGET_INSTANCE:-}"
 TARGET_ZONE="${TARGET_ZONE:-}"
-ISSUE_NUMBER="${ISSUE_NUMBER:-22}"
-IMAGE="${IMAGE:-hydralisk-deepseek-v4-nvfp4-sm120-oproj-bypass-vllm:20260624085429}"
-SEQ_LEN="${SEQ_LEN:-1024}"
+ISSUE_NUMBER="${ISSUE_NUMBER:-27}"
+IMAGE="${IMAGE:-hydralisk-deepseek-v4-oproj-fallback-g4-vllm:20260624095206}"
+SEQ_LEN="${SEQ_LEN:-512}"
 HIDDEN_SIZE="${HIDDEN_SIZE:-4096}"
 INTERMEDIATE_SIZE="${INTERMEDIATE_SIZE:-2048}"
 NUM_EXPERTS="${NUM_EXPERTS:-256}"
-LOCAL_NUM_EXPERTS="${LOCAL_NUM_EXPERTS:-128}"
+LOCAL_NUM_EXPERTS="${LOCAL_NUM_EXPERTS:-32}"
 TOP_K="${TOP_K:-6}"
+SWIGLU_LIMIT="${SWIGLU_LIMIT:-10.0}"
 RUN_NO_EP_CASE="${RUN_NO_EP_CASE:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 TS="${TS:-$(date -u +%Y%m%d%H%M%S)}"
@@ -46,6 +47,7 @@ render_markdown() {
     echo "- Experts: \`$NUM_EXPERTS\`"
     echo "- Local experts: \`$LOCAL_NUM_EXPERTS\`"
     echo "- Top-k: \`$TOP_K\`"
+    echo "- SwiGLU limit: \`$SWIGLU_LIMIT\`"
     echo "- Run no-EP case: \`$RUN_NO_EP_CASE\`"
     echo
     if [[ "$DRY_RUN" = "1" ]]; then
@@ -61,7 +63,7 @@ render_markdown() {
       echo "## Results"
       echo
       echo '```json'
-      sed -n '1,120p' "$OUTPUT_DIR/flashinfer-b12x-result.jsonl" 2>/dev/null || true
+      sed -n '1,180p' "$OUTPUT_DIR/flashinfer-b12x-result.jsonl" 2>/dev/null || true
       echo '```'
       echo
       echo "Stderr:"
@@ -96,6 +98,7 @@ remote_script="$(
   printf 'NUM_EXPERTS=%q\n' "$NUM_EXPERTS"
   printf 'LOCAL_NUM_EXPERTS=%q\n' "$LOCAL_NUM_EXPERTS"
   printf 'TOP_K=%q\n' "$TOP_K"
+  printf 'SWIGLU_LIMIT=%q\n' "$SWIGLU_LIMIT"
   printf 'RUN_NO_EP_CASE=%q\n' "$RUN_NO_EP_CASE"
   printf 'REMOTE_LOG_DIR=%q\n' "/var/log/hydralisk/flashinfer-b12x-moe-$TS"
   cat <<'REMOTE'
@@ -172,6 +175,13 @@ def module_record() -> dict:
         import flashinfer.fused_moe as fm
 
         fn = getattr(fm, "b12x_fused_moe", None)
+        signature = inspect.signature(fn) if fn else None
+        source = ""
+        if fn:
+            try:
+                source = inspect.getsource(fn)
+            except Exception:
+                source = ""
         record["runtime"] = {
             "flashinfer": getattr(flashinfer, "__version__", "unknown"),
             "torch": torch.__version__,
@@ -179,7 +189,25 @@ def module_record() -> dict:
             "device": torch.cuda.get_device_name(0),
             "capability": list(torch.cuda.get_device_capability(0)),
         }
-        record["b12xSignature"] = str(inspect.signature(fn)) if fn else None
+        record["b12xSignature"] = str(signature) if signature else None
+        record["b12xInterface"] = {
+            "supportsSwigluLimitKwarg": (
+                bool(signature) and "swiglu_limit" in signature.parameters
+            ),
+            "supportsNumLocalExpertsKwarg": (
+                bool(signature) and "num_local_experts" in signature.parameters
+            ),
+            "supportsActivationKwarg": (
+                bool(signature) and "activation" in signature.parameters
+            ),
+        }
+        record["b12xSourceSignals"] = {
+            "mentionsSwigluLimit": "swiglu_limit" in source,
+            "mentionsSwigluLimitValue": "swiglu_limit_value" in source,
+            "mentionsExpertParallelRejection": (
+                "does not yet support Expert Parallelism" in source
+            ),
+        }
     except Exception as exc:
         record["runtimeError"] = {
             "type": type(exc).__name__,
@@ -197,6 +225,7 @@ def run_b12x_case(
     num_experts: int,
     local_num_experts: int,
     top_k: int,
+    swiglu_limit=None,
 ) -> dict:
     import flashinfer
     import flashinfer.fused_moe as fm
@@ -216,6 +245,7 @@ def run_b12x_case(
         "numExperts": num_experts,
         "localNumExperts": local_num_experts,
         "topK": top_k,
+        "swigluLimitKwarg": swiglu_limit,
         "loadsModelWeights": False,
         "publicSafety": {
             "containsSecrets": False,
@@ -284,6 +314,15 @@ def run_b12x_case(
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         start.record()
+        call_kwargs = {
+            "w1_alpha": w1_alpha,
+            "w2_alpha": w2_alpha,
+            "fc2_input_scale": fc2_input_scale,
+            "num_local_experts": local_num_experts,
+            "quant_mode": "nvfp4",
+        }
+        if swiglu_limit is not None:
+            call_kwargs["swiglu_limit"] = swiglu_limit
         out = fm.b12x_fused_moe(
             x,
             w1,
@@ -294,11 +333,7 @@ def run_b12x_case(
             token_final_scales,
             num_experts,
             top_k,
-            w1_alpha=w1_alpha,
-            w2_alpha=w2_alpha,
-            fc2_input_scale=fc2_input_scale,
-            num_local_experts=local_num_experts,
-            quant_mode="nvfp4",
+            **call_kwargs,
         )
         end.record()
         torch.cuda.synchronize()
@@ -335,6 +370,18 @@ emit(
         num_experts=8,
         local_num_experts=8,
         top_k=2,
+    )
+)
+emit(
+    run_b12x_case(
+        "b12x_swiglu_limit_kwarg_probe",
+        seq_len=8,
+        hidden_size=256,
+        intermediate_size=256,
+        num_experts=8,
+        local_num_experts=8,
+        top_k=2,
+        swiglu_limit=float(os.environ["SWIGLU_LIMIT"]),
     )
 )
 seq_len = env_int("SEQ_LEN")
@@ -375,6 +422,7 @@ sudo docker run --rm --gpus all --ipc=host --network host \
   -e "NUM_EXPERTS=$NUM_EXPERTS" \
   -e "LOCAL_NUM_EXPERTS=$LOCAL_NUM_EXPERTS" \
   -e "TOP_K=$TOP_K" \
+  -e "SWIGLU_LIMIT=$SWIGLU_LIMIT" \
   -e "RUN_NO_EP_CASE=$RUN_NO_EP_CASE" \
   -v "$REMOTE_LOG_DIR/repro.py:/tmp/repro.py:ro" \
   --entrypoint python3 "$IMAGE" /tmp/repro.py \
