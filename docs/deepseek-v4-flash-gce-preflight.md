@@ -70,6 +70,9 @@ Clamp-backend wide-G4 evidence:
 o_proj fallback wide-G4 evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md`](evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md)
 
+Full-shape TRTLLM NVFP4 MoE repro evidence:
+[`docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-full-shape-g4.md`](evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-full-shape-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -551,6 +554,24 @@ That is the next executable issue. The G4 lane has graduated from admission,
 artifact, dense-linear, backend-selection, and `o_proj` work into the MoE
 kernel itself. Any next G4 probe should isolate or replace that TRTLLM NVFP4
 MoE kernel path rather than changing `o_proj` again.
+
+The exact full-model MoE shape has now been reproduced synthetically without
+DeepSeek weights, prompts, Hugging Face artifacts, vLLM scheduling, or `o_proj`.
+Using `seq_len=512` and `local_num_experts=32` against the same issue #25
+derived image reproduced:
+
+```text
+trtllm_batched_gemm_runner.cu:286
+numBatches: 32
+GemmMNK: 512 4096 4096
+```
+
+That confirms the stock `flashinfer_trtllm` NVFP4 MoE kernel path is not a
+viable G4 serving path by wrapper or vLLM flag changes alone. The next issue
+should be a kernel-route decision: patch/avoid TRTLLM SM100-family NVFP4 MoE
+for SM120, add B12x clamp plus expert-parallel/offload support, build the
+SGLang-style offload/prefetch lane, or obtain known-good H100/H200/B200/GB200
+hardware.
 
 ## Promotion boundary
 
