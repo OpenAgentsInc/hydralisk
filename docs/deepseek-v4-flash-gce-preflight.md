@@ -52,6 +52,9 @@ NVFP4 no-Xet G4 evidence:
 NVFP4 Triton-linear G4 evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-triton-g4.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-triton-g4.md)
 
+NVFP4 o_proj G4 evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-oproj-g4.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-oproj-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -306,6 +309,42 @@ The stack now passes through `vllm/models/deepseek_v4/nvidia/flashmla.py`,
 minimal fallback for `deep_gemm_fp8_o_proj`, while preserving the
 FlashInfer TRTLLM NVFP4 MoE path.
 
+The provider-image `o_proj` probe reproduced the older shape trace inside the
+NVFP4 path:
+
+```text
+o_fp8      [1024,4,4096] torch.float8_e4m3fn
+o_scale    [1024,4,8]    torch.int32
+wo_a       [4096,4096]   torch.float8_e4m3fn
+wo_a scale [32,32]       torch.float8_e8m0fnu
+```
+
+Grouped RHS plus fp32 scale mode changed the failure from the rank assertion to
+DeepGEMM's scale-factor layout assertion:
+
+```text
+rhs_weight [4,1024,4096] torch.float8_e4m3fn
+rhs_scale  [4,8,32]      torch.float32
+RuntimeError: layout.hpp:59: Unknown SF transformation
+```
+
+An explicit invalid `HYDRALISK_DEEPSEEK_O_PROJ_BYPASS=zero` load-only probe then
+moved past `o_proj`, but still did not reach `/v1/models`. The next failure was
+inside FlashInfer TRTLLM NVFP4 MoE GEMM:
+
+```text
+tvm.error.InternalError:
+trtllm_batched_gemm_runner.cu:286:
+Error occurred when running GEMM
+numBatches: 128
+GemmMNK: 1024 4096 4096
+```
+
+That makes the admitted G4 route a kernel compatibility research lane. The
+stock-vLLM G4 path should not be treated as close to serving unless both the
+DeepGEMM `o_proj` scale layout and the FlashInfer TRTLLM NVFP4 MoE kernel are
+made to run on RTX PRO 6000 SM120.
+
 The first viable lanes are:
 
 1. `g4-standard-96`, 2 x RTX PRO 6000. Google admitted this lane; it clears
@@ -393,7 +432,9 @@ the Xet/vLLM transfer wedge. The active blocker is now vLLM's dense FP8
 `cutlass_scaled_mm` dispatch on SM120 before readiness. After
 `VLLM_LINEAR_BACKEND=triton` plus the E8M0 upcast patch, that CUTLASS blocker
 is cleared and the lane stops on DeepGEMM `o_proj` layout handling before
-readiness.
+readiness. After an invalid zero-`o_proj` load-only bypass, the lane stops on
+FlashInfer TRTLLM NVFP4 MoE GEMM execution. The current G4 stack therefore has
+at least two SM120 compatibility blockers before valid readiness.
 
 ## Promotion boundary
 

@@ -12,6 +12,12 @@ ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"
 DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"
 VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"
 VLLM_E8M0_TRITON_UPCAST="${VLLM_E8M0_TRITON_UPCAST:-0}"
+HYDRALISK_DEEPSEEK_O_PROJ_PATCH="${HYDRALISK_DEEPSEEK_O_PROJ_PATCH:-0}"
+HYDRALISK_DEEPSEEK_O_PROJ_RECIPE="${HYDRALISK_DEEPSEEK_O_PROJ_RECIPE:-auto}"
+HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE="${HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE:-0}"
+HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS="${HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS:-0}"
+HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE="${HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE:-raw_e8m0}"
+HYDRALISK_DEEPSEEK_O_PROJ_BYPASS="${HYDRALISK_DEEPSEEK_O_PROJ_BYPASS:-off}"
 HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-0}"
 HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-0}"
 HF_XET_NUM_CONCURRENT_RANGE_GETS="${HF_XET_NUM_CONCURRENT_RANGE_GETS:-}"
@@ -61,6 +67,12 @@ render_markdown() {
     echo "- Docker build pull: \`$DOCKER_BUILD_PULL\`"
     echo "- vLLM linear backend: \`$VLLM_LINEAR_BACKEND\`"
     echo "- vLLM E8M0 Triton upcast patch: \`$VLLM_E8M0_TRITON_UPCAST\`"
+    echo "- DeepSeek o_proj provider patch: \`$HYDRALISK_DEEPSEEK_O_PROJ_PATCH\`"
+    echo "- DeepSeek o_proj recipe: \`$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE\`"
+    echo "- DeepSeek o_proj shape trace: \`$HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE\`"
+    echo "- DeepSeek o_proj grouped RHS: \`$HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS\`"
+    echo "- DeepSeek o_proj RHS scale mode: \`$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE\`"
+    echo "- DeepSeek o_proj bypass: \`$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\`"
     echo "- HF Hub disable Xet: \`$HF_HUB_DISABLE_XET\`"
     echo "- HF Xet high performance: \`$HF_XET_HIGH_PERFORMANCE\`"
     echo "- HF Xet concurrent range gets: \`${HF_XET_NUM_CONCURRENT_RANGE_GETS:-default}\`"
@@ -169,6 +181,12 @@ remote_script="$(
   printf 'DOCKER_BUILD_PULL=%q\n' "$DOCKER_BUILD_PULL"
   printf 'VLLM_LINEAR_BACKEND=%q\n' "$VLLM_LINEAR_BACKEND"
   printf 'VLLM_E8M0_TRITON_UPCAST=%q\n' "$VLLM_E8M0_TRITON_UPCAST"
+  printf 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
+  printf 'HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE"
+  printf 'HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE"
+  printf 'HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS"
+  printf 'HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE"
+  printf 'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS"
   printf 'HF_HUB_DISABLE_XET=%q\n' "$HF_HUB_DISABLE_XET"
   printf 'HF_XET_HIGH_PERFORMANCE=%q\n' "$HF_XET_HIGH_PERFORMANCE"
   printf 'HF_XET_NUM_CONCURRENT_RANGE_GETS=%q\n' "$HF_XET_NUM_CONCURRENT_RANGE_GETS"
@@ -214,6 +232,234 @@ fi
 sudo systemctl enable --now docker >> "$REMOTE_LOG_DIR/provider-stack-docker-setup.log" 2>&1 || true
 
 build_ctx="$(mktemp -d /tmp/hydralisk-provider-stack.XXXXXX)"
+cat > "$build_ctx/patch_o_proj.py" <<'PY'
+import py_compile
+from pathlib import Path
+
+import vllm.models.deepseek_v4.nvidia.ops.o_proj as o_proj
+
+
+path = Path(o_proj.__file__)
+text = path.read_text()
+marker = "Hydralisk issue #20 DeepSeek NVFP4 o_proj provider patch"
+if marker in text:
+    print(f"{path} already patched")
+    raise SystemExit(0)
+
+old_imports = """import torch
+import torch.nn as nn
+"""
+new_imports = """import json
+import os
+
+import torch
+import torch.nn as nn
+"""
+
+old_recipe = """    cap = current_platform.get_device_capability()
+    assert cap is not None, "DeepseekV4 attention requires a CUDA device"
+    einsum_recipe = (1, 128, 128) if cap.major <= 9 else (1, 1, 128)
+    tma_aligned_scales = cap.major >= 10
+    return einsum_recipe, tma_aligned_scales
+"""
+new_recipe = """    forced_recipe = os.environ.get("HYDRALISK_DEEPSEEK_O_PROJ_RECIPE", "auto")
+    if forced_recipe == "hopper":
+        return (1, 128, 128), False
+    if forced_recipe == "blackwell":
+        return (1, 1, 128), True
+    cap = current_platform.get_device_capability()
+    assert cap is not None, "DeepseekV4 attention requires a CUDA device"
+    # Hydralisk issue #20 DeepSeek NVFP4 o_proj provider patch.
+    einsum_recipe = (1, 128, 128) if cap.major <= 9 else (1, 1, 128)
+    tma_aligned_scales = cap.major >= 10
+    return einsum_recipe, tma_aligned_scales
+"""
+
+old_quant = """    o_fp8, o_scale = fused_inv_rope_fp8_quant(
+        o,
+        positions,
+        cos_sin_cache,
+        n_groups=n_groups,
+        heads_per_group=heads_per_group,
+        nope_dim=nope_dim,
+        rope_dim=rope_dim,
+        tma_aligned_scales=tma_aligned_scales,
+    )
+    z = torch.empty(
+"""
+new_quant = """    if os.environ.get("HYDRALISK_DEEPSEEK_O_PROJ_BYPASS", "off") == "zero":
+        if os.environ.get("HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE", "0") == "1":
+            print(
+                "HYDRALISK_O_PROJ_BYPASS_TRACE\\t"
+                + json.dumps(
+                    {
+                        "bypass": "zero",
+                        "o": {
+                            "shape": list(o.shape),
+                            "dtype": str(o.dtype),
+                            "device": str(o.device),
+                        },
+                        "n_groups": int(n_groups),
+                        "o_lora_rank": int(o_lora_rank),
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+        z = torch.zeros(
+            (o.shape[0], n_groups, o_lora_rank),
+            device=o.device,
+            dtype=torch.bfloat16,
+        )
+        return wo_b(z.flatten(1))
+
+    o_fp8, o_scale = fused_inv_rope_fp8_quant(
+        o,
+        positions,
+        cos_sin_cache,
+        n_groups=n_groups,
+        heads_per_group=heads_per_group,
+        nope_dim=nope_dim,
+        rope_dim=rope_dim,
+        tma_aligned_scales=tma_aligned_scales,
+    )
+    if os.environ.get("HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE", "0") == "1":
+        def _tensor_meta(value):
+            return {
+                "shape": list(value.shape),
+                "dtype": str(value.dtype),
+                "device": str(value.device),
+            }
+
+        print(
+            "HYDRALISK_O_PROJ_SHAPE_TRACE\\t"
+            + json.dumps(
+                {
+                    "o": _tensor_meta(o),
+                    "o_fp8": _tensor_meta(o_fp8),
+                    "o_scale": _tensor_meta(o_scale),
+                    "wo_a_weight": _tensor_meta(wo_a.weight),
+                    "wo_a_weight_scale_inv": _tensor_meta(wo_a.weight_scale_inv),
+                    "einsum_recipe": list(einsum_recipe),
+                    "tma_aligned_scales": bool(tma_aligned_scales),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+
+    z = torch.empty(
+"""
+
+old_call = """    fp8_einsum(
+        "bhr,hdr->bhd",
+        (o_fp8, o_scale),
+        (wo_a.weight, wo_a.weight_scale_inv),
+        z,
+        recipe=einsum_recipe,
+    )
+"""
+new_call = """    rhs_weight = wo_a.weight
+    rhs_scale = wo_a.weight_scale_inv
+    if os.environ.get("HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS", "0") == "1":
+        rhs_weight = rhs_weight.view(n_groups, o_lora_rank, -1)
+        rhs_scale = rhs_scale.view(n_groups, o_lora_rank // 128, -1)
+        rhs_scale_mode = os.environ.get(
+            "HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE", "raw_e8m0"
+        )
+        if rhs_scale_mode == "fp32":
+            if rhs_scale.dtype == torch.float8_e8m0fnu:
+                from vllm.model_executor.layers.quantization.utils.fp8_utils import (
+                    _upcast_e8m0_to_fp32,
+                )
+
+                rhs_scale = _upcast_e8m0_to_fp32(rhs_scale).contiguous()
+            else:
+                rhs_scale = rhs_scale.to(torch.float32).contiguous()
+        elif rhs_scale_mode == "deepgemm_transform":
+            from vllm.utils.deep_gemm import transform_sf_into_required_layout
+
+            rhs_scale = transform_sf_into_required_layout(
+                sf=rhs_scale,
+                mn=o_lora_rank,
+                k=rhs_weight.shape[-1],
+                recipe=(1, 128, 128),
+                num_groups=n_groups,
+                is_sfa=False,
+            )
+        elif rhs_scale_mode == "deepgemm_transform_fp32":
+            from vllm.model_executor.layers.quantization.utils.fp8_utils import (
+                _upcast_e8m0_to_fp32,
+            )
+            from vllm.utils.deep_gemm import transform_sf_into_required_layout
+
+            if rhs_scale.dtype == torch.float8_e8m0fnu:
+                rhs_scale = _upcast_e8m0_to_fp32(rhs_scale).contiguous()
+            else:
+                rhs_scale = rhs_scale.to(torch.float32).contiguous()
+            rhs_scale = transform_sf_into_required_layout(
+                sf=rhs_scale,
+                mn=o_lora_rank,
+                k=rhs_weight.shape[-1],
+                recipe=(1, 128, 128),
+                num_groups=n_groups,
+                is_sfa=False,
+            )
+        elif rhs_scale_mode != "raw_e8m0":
+            raise RuntimeError(f"unsupported RHS scale mode: {rhs_scale_mode}")
+        if os.environ.get("HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE", "0") == "1":
+            def _tensor_meta(value):
+                return {
+                    "shape": list(value.shape),
+                    "dtype": str(value.dtype),
+                    "device": str(value.device),
+                }
+
+            print(
+                "HYDRALISK_O_PROJ_RHS_TRACE\\t"
+                + json.dumps(
+                    {
+                        "rhs_weight": _tensor_meta(rhs_weight),
+                        "rhs_scale": _tensor_meta(rhs_scale),
+                        "rhs_scale_mode": rhs_scale_mode,
+                        "group_rhs": True,
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+
+    fp8_einsum(
+        "bhr,hdr->bhd",
+        (o_fp8, o_scale),
+        (rhs_weight, rhs_scale),
+        z,
+        recipe=einsum_recipe,
+    )
+"""
+
+missing = [
+    name
+    for name, block in [
+        ("imports", old_imports),
+        ("recipe", old_recipe),
+        ("quant_anchor", old_quant),
+        ("call", old_call),
+    ]
+    if block not in text
+]
+if missing:
+    raise RuntimeError(f"o_proj patch target blocks missing: {missing} in {path}")
+
+text = text.replace(old_imports, new_imports, 1)
+text = text.replace(old_recipe, new_recipe, 1)
+text = text.replace(old_quant, new_quant, 1)
+text = text.replace(old_call, new_call, 1)
+path.write_text(text)
+py_compile.compile(str(path), doraise=True)
+print(f"patched {path} for Hydralisk issue #20 o_proj provider probe")
+PY
+
 cat > "$build_ctx/Dockerfile" <<'DOCKERFILE'
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
@@ -221,6 +467,8 @@ SHELL ["/bin/bash", "-lc"]
 ARG INSTALL_DEEPGEMM=1
 ARG ALLOW_NVFP4_SM120=0
 ARG VLLM_E8M0_TRITON_UPCAST=0
+ARG HYDRALISK_DEEPSEEK_O_PROJ_PATCH=0
+COPY patch_o_proj.py /tmp/patch_o_proj.py
 RUN if [[ "$INSTALL_DEEPGEMM" == "1" ]]; then \
       apt-get update && \
       apt-get install -y --no-install-recommends ca-certificates git cuda-libraries-dev-13-0 && \
@@ -236,6 +484,9 @@ RUN if [[ "$ALLOW_NVFP4_SM120" == "1" ]]; then \
 RUN if [[ "$VLLM_E8M0_TRITON_UPCAST" == "1" ]]; then \
       python3 -c "from pathlib import Path; import py_compile; import vllm.model_executor.layers.quantization.utils.fp8_utils as mod; path = Path(mod.__file__); text = path.read_text(); marker = 'Hydralisk issue #19 E8M0 CUDA Triton upcast'; old = '''    # Triton cannot currently bind E8M0 scale tensors directly. On ROCm,\n    # DeepSeek-V4 checkpoints store block scales in exponent-only E8M0 format,\n    # so decode them to fp32 before launching the kernel.\n    if current_platform.is_rocm() or current_platform.is_xpu():\n        if As.dtype == torch.float8_e8m0fnu:\n            As = _upcast_e8m0_to_fp32(As).contiguous()\n        if Bs.dtype == torch.float8_e8m0fnu:\n            Bs = _upcast_e8m0_to_fp32(Bs).contiguous()\n'''; new = '''    # Triton cannot currently bind E8M0 scale tensors directly. DeepSeek-V4\n    # checkpoints can store block scales in exponent-only E8M0 format.\n    # Hydralisk issue #19 E8M0 CUDA Triton upcast: decode these scales to fp32\n    # before launching Triton on CUDA as well as ROCm/XPU. Derived-image patch.\n    if As.dtype == torch.float8_e8m0fnu:\n        As = _upcast_e8m0_to_fp32(As).contiguous()\n    if Bs.dtype == torch.float8_e8m0fnu:\n        Bs = _upcast_e8m0_to_fp32(Bs).contiguous()\n'''; assert marker in text or old in text, f'E8M0 upcast patch target not found in {path}'; path.write_text(text if marker in text else text.replace(old, new)); py_compile.compile(str(path), doraise=True); print(f'patched {path} for CUDA Triton E8M0 upcast probe')"; \
     fi
+RUN if [[ "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH" == "1" ]]; then \
+      python3 /tmp/patch_o_proj.py; \
+    fi
 DOCKERFILE
 
 build_rc=0
@@ -249,6 +500,7 @@ timeout "$STACK_BUILD_TIMEOUT_SECONDS"s sudo docker build \
   --build-arg "INSTALL_DEEPGEMM=$INSTALL_DEEPGEMM" \
   --build-arg "ALLOW_NVFP4_SM120=$ALLOW_NVFP4_SM120" \
   --build-arg "VLLM_E8M0_TRITON_UPCAST=$VLLM_E8M0_TRITON_UPCAST" \
+  --build-arg "HYDRALISK_DEEPSEEK_O_PROJ_PATCH=$HYDRALISK_DEEPSEEK_O_PROJ_PATCH" \
   -t "$DERIVED_IMAGE" \
   -f "$build_ctx/Dockerfile" \
   "$build_ctx" > "$REMOTE_LOG_DIR/provider-stack-build.log" 2>&1 || build_rc=$?
@@ -259,6 +511,7 @@ rm -rf "$build_ctx"
   printf "DERIVED_IMAGE\t%s\n" "$DERIVED_IMAGE"
   printf "INSTALL_DEEPGEMM\t%s\n" "$INSTALL_DEEPGEMM"
   printf "VLLM_E8M0_TRITON_UPCAST\t%s\n" "$VLLM_E8M0_TRITON_UPCAST"
+  printf "HYDRALISK_DEEPSEEK_O_PROJ_PATCH\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
   printf "DOCKER_BUILD_PULL\t%s\n" "$DOCKER_BUILD_PULL"
   printf "BUILD_RC\t%s\n" "$build_rc"
   printf "BASE_IMAGE_INSPECT_BEGIN\n"
@@ -278,6 +531,11 @@ fi
 hf_env_args=(
   -e "HF_HUB_DISABLE_XET=$HF_HUB_DISABLE_XET"
   -e "HF_XET_HIGH_PERFORMANCE=$HF_XET_HIGH_PERFORMANCE"
+  -e "HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE"
+  -e "HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE=$HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE"
+  -e "HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS=$HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS"
+  -e "HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE=$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE"
+  -e "HYDRALISK_DEEPSEEK_O_PROJ_BYPASS=$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS"
 )
 if [[ -n "$HF_XET_NUM_CONCURRENT_RANGE_GETS" ]]; then
   hf_env_args+=(-e "HF_XET_NUM_CONCURRENT_RANGE_GETS=$HF_XET_NUM_CONCURRENT_RANGE_GETS")
@@ -372,6 +630,12 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "ALLOW_NVFP4_SM120\t%s\n" "$ALLOW_NVFP4_SM120"
   printf "VLLM_LINEAR_BACKEND\t%s\n" "$VLLM_LINEAR_BACKEND"
   printf "VLLM_E8M0_TRITON_UPCAST\t%s\n" "$VLLM_E8M0_TRITON_UPCAST"
+  printf "HYDRALISK_DEEPSEEK_O_PROJ_PATCH\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
+  printf "HYDRALISK_DEEPSEEK_O_PROJ_RECIPE\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE"
+  printf "HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE"
+  printf "HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS"
+  printf "HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE"
+  printf "HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS"
   printf "HF_HUB_DISABLE_XET\t%s\n" "$HF_HUB_DISABLE_XET"
   printf "HF_XET_HIGH_PERFORMANCE\t%s\n" "$HF_XET_HIGH_PERFORMANCE"
   printf "HF_XET_NUM_CONCURRENT_RANGE_GETS\t%s\n" "${HF_XET_NUM_CONCURRENT_RANGE_GETS:-default}"

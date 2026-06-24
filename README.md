@@ -90,7 +90,10 @@ Initial targets:
   before `/v1/models`. Forcing vLLM's dense FP8 linear backend to `triton`
   with the derived-image E8M0 upcast patch removed that CUTLASS blocker. The
   active blocker is now DeepSeek V4's NVIDIA `o_proj` DeepGEMM `fp8_einsum`
-  layout assertion before readiness.
+  scale-factor layout assertion before readiness; an explicit invalid
+  zero-`o_proj` load-only bypass then moves to a FlashInfer TRTLLM NVFP4 MoE
+  GEMM runtime failure on the same SM120 host. That makes this G4 lane a
+  compatibility research lane, not a near-serving stock-vLLM path.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -128,6 +131,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-no-xet-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-no-xet-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-triton-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-triton-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-oproj-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-oproj-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

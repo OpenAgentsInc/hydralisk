@@ -267,6 +267,19 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"' in script
     assert 'VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"' in script
     assert 'VLLM_E8M0_TRITON_UPCAST="${VLLM_E8M0_TRITON_UPCAST:-0}"' in script
+    assert 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH="${HYDRALISK_DEEPSEEK_O_PROJ_PATCH:-0}"' in script
+    assert (
+        'HYDRALISK_DEEPSEEK_O_PROJ_RECIPE="${HYDRALISK_DEEPSEEK_O_PROJ_RECIPE:-auto}"'
+        in script
+    )
+    assert (
+        'HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS="${HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS:-0}"'
+        in script
+    )
+    assert (
+        'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS="${HYDRALISK_DEEPSEEK_O_PROJ_BYPASS:-off}"'
+        in script
+    )
     assert 'HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-0}"' in script
     assert 'HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-0}"' in script
     assert 'HF_XET_NUM_CONCURRENT_RANGE_GETS="${HF_XET_NUM_CONCURRENT_RANGE_GETS:-}"' in script
@@ -280,9 +293,17 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert '--moe-backend "$MOE_BACKEND"' in script
     assert "--build-arg \"ALLOW_NVFP4_SM120=$ALLOW_NVFP4_SM120\"" in script
     assert "--build-arg \"VLLM_E8M0_TRITON_UPCAST=$VLLM_E8M0_TRITON_UPCAST\"" in script
+    assert (
+        "--build-arg \"HYDRALISK_DEEPSEEK_O_PROJ_PATCH=$HYDRALISK_DEEPSEEK_O_PROJ_PATCH\""
+        in script
+    )
     assert "pull_args+=(--pull)" in script
     assert "p.is_device_capability_family(120)" in script
     assert "Hydralisk issue #19 E8M0 CUDA Triton upcast" in script
+    assert "Hydralisk issue #20 DeepSeek NVFP4 o_proj provider patch" in script
+    assert "HYDRALISK_O_PROJ_SHAPE_TRACE" in script
+    assert "HYDRALISK_O_PROJ_RHS_TRACE" in script
+    assert "HYDRALISK_O_PROJ_BYPASS_TRACE" in script
     assert "provider-stack-network.txt" in script
     assert "cdn-lfs.huggingface.co" in script
     assert "NETWORK_RC" in script
@@ -290,13 +311,14 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'HF_XET_NUM_CONCURRENT_RANGE_GETS\\t%s' in script
     assert 'VLLM_LINEAR_BACKEND\\t%s' in script
     assert 'VLLM_E8M0_TRITON_UPCAST\\t%s' in script
+    assert 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH\\t%s' in script
+    assert 'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\\t%s' in script
     assert '"${hf_env_args[@]}"' in script
     assert 'linear_backend_args+=(--linear-backend "$VLLM_LINEAR_BACKEND")' in script
     assert "--kv-cache-dtype fp8" in script
     assert "--block-size 256" in script
     assert "--enable-expert-parallel" in script
     assert "--tensor-parallel-size \"$gpu_count\"" in script
-    assert "HYDRALISK_DEEPSEEK_O_PROJ" not in script
 
 
 def test_nvfp4_g4_probe_script_is_public_safe_in_dry_run(
@@ -329,6 +351,12 @@ def test_nvfp4_g4_probe_script_is_public_safe_in_dry_run(
     assert "Docker build pull: `1`" in evidence
     assert "vLLM linear backend: `auto`" in evidence
     assert "vLLM E8M0 Triton upcast patch: `0`" in evidence
+    assert "DeepSeek o_proj provider patch: `0`" in evidence
+    assert "DeepSeek o_proj recipe: `auto`" in evidence
+    assert "DeepSeek o_proj shape trace: `0`" in evidence
+    assert "DeepSeek o_proj grouped RHS: `0`" in evidence
+    assert "DeepSeek o_proj RHS scale mode: `raw_e8m0`" in evidence
+    assert "DeepSeek o_proj bypass: `off`" in evidence
     assert "HF Hub disable Xet: `0`" in evidence
     assert "HF Xet high performance: `0`" in evidence
     assert "HF Xet concurrent range gets: `default`" in evidence
