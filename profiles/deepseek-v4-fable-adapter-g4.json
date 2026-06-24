@@ -80,10 +80,10 @@
     "reason": "Issue #68 blocked the private load canary before runtime/model interaction, so issue #70 did not run authorized-security lab eval traffic or collect quality/timing metrics."
   },
   "retargetPlan": {
-    "status": "blocked_source_inventory_required",
+    "status": "blocked_packed_transform_implementation_missing",
     "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/71",
     "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md",
-    "primaryPath": "packed_runtime_retarget_after_source_inventory",
+    "primaryPath": "packed_runtime_retarget",
     "fallbackPath": "canonical_base_runtime_feasibility_probe",
     "packedTransformRequiredTargets": [
       "v_proj",
@@ -99,12 +99,21 @@
       "down_proj"
     ]
   },
+  "oProjOwnership": {
+    "status": "o_proj_owner_proven_kernel_provider",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/72",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-o-proj-ownership.md",
+    "adapterAddressableModule": false,
+    "kernelProviderOwned": true,
+    "canUseVanillaPeftOProj": false,
+    "canProceedToPackedLoraTransformSmoke": true
+  },
   "finalDecision": {
     "status": "rejected_runtime_unstable",
     "admittedPrivateAuthorizedSecurityLabCanary": false,
     "publicAliasesAllowed": false,
     "khalaGeneralRouteAllowed": false,
     "mppPublicSaleAllowed": false,
-    "nextStep": "prove_attention_output_projection_owner_then_build_packed_lora_transform"
+    "nextStep": "implement_offline_packed_lora_delta_transform_smoke"
   }
 }

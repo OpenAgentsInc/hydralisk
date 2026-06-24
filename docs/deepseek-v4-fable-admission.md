@@ -24,6 +24,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-lab-eval-decision.md`](evidence/2026-06-24-deepseek-v4-fable-lab-eval-decision.md)
 - Packed-runtime retargeting evidence:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md`](evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md)
+- `o_proj` ownership evidence:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-o-proj-ownership.md`](evidence/2026-06-24-deepseek-v4-fable-o-proj-ownership.md)
 
 ## Summary
 
@@ -312,16 +314,40 @@ avoids packed tensor surgery.
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md`](evidence/2026-06-24-deepseek-v4-fable-retarget-plan.md)
 
+## Issue #72 result
+
+Issue #72 inspected the live cached G4 image
+`hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:20260624v3vector2` with
+a public-safe AST summary. The result is
+`o_proj_owner_proven_kernel_provider`.
+
+`o_proj` is not a vanilla PEFT-addressable module on the current runtime.
+Instead, attention backends expose `_o_proj` methods that call
+`deep_gemm_fp8_o_proj` in `vllm.models.deepseek_v4.nvidia.ops.o_proj`.
+
+That resolves the source-inventory blocker from #71. The next blocker is now
+the actual offline packed-LoRA tensor transform smoke:
+
+- pack `q_proj`, `k_proj`, and `v_proj` deltas into `fused_wqa_wkv`;
+- pack `gate_proj` and `up_proj` deltas into `gate_up_proj`;
+- route or inject `o_proj` deltas through the proven kernel/provider-owned
+  projection path;
+- run the transform smoke without public traffic, prompts, outputs, or serving.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-o-proj-ownership.md`](evidence/2026-06-24-deepseek-v4-fable-o-proj-ownership.md)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
 The adapter compatibility probe now rejects the current G4 runtime path before
 load, and the final lab-eval gate rejects the profile because no private load
-canary was admitted. The next useful technical step is to prove `o_proj`
-ownership and implement a packed-LoRA transform smoke. If that stalls, pivot to
-a canonical base/runtime path that exposes the Fable target module names. Even
-if a future probe succeeds, Fable should remain an authorized-security research
-capability, not a general Khala model and not a public inference product.
+canary was admitted. `o_proj` ownership is now proven as a kernel/provider
+path, so the next useful technical step is an offline packed-LoRA transform
+smoke. If packed tensor surgery stalls, pivot to a canonical base/runtime path
+that exposes the Fable target module names. Even if a future probe succeeds,
+Fable should remain an authorized-security research capability, not a general
+Khala model and not a public inference product.
 
 ## Public safety
 

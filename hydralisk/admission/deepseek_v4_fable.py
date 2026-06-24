@@ -17,6 +17,7 @@ FABLE_SCHEMA = "hydralisk.deepseek-v4-fable.adapter-compatibility.v1"
 FABLE_LOAD_CANARY_SCHEMA = "hydralisk.deepseek-v4-fable.load-canary.v1"
 FABLE_LAB_EVAL_SCHEMA = "hydralisk.deepseek-v4-fable.lab-eval-decision.v1"
 FABLE_RETARGET_SCHEMA = "hydralisk.deepseek-v4-fable.retarget-plan.v1"
+FABLE_OPROJ_OWNERSHIP_SCHEMA = "hydralisk.deepseek-v4-fable.o-proj-ownership.v1"
 FABLE_REPO = "Chunjiang-Intelligence/DeepSeek-v4-Fable"
 FABLE_REVISION = "999909137c15e0b5539fee887431824fa7cb5b10"
 FABLE_BASE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
@@ -26,6 +27,7 @@ LOAD_CANARY_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/68"
 POLICY_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/69"
 LAB_EVAL_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/70"
 RETARGET_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/71"
+OPROJ_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/72"
 
 SMALL_METADATA_FILES = (
     "adapter_config.json",
@@ -1065,6 +1067,242 @@ def write_retarget_plan_report(
     return json_path, md_path
 
 
+def build_o_proj_ownership_report(
+    *,
+    source_inventory: dict[str, Any],
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    created_at = created_at or datetime.now(UTC)
+    modules = tuple(source_inventory.get("modules") or ())
+    model_modules = tuple(
+        module for module in modules if str(module.get("module", "")).endswith(".model")
+    )
+    attention_modules = tuple(
+        module
+        for module in modules
+        if str(module.get("module", "")).endswith((".flashmla", ".flashinfer_sparse"))
+    )
+    kernel_modules = tuple(
+        module for module in modules if str(module.get("module", "")).endswith(".ops.o_proj")
+    )
+    adapter_module_exposed = any(
+        "o_proj" in set(_strings_from_module(module, "attrs"))
+        or "o_proj" in set(_strings_from_module(module, "names"))
+        for module in model_modules
+    )
+    attention_o_proj_methods = sorted(
+        {
+            fn
+            for module in attention_modules
+            for fn in _strings_from_module(module, "functions")
+            if fn == "_o_proj"
+        }
+    )
+    kernel_calls = sorted(
+        {
+            call
+            for module in attention_modules
+            for call in _strings_from_module(module, "calls")
+            if call == "deep_gemm_fp8_o_proj"
+        }
+    )
+    kernel_functions = sorted(
+        {
+            fn
+            for module in kernel_modules
+            for fn in _strings_from_module(module, "functions")
+            if fn == "deep_gemm_fp8_o_proj"
+        }
+    )
+    kernel_provider_owned = bool(attention_o_proj_methods and kernel_calls and kernel_functions)
+
+    if adapter_module_exposed:
+        status = "adapter_addressable_o_proj_module"
+        classification = "adapter_addressable_module"
+        next_step = "rerun_private_adapter_load_canary_with_o_proj_direct_match"
+    elif kernel_provider_owned:
+        status = "o_proj_owner_proven_kernel_provider"
+        classification = "kernel_provider_owned_projection"
+        next_step = "implement_offline_packed_lora_delta_transform_smoke"
+    else:
+        status = "blocked_o_proj_owner_unknown"
+        classification = "unknown_projection_owner"
+        next_step = "inspect_live_runtime_source_for_o_proj_owner"
+
+    return {
+        "schema": FABLE_OPROJ_OWNERSHIP_SCHEMA,
+        "createdAt": created_at.isoformat().replace("+00:00", "Z"),
+        "issue": OPROJ_ISSUE_URL,
+        "dependsOn": [RETARGET_ISSUE_URL],
+        "profileRef": PROFILE_REF,
+        "status": status,
+        "sourceInventory": {
+            "image": source_inventory.get("image"),
+            "inspection": source_inventory.get("inspection"),
+            "moduleCount": len(modules),
+            "modules": [
+                {
+                    "module": module.get("module"),
+                    "file": module.get("file"),
+                    "classes": _strings_from_module(module, "classes"),
+                    "functions": _strings_from_module(module, "functions"),
+                    "names": _strings_from_module(module, "names"),
+                    "attrs": _strings_from_module(module, "attrs"),
+                    "calls": _strings_from_module(module, "calls"),
+                }
+                for module in modules
+            ],
+        },
+        "ownership": {
+            "classification": classification,
+            "adapterAddressableModule": adapter_module_exposed,
+            "kernelProviderOwned": kernel_provider_owned,
+            "attentionOProjMethods": attention_o_proj_methods,
+            "attentionKernelCalls": kernel_calls,
+            "kernelFunctions": kernel_functions,
+            "modelModuleOProjAttrs": sorted(
+                {
+                    attr
+                    for module in model_modules
+                    for attr in _strings_from_module(module, "attrs")
+                    if "o_proj" in attr
+                }
+            ),
+        },
+        "decision": {
+            "status": status,
+            "canUseVanillaPeftOProj": adapter_module_exposed,
+            "canProceedToPackedLoraTransformSmoke": kernel_provider_owned
+            and not adapter_module_exposed,
+            "canRouteKhalaGeneralTraffic": False,
+            "canExposePublicAliases": False,
+            "canExposeMppPublicSale": False,
+            "nextStep": next_step,
+        },
+        "publicSafety": {
+            "containsSecrets": False,
+            "containsPrompts": False,
+            "containsResponses": False,
+            "containsWeights": False,
+            "containsHiddenReasoning": False,
+            "containsExploitPayloads": False,
+            "containsTargetDetails": False,
+            "containsFullThirdPartySource": False,
+        },
+    }
+
+
+def _strings_from_module(module: dict[str, Any], key: str) -> list[str]:
+    value = module.get(key) or []
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value]
+
+
+def render_o_proj_ownership_markdown(report: dict[str, Any]) -> str:
+    module_rows = [
+        "| Module | Relevant functions/classes | Relevant names/attrs/calls |",
+        "| --- | --- | --- |",
+    ]
+    for module in report["sourceInventory"]["modules"]:
+        functions = [
+            item
+            for item in (*module["classes"], *module["functions"])
+            if "o_proj" in item
+            or "Attention" in item
+            or item in {"DeepseekV4Model", "DeepseekV4ForCausalLM"}
+        ]
+        symbols = [
+            item
+            for item in (*module["names"], *module["attrs"], *module["calls"])
+            if "o_proj" in item or "fused_wqa_wkv" in item or "gate_up_proj" in item
+        ]
+        module_rows.append(
+            "| `{module}` | {functions} | {symbols} |".format(
+                module=module["module"],
+                functions=", ".join(f"`{item}`" for item in functions) or "-",
+                symbols=", ".join(f"`{item}`" for item in symbols) or "-",
+            )
+        )
+    module_table = "\n".join(module_rows)
+
+    return f"""# DeepSeek-V4-Fable o_proj ownership evidence
+
+Date: {report["createdAt"]}
+
+Issue: {report["issue"]}
+
+Depends on: {", ".join(report["dependsOn"])}
+
+Profile: `{report["profileRef"]}`
+
+Status: `{report["status"]}`
+
+## Decision
+
+- Vanilla PEFT `o_proj` can be used: `{str(report["decision"]["canUseVanillaPeftOProj"]).lower()}`
+- Packed-LoRA transform smoke can proceed: `{str(report["decision"]["canProceedToPackedLoraTransformSmoke"]).lower()}`
+- Khala general route allowed: `{str(report["decision"]["canRouteKhalaGeneralTraffic"]).lower()}`
+- Public aliases allowed: `{str(report["decision"]["canExposePublicAliases"]).lower()}`
+- MPP public sale allowed: `{str(report["decision"]["canExposeMppPublicSale"]).lower()}`
+- Next step: `{report["decision"]["nextStep"]}`
+
+## Source inventory
+
+- Image: `{report["sourceInventory"]["image"]}`
+- Inspection: `{report["sourceInventory"]["inspection"]}`
+- Module count: `{report["sourceInventory"]["moduleCount"]}`
+
+{module_table}
+
+## Ownership result
+
+- Classification: `{report["ownership"]["classification"]}`
+- Adapter-addressable module: `{str(report["ownership"]["adapterAddressableModule"]).lower()}`
+- Kernel/provider owned: `{str(report["ownership"]["kernelProviderOwned"]).lower()}`
+- Attention `_o_proj` methods: `{", ".join(report["ownership"]["attentionOProjMethods"]) or "none"}`
+- Attention kernel calls: `{", ".join(report["ownership"]["attentionKernelCalls"]) or "none"}`
+- Kernel functions: `{", ".join(report["ownership"]["kernelFunctions"]) or "none"}`
+- Model module `o_proj` attrs: `{", ".join(report["ownership"]["modelModuleOProjAttrs"]) or "none"}`
+
+## Interpretation
+
+Fable's `o_proj` target is not vanilla-PEFT-addressable on the current packed
+NVIDIA runtime. The attention output projection is owned by backend attention
+classes through `_o_proj` methods that call the `deep_gemm_fp8_o_proj` provider
+function in `vllm.models.deepseek_v4.nvidia.ops.o_proj`.
+
+That unblocks the retargeting plan's source-inventory question, but it does
+not admit Fable for serving. The next implementation step is an offline
+packed-LoRA delta transform smoke that proves we can map Fable adapter tensors
+into `fused_wqa_wkv`, `gate_up_proj`, and the kernel/provider-owned `o_proj`
+path without running public traffic.
+
+## Public safety
+
+- Contains secrets: false
+- Contains prompts: false
+- Contains responses: false
+- Contains weights: false
+- Contains hidden reasoning: false
+- Contains exploit payloads: false
+- Contains target details: false
+- Contains full third-party source: false
+"""
+
+
+def write_o_proj_ownership_report(
+    report: dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "deepseek-v4-fable-o-proj-ownership.json"
+    md_path = output_dir / "deepseek-v4-fable-o-proj-ownership.md"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    md_path.write_text(render_o_proj_ownership_markdown(report))
+    return json_path, md_path
+
+
 def _hf_resolve_url(repo: str, revision: str, filename: str) -> str:
     return f"https://huggingface.co/{repo}/resolve/{revision}/{filename}"
 
@@ -1240,6 +1478,30 @@ def retarget_plan_main(argv: list[str] | None = None) -> int:
     json_path, md_path = write_retarget_plan_report(report, args.output_dir)
     print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
     return 0 if report["decision"]["canAttemptPackedRetargetSmoke"] else 2
+
+
+def o_proj_ownership_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Emit a public-safe DeepSeek-V4-Fable o_proj ownership decision."
+    )
+    parser.add_argument(
+        "--source-inventory",
+        type=Path,
+        required=True,
+        help="JSON AST/source inventory for relevant NVIDIA DeepSeek V4 runtime modules.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(".hydralisk/deepseek-v4-fable-o-proj-ownership"),
+    )
+    args = parser.parse_args(argv)
+
+    source_inventory = json.loads(args.source_inventory.read_text())
+    report = build_o_proj_ownership_report(source_inventory=source_inventory)
+    json_path, md_path = write_o_proj_ownership_report(report, args.output_dir)
+    print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
+    return 0 if report["decision"]["canProceedToPackedLoraTransformSmoke"] else 2
 
 
 if __name__ == "__main__":  # pragma: no cover

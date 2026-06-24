@@ -8,12 +8,14 @@ import pytest
 
 from hydralisk.admission.deepseek_v4_fable import (
     FABLE_LAB_EVAL_SCHEMA,
+    FABLE_OPROJ_OWNERSHIP_SCHEMA,
     FABLE_RETARGET_SCHEMA,
     FABLE_SCHEMA,
     FABLE_LOAD_CANARY_SCHEMA,
     FableProbeError,
     build_lab_eval_report,
     build_load_canary_report,
+    build_o_proj_ownership_report,
     build_retarget_plan_report,
     build_report,
     compare_adapter_targets,
@@ -22,9 +24,11 @@ from hydralisk.admission.deepseek_v4_fable import (
     load_canary_main,
     load_runtime_module_names,
     main,
+    o_proj_ownership_main,
     render_load_canary_markdown,
     render_lab_eval_markdown,
     render_markdown,
+    render_o_proj_ownership_markdown,
     render_retarget_plan_markdown,
     retarget_plan_main,
     validate_requested_files,
@@ -279,6 +283,46 @@ def test_retarget_plan_cli_writes_public_safe_report(tmp_path: Path) -> None:
     assert "Contains prompts: false" in evidence
 
 
+def test_o_proj_ownership_proves_kernel_provider_path() -> None:
+    report = build_o_proj_ownership_report(
+        source_inventory=_o_proj_source_inventory(),
+        created_at=datetime(2026, 6, 24, tzinfo=UTC),
+    )
+    rendered = render_o_proj_ownership_markdown(report)
+
+    assert report["schema"] == FABLE_OPROJ_OWNERSHIP_SCHEMA
+    assert report["status"] == "o_proj_owner_proven_kernel_provider"
+    assert report["ownership"]["adapterAddressableModule"] is False
+    assert report["ownership"]["kernelProviderOwned"] is True
+    assert report["decision"]["canUseVanillaPeftOProj"] is False
+    assert report["decision"]["canProceedToPackedLoraTransformSmoke"] is True
+    assert report["decision"]["nextStep"] == (
+        "implement_offline_packed_lora_delta_transform_smoke"
+    )
+    assert "Contains full third-party source: false" in rendered
+
+
+def test_o_proj_ownership_cli_writes_public_safe_report(tmp_path: Path) -> None:
+    inventory_path = tmp_path / "source-inventory.json"
+    inventory_path.write_text(json.dumps(_o_proj_source_inventory()))
+    output_dir = tmp_path / "out"
+
+    status = o_proj_ownership_main(
+        [
+            "--source-inventory",
+            str(inventory_path),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert status == 0
+    evidence = (output_dir / "deepseek-v4-fable-o-proj-ownership.md").read_text()
+    assert "Status: `o_proj_owner_proven_kernel_provider`" in evidence
+    assert "Packed-LoRA transform smoke can proceed: `true`" in evidence
+    assert "Contains weights: false" in evidence
+
+
 def _write_fable_metadata(directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "adapter_config.json").write_text(
@@ -353,3 +397,75 @@ def _rejected_compatibility_report(tmp_path: Path) -> dict:
         runtime_source="test-runtime-modules.txt",
         created_at=datetime(2026, 6, 24, tzinfo=UTC),
     )
+
+
+def _o_proj_source_inventory() -> dict:
+    return {
+        "image": (
+            "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:"
+            "20260624v3vector2"
+        ),
+        "inspection": "gce_docker_ast_summary",
+        "modules": [
+            {
+                "module": "vllm.models.deepseek_v4.nvidia.model",
+                "file": (
+                    "/usr/local/lib/python3.12/dist-packages/vllm/models/"
+                    "deepseek_v4/nvidia/model.py"
+                ),
+                "classes": [
+                    "DeepseekV4MLP",
+                    "DeepseekV4Model",
+                    "DeepseekV4ForCausalLM",
+                ],
+                "functions": ["forward"],
+                "names": [],
+                "attrs": ["gate_up_proj"],
+                "calls": ["gate_up_proj"],
+            },
+            {
+                "module": "vllm.models.deepseek_v4.nvidia.flashmla",
+                "file": (
+                    "/usr/local/lib/python3.12/dist-packages/vllm/models/"
+                    "deepseek_v4/nvidia/flashmla.py"
+                ),
+                "classes": ["DeepseekV4FlashMLAAttention"],
+                "functions": ["__init__", "_o_proj", "forward_mqa"],
+                "names": ["deep_gemm_fp8_o_proj"],
+                "attrs": [],
+                "calls": ["deep_gemm_fp8_o_proj"],
+            },
+            {
+                "module": "vllm.models.deepseek_v4.nvidia.flashinfer_sparse",
+                "file": (
+                    "/usr/local/lib/python3.12/dist-packages/vllm/models/"
+                    "deepseek_v4/nvidia/flashinfer_sparse.py"
+                ),
+                "classes": [
+                    "DeepseekV4FlashInferMLASparseBackend",
+                    "DeepseekV4FlashInferMLAAttention",
+                ],
+                "functions": ["_o_proj", "__init__", "forward_mqa"],
+                "names": ["deep_gemm_fp8_o_proj"],
+                "attrs": [],
+                "calls": ["deep_gemm_fp8_o_proj"],
+            },
+            {
+                "module": "vllm.models.deepseek_v4.nvidia.ops.o_proj",
+                "file": (
+                    "/usr/local/lib/python3.12/dist-packages/vllm/models/"
+                    "deepseek_v4/nvidia/ops/o_proj.py"
+                ),
+                "classes": [],
+                "functions": [
+                    "compute_fp8_einsum_recipe",
+                    "deep_gemm_fp8_o_proj",
+                    "_tensor_meta",
+                    "_scale_to_fp32",
+                ],
+                "names": [],
+                "attrs": [],
+                "calls": [],
+            },
+        ],
+    }
