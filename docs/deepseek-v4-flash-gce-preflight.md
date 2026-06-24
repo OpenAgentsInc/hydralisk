@@ -94,6 +94,9 @@ B12x local dispatcher shim evidence:
 B12x masked local-dispatch evidence:
 [`docs/evidence/2026-06-24-flashinfer-b12x-masked-dispatch-g4.md`](evidence/2026-06-24-flashinfer-b12x-masked-dispatch-g4.md)
 
+B12x clamp patch-point evidence:
+[`docs/evidence/2026-06-24-deepseek-b12x-clamp-patch-points.md`](evidence/2026-06-24-deepseek-b12x-clamp-patch-points.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -742,6 +745,18 @@ half the routes masked to fill expert `0` with scale `0.0`, B12x returned
 `ok=true` and `outShape=[512,4096]` on RTX PRO 6000. That removes the
 dispatcher-shape concern. The remaining blocker is still the clamp:
 `b12x_fused_moe` rejects `swiglu_limit=10.0`.
+
+The B12x clamp patch-point audit then removed the last ambiguity around the
+next task. The local FlashInfer B12x reference source exposes
+`num_local_experts`, `activation`, `activation_precision`, `quant_mode`, and
+`source_format`, but no `swiglu_limit` or `gemm1_clamp_limit` in
+`b12x_fused_moe`, `B12xMoEWrapper`, or `launch_sm120_moe`. The audited SM120
+kernel files contain the fused gated-SiLU activation path, but no clamp term.
+The local vLLM reference source does contain the required contract: one-sided
+gate clamp, symmetric up clamp, then `silu(gate) * up`, wired from
+`gemm1_clamp_limit`. The next issue should therefore patch B12x clamp
+semantics and validate a tiny nonzero local-shard fixture before another
+full-model G4 retry.
 
 ## Promotion boundary
 
