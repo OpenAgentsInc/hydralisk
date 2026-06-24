@@ -149,8 +149,12 @@ Initial targets:
   activation path. Hydralisk now also has a repeatable FlashInfer B12x clamp
   overlay that dry-runs against the local reference checkout and source-marks
   the static, micro, dynamic, and W4A16 activation sites for the next G4
-  compile/runtime fixture. The remaining B12x work is clamp-capable GPU
-  integration or a kernel-side clamp patch.
+  compile/runtime fixture. A disposable G4 container then converted the static
+  marker into real CuTe/CUTLASS clamp ops and ran both zero and nonzero tiny
+  B12x fixtures with `swiglu_limit=10.0` on RTX PRO 6000. The static clamp path
+  is now a real GPU proof; the remaining B12x work is the dynamic DeepSeek-shape
+  path, exact FP4/reference correctness, and integration with the
+  dispatcher/offload lane.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -204,6 +208,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-flashinfer-b12x-masked-dispatch-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-masked-dispatch-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-clamp-patch-points.md`](docs/evidence/2026-06-24-deepseek-b12x-clamp-patch-points.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-clamp-overlay.md`](docs/evidence/2026-06-24-deepseek-b12x-clamp-overlay.md)
+- [`docs/evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

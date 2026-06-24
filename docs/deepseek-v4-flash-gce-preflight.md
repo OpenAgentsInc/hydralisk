@@ -100,6 +100,9 @@ B12x clamp patch-point evidence:
 B12x clamp overlay evidence:
 [`docs/evidence/2026-06-24-deepseek-b12x-clamp-overlay.md`](evidence/2026-06-24-deepseek-b12x-clamp-overlay.md)
 
+B12x static clamp G4 evidence:
+[`docs/evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md`](evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -771,6 +774,28 @@ the in-memory patched tree. This still is not a serving claim: the next G4
 step must turn those markers into real CuTe/CUTLASS clamp operations, compile
 on RTX PRO 6000, and compare a tiny nonzero local-shard output against the
 Hydralisk reference fixture.
+
+The static B12x clamp fixture then converted the static marker into actual
+CuTe/CUTLASS clamp operations on the private 8 x G4 host and ran a disposable
+container fixture with `swiglu_limit=10.0`. The zero tensor compile smoke
+returned `[8,256]` and matched a zero reference. A follow-up nonzero synthetic
+FP4-packed fixture also returned finite nonzero output:
+
+```text
+outShape=[8,256]
+outDtype=torch.bfloat16
+outAbsSum=68917232.0
+outMaxAbs=143360.0
+finite=true
+elapsedMs=11211.8779296875
+maxMemoryAllocatedBytes=955392
+```
+
+This is the first real G4 GPU proof for the patched B12x clamp surface, but it
+is still the static backend only. The runtime selects static for tiny token
+counts and dynamic for the DeepSeek-shaped 512-token local-shard case. The next
+issue should apply the real clamp operation to the dynamic backend and run the
+masked local-shard DeepSeek-shape fixture before any full-model retry.
 
 ## Promotion boundary
 
