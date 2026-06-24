@@ -1017,6 +1017,15 @@ path, but it does not change this Google blocker: the repo still needs either
 interactive user reauth or an IAM-capable account before issue #41 can create a
 fresh G4 host.
 
+Issue #50 checked the nearby credential surfaces that issue #49 did not cover:
+Application Default Credentials, configured service-account impersonation, and
+explicit impersonation attempts for the two known service accounts:
+[`docs/evidence/2026-06-24-deepseek-google-alt-credential-probe.md`](evidence/2026-06-24-deepseek-google-alt-credential-probe.md).
+ADC cannot mint a token in this shell, no configured impersonation target is set,
+and explicit impersonation for both service accounts fails before permission
+checks. That leaves no local Google credential surface that can run or grant the
+issue #41 DeepSeek G4 smoke.
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this

@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "blocked_no_local_gcloud_runner_or_grant_authority",
+  "status": "blocked_no_local_google_credential_surface_can_launch_or_grant",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -163,7 +163,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/46",
       "https://github.com/OpenAgentsInc/hydralisk/issues/47",
       "https://github.com/OpenAgentsInc/hydralisk/issues/48",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/49"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/49",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/50"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -208,7 +209,8 @@
       "docs/evidence/2026-06-24-deepseek-g4-iam-preflight.md",
       "docs/evidence/2026-06-24-deepseek-g4-iam-grant-helper.md",
       "docs/evidence/2026-06-24-deepseek-g4-grant-authority-preflight.md",
-      "docs/evidence/2026-06-24-deepseek-gcloud-credential-authority-probe.md"
+      "docs/evidence/2026-06-24-deepseek-gcloud-credential-authority-probe.md",
+      "docs/evidence/2026-06-24-deepseek-google-alt-credential-probe.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -2214,6 +2216,48 @@
       "doesNotHelp": "does not fix the current Google IAM/auth blocker and still points at H100/H200/B200/GB200-class capacity that is not quota-visible in the sampled Google project"
     },
     "plainEnglishNext": "Use an IAM-capable account to grant runner permissions to oa-vertex-inference, or refresh chris@openagents.com interactively, then rerun the canonical issue #41 DeepSeek G4 wrapper.",
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekGoogleAltCredentialProbe": {
+    "status": "blocked_no_alternate_google_credential_surface",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/50",
+    "script": "scripts/probe-deepseek-v4-google-alt-credentials.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-google-alt-credential-probe.md",
+    "tokensWrittenToEvidence": false,
+    "surfaces": [
+      {
+        "surface": "adc",
+        "identity": "application-default",
+        "tokenStatus": "failed",
+        "runnerStatus": "skipped",
+        "grantStatus": "skipped",
+        "recommendation": "refresh ADC with gcloud auth application-default login or use another credential surface"
+      },
+      {
+        "surface": "explicit_impersonation",
+        "identity": "oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com",
+        "tokenStatus": "failed",
+        "runnerStatus": "skipped",
+        "grantStatus": "skipped",
+        "recommendation": "grant serviceAccountTokenCreator or use a credential that can mint this impersonated token"
+      },
+      {
+        "surface": "explicit_impersonation",
+        "identity": "nexus-mainnet@openagentsgemini.iam.gserviceaccount.com",
+        "tokenStatus": "failed",
+        "runnerStatus": "skipped",
+        "grantStatus": "skipped",
+        "recommendation": "grant serviceAccountTokenCreator or use a credential that can mint this impersonated token"
+      }
+    ],
+    "configuredImpersonation": "not_set",
+    "plainEnglishNext": "Refresh gcloud user or ADC credentials, or run the IAM grant helper from an IAM-capable account, then rerun issue #41.",
     "publicSafety": {
       "containsSecrets": false,
       "containsPrompts": false,

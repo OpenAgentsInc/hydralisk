@@ -820,6 +820,92 @@ printf '{"permissions":[]}'
     assert not list((tmp_path / "out").glob("token-*"))
 
 
+def test_deepseek_google_alt_credentials_probe_covers_adc_and_impersonation(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-deepseek-v4-google-alt-credentials.sh"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    gcloud = fake_bin / "gcloud"
+    gcloud.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1 $2 $3" == "config get-value auth/impersonate_service_account" ]]; then
+  echo "configured-runner@openagentsgemini.iam.gserviceaccount.com"
+  exit 0
+fi
+if [[ "$1 $2 $3" == "auth application-default print-access-token" ]]; then
+  echo "fake-adc-token"
+  exit 0
+fi
+if [[ "$1 $2" == "auth print-access-token" ]]; then
+  if [[ "${3:-}" == "--impersonate-service-account=configured-runner@openagentsgemini.iam.gserviceaccount.com" ]]; then
+    echo "fake-impersonated-token"
+    exit 0
+  fi
+  echo "impersonation denied" >&2
+  exit 1
+fi
+echo "unexpected gcloud command: $*" >&2
+exit 99
+""",
+    )
+    gcloud.chmod(0o755)
+    curl = fake_bin / "curl"
+    curl.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+token=""
+payload=""
+for arg in "$@"; do
+  case "$arg" in
+    Authorization:*) token="${arg#Authorization: Bearer }" ;;
+    *compute.instances.create*) payload="$arg" ;;
+    *iam.roles.create*) payload="$arg" ;;
+  esac
+done
+if [[ "$*" == *"https://cloudresourcemanager.googleapis.com/v1/projects/openagentsgemini"* && "$*" != *":testIamPermissions"* ]]; then
+  printf '{"projectNumber":"123456789"}'
+  exit 0
+fi
+if [[ "$payload" == *"compute.instances.create"* && "$token" == "fake-adc-token" ]]; then
+  printf '{"permissions":["compute.instances.create","compute.instances.get","compute.instances.setLabels","compute.instances.setMetadata","compute.instances.setTags","compute.disks.create","compute.subnetworks.use"]}'
+  exit 0
+fi
+printf '{"permissions":[]}'
+""",
+    )
+    curl.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            **os.environ,
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "OUTPUT_DIR": str(tmp_path / "out"),
+            "IMPERSONATE_ACCOUNTS": "denied@openagentsgemini.iam.gserviceaccount.com",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "out" / "google-alt-credentials.md").read_text()
+    tsv = (tmp_path / "out" / "google-alt-credentials.tsv").read_text()
+
+    assert "Wrote" in result.stdout
+    assert "Tokens written to evidence: `false`" in evidence
+    assert "adc\tapplication-default\tok\tok" in tsv
+    assert (
+        "configured_impersonation\tconfigured-runner@openagentsgemini.iam.gserviceaccount.com\tok\tmissing_permissions"
+        in tsv
+    )
+    assert "explicit_impersonation\tdenied@openagentsgemini.iam.gserviceaccount.com\tfailed" in tsv
+    assert not list((tmp_path / "out").glob("token-*"))
+
+
 def test_flashinfer_dsv4_g4_wrapper_sets_issue_41_defaults(
     tmp_path: Path,
 ) -> None:
