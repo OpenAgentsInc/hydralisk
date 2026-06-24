@@ -19,6 +19,9 @@ Backend-matrix evidence:
 Scaled-mm probe evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-scaled-mm-g4-probe.md`](evidence/2026-06-24-deepseek-v4-flash-scaled-mm-g4-probe.md)
 
+E8M0 upcast evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-e8m0-upcast-g4.md`](evidence/2026-06-24-deepseek-v4-flash-e8m0-upcast-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -107,6 +110,19 @@ The next implementation step is to test an E8M0 scale upcast patch or wrapper
 for vLLM's CUDA Triton block-scaled FP8 path, then retry the full model with
 Triton linear kernels and expert parallel enabled.
 
+That E8M0 patch was validated on the microprobe: the Triton E8M0 case now
+passes. The full-model smoke still stops before `/v1/models`, but now at
+DeepSeek's NVIDIA `o_proj` DeepGEMM `fp8_einsum` layout assertion:
+
+```text
+RuntimeError: Assertion error
+(/workspace/.deps/deepgemm-src/csrc/apis/../jit_kernels/impls/../heuristics/../../utils/layout.hpp:39):
+t.dim() == N
+```
+
+The next issue should isolate the `o_proj` recipe/layout choice for SM120,
+especially the Blackwell recipe `(1, 1, 128)` and `tma_aligned_scales=true`.
+
 The first viable lanes are:
 
 1. `g4-standard-96`, 2 x RTX PRO 6000. Google admitted this lane; it clears
@@ -158,6 +174,8 @@ VLLM_USE_DEEP_GEMM_TMA_ALIGNED_SCALES=0
 VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER=0
 VLLM_LINEAR_BACKEND=triton
 VLLM_ENABLE_EXPERT_PARALLEL=1
+FORCE_PYTHON_VLLM=1
+REUSE_PYTHON_VENV=1
 ```
 
 Use `TARGET_INSTANCE`, `TARGET_ZONE`, and `TARGET_GPU_COUNT` only for a fresh
@@ -177,9 +195,10 @@ Stop and record a blocker if:
 
 The 2026-06-24 G4 smoke is currently stopped on the CUDA/kernel support
 condition above. More random flag trials on the same host are not the next
-useful step; the useful split is either the E8M0/Triton patch, a known-good
-DeepSeek vLLM image/build pin, an 8-GPU H100/H200/B200 allocation that matches
-the published recipe, or a custom expert-prefetch/offload route.
+useful step; the useful split is either the `o_proj` DeepGEMM recipe/layout
+probe, a known-good DeepSeek vLLM image/build pin, an 8-GPU H100/H200/B200
+allocation that matches the published recipe, or a custom expert-prefetch/
+offload route.
 
 ## Promotion boundary
 

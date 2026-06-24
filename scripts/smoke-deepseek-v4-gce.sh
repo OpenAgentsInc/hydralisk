@@ -23,6 +23,8 @@ VLLM_USE_DEEP_GEMM_TMA_ALIGNED_SCALES="${VLLM_USE_DEEP_GEMM_TMA_ALIGNED_SCALES:-
 VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER="${VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER:-1}"
 VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"
 VLLM_ENABLE_EXPERT_PARALLEL="${VLLM_ENABLE_EXPERT_PARALLEL:-0}"
+FORCE_PYTHON_VLLM="${FORCE_PYTHON_VLLM:-0}"
+REUSE_PYTHON_VENV="${REUSE_PYTHON_VENV:-0}"
 SYSTEM_CUDA_HOME="${SYSTEM_CUDA_HOME:-/usr/local/cuda-12.9}"
 TARGET_INSTANCE="${TARGET_INSTANCE:-}"
 TARGET_ZONE="${TARGET_ZONE:-}"
@@ -245,7 +247,7 @@ set -Eeuo pipefail
 sudo install -d -m 0755 /var/lib/hydralisk/huggingface /var/log/hydralisk
 sudo chmod 0777 /var/lib/hydralisk/huggingface
 sudo chmod 0777 /var/log/hydralisk
-if command -v docker >/dev/null 2>&1; then
+if [[ "$FORCE_PYTHON_VLLM" != "1" ]] && command -v docker >/dev/null 2>&1; then
   printf "BACKEND\tdocker\n" | sudo tee /var/log/hydralisk/deepseek-engine-evidence.txt >/dev/null
   {
     printf "VLLM_USE_DEEP_GEMM\t%s\n" "$VLLM_USE_DEEP_GEMM"
@@ -254,6 +256,8 @@ if command -v docker >/dev/null 2>&1; then
     printf "VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER\t%s\n" "$VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER"
     printf "VLLM_LINEAR_BACKEND\t%s\n" "$VLLM_LINEAR_BACKEND"
     printf "VLLM_ENABLE_EXPERT_PARALLEL\t%s\n" "$VLLM_ENABLE_EXPERT_PARALLEL"
+    printf "FORCE_PYTHON_VLLM\t%s\n" "$FORCE_PYTHON_VLLM"
+    printf "REUSE_PYTHON_VENV\t%s\n" "$REUSE_PYTHON_VENV"
   } | sudo tee -a /var/log/hydralisk/deepseek-engine-evidence.txt >/dev/null
   container_name="hydralisk-deepseek-v4-smoke"
   expert_parallel_args=()
@@ -299,10 +303,14 @@ else
     export PATH="\$HOME/.local/bin:\$PATH"
   fi
   export UV_PYTHON_INSTALL_DIR=/opt/hydralisk-deepseek-v4/uv-python
-  timeout "$SETUP_TIMEOUT_SECONDS"s uv python install 3.12 >> /var/log/hydralisk/deepseek-pip-install.log 2>&1
-  timeout "$SETUP_TIMEOUT_SECONDS"s uv venv --clear --python 3.12 --seed .venv >> /var/log/hydralisk/deepseek-pip-install.log 2>&1
+  if [[ "$REUSE_PYTHON_VENV" != "1" || ! -x .venv/bin/python ]]; then
+    timeout "$SETUP_TIMEOUT_SECONDS"s uv python install 3.12 >> /var/log/hydralisk/deepseek-pip-install.log 2>&1
+    timeout "$SETUP_TIMEOUT_SECONDS"s uv venv --clear --python 3.12 --seed .venv >> /var/log/hydralisk/deepseek-pip-install.log 2>&1
+  fi
   . .venv/bin/activate
-  timeout "$SETUP_TIMEOUT_SECONDS"s uv pip install "$VLLM_PACKAGE" >> /var/log/hydralisk/deepseek-pip-install.log 2>&1
+  if [[ "$REUSE_PYTHON_VENV" != "1" ]]; then
+    timeout "$SETUP_TIMEOUT_SECONDS"s uv pip install "$VLLM_PACKAGE" >> /var/log/hydralisk/deepseek-pip-install.log 2>&1
+  fi
   {
     python --version
     vllm --version
@@ -338,6 +346,8 @@ PY
     printf "VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER\t%s\n" "$VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER"
     printf "VLLM_LINEAR_BACKEND\t%s\n" "$VLLM_LINEAR_BACKEND"
     printf "VLLM_ENABLE_EXPERT_PARALLEL\t%s\n" "$VLLM_ENABLE_EXPERT_PARALLEL"
+    printf "FORCE_PYTHON_VLLM\t%s\n" "$FORCE_PYTHON_VLLM"
+    printf "REUSE_PYTHON_VENV\t%s\n" "$REUSE_PYTHON_VENV"
   } | sudo tee -a /var/log/hydralisk/deepseek-engine-evidence.txt >/dev/null
   expert_parallel_args=()
   if [[ "$VLLM_ENABLE_EXPERT_PARALLEL" = "1" ]]; then
@@ -471,6 +481,12 @@ render_markdown() {
       echo '```'
       echo
       echo "## Model smoke"
+      echo
+      echo "Engine evidence:"
+      echo
+      echo '```text'
+      sed -n '1,120p' "$OUTPUT_DIR/deepseek-engine-evidence.txt" 2>/dev/null || true
+      echo '```'
       echo
       echo '```text'
       sed -n '1,80p' "$OUTPUT_DIR/deepseek-smoke-summary.txt" 2>/dev/null || true

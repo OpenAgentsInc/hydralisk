@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "load_smoke_blocked_scaled_mm_backend",
+  "status": "load_smoke_blocked_deepgemm_o_proj_layout",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -122,12 +122,14 @@
     "issues": [
       "https://github.com/OpenAgentsInc/hydralisk/issues/6",
       "https://github.com/OpenAgentsInc/hydralisk/issues/7",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/8"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/8",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/9"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md",
-      "docs/evidence/2026-06-24-deepseek-v4-flash-scaled-mm-g4-probe.md"
+      "docs/evidence/2026-06-24-deepseek-v4-flash-scaled-mm-g4-probe.md",
+      "docs/evidence/2026-06-24-deepseek-v4-flash-e8m0-upcast-g4.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -153,10 +155,10 @@
     },
     "blocker": {
       "stage": "engine_startup_determine_available_memory",
-      "site": "vllm scaled-mm backend selection",
-      "message": "CUTLASS FP8 scaled-mm fails directly on SM120; Triton block FP8 passes with float32 scales but fails on DeepSeek float8_e8m0fnu scale tensors.",
+      "site": "vllm/models/deepseek_v4/nvidia/ops/o_proj.py deep_gemm_fp8_o_proj",
+      "message": "The E8M0 Triton scale upcast patch makes the microprobe pass, but full startup now fails in DeepGEMM fp8_einsum with layout.hpp:39 t.dim() == N on the SM120 Blackwell o_proj recipe.",
       "defaultAndFallbacksAffected": true,
-      "nextProbe": "upcast E8M0 scale tensors before the CUDA Triton block-scaled FP8 path and retry with VLLM_LINEAR_BACKEND=triton plus VLLM_ENABLE_EXPERT_PARALLEL=1"
+      "nextProbe": "capture public-safe o_proj tensor shapes/dtypes and test whether forcing the Hopper recipe with tma_aligned_scales=false gets past the DeepGEMM layout assertion"
     }
   },
   "promotionGates": [
@@ -169,8 +171,8 @@
     "public-safe Hydralisk receipt is emitted"
   ],
   "recommendation": {
-    "nextLane": "test_e8m0_upcast_for_vllm_triton_block_fp8_on_rtx_pro_6000",
-    "why": "Google admitted the two-card G4 lane, the host has enough memory and disk for a low-context smoke, and vLLM reached model selection/kernel compile. Microprobes show Triton block FP8 works on RTX PRO 6000 when scale tensors are normal float32; the next useful experiment is whether DeepSeek's E8M0 scales can be safely upcast for the Triton path.",
+    "nextLane": "isolate_deepseek_v4_o_proj_deepgemm_layout_on_rtx_pro_6000",
+    "why": "Google admitted the two-card G4 lane, the host has enough memory and disk for a low-context smoke, and vLLM reached model selection/kernel compile. The E8M0/Triton issue is cleared in microprobe; full startup now blocks in the DeepSeek NVIDIA o_proj DeepGEMM fp8_einsum layout path.",
     "publicClaim": "none"
   },
   "publicSafety": {
