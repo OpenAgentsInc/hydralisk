@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "glm-5.2-reap-504b-nvfp4-b12x-g4-rtx-pro-6000-4g-20260624",
-  "status": "fallback_admitted_staging_pending",
+  "status": "staged_runtime_profile_pending",
   "servedModel": "0xSero/GLM-5.2-504B",
   "internalModelAlias": "glm-5.2-reap-504b-g4",
   "publicModelAliases": [],
@@ -165,10 +165,25 @@
     }
   },
   "staging": {
-    "status": "pending",
+    "status": "complete",
     "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/84",
     "localModelPath": "/opt/hydralisk/models/glm-5.2-504b",
-    "manifestRef": "docs/evidence/2026-06-24-glm-52-reap-504b-staging.md"
+    "stagedAt": "2026-06-24T21:51:52Z",
+    "instance": "hydralisk-glm52-reap-504b-g4-8g-b-20260624214500",
+    "zone": "us-central1-b",
+    "manifestRef": "docs/evidence/2026-06-24-glm-52-reap-504b-staging.md",
+    "publicManifestJsonRef": "docs/evidence/2026-06-24-glm-52-reap-504b-staging-manifest.json",
+    "observed": {
+      "complete": true,
+      "localSafetensorShardCount": 63,
+      "localSafetensorShardBytes": 308829060264,
+      "indexMetadataTotalSizeBytes": 318247808128,
+      "weightMapEntries": 154433,
+      "allFileCount": 147,
+      "allFileBytes": 308862030135,
+      "missingShardCount": 0,
+      "unexpectedShardCount": 0
+    }
   },
   "runtimePlan": {
     "status": "planned",
