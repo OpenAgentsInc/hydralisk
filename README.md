@@ -235,6 +235,11 @@ Initial targets:
   `11.3 tok/s` decode p50. DeepSeek V4 Flash is now a Khala integration
   candidate, but quality, longer output/context, concurrency, and the SWA-only
   sparse-indexer bypass still block a serving claim.
+  Issue #63 added a runtime-supplied public-safe quality gate. Three tiny
+  deterministic cases passed without committing raw prompts or responses, and
+  the same resident timing gate still passed. This clears the first quality
+  smoke only: two tiny nonstream quality completions still took roughly `10s`
+  and `18s`, and longer output/context plus concurrency remain unproven.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,

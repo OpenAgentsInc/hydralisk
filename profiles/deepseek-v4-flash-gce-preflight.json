@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "deepseek_v4_nvfp4_8x_g4_khala_timing_gate_passed_quality_pending",
+  "status": "deepseek_v4_nvfp4_8x_g4_quality_smoke_passed_long_context_concurrency_pending",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -2936,6 +2936,130 @@
       "containsSecrets": false,
       "containsPrompts": false,
       "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekV4Issue63KhalaQualityGate": {
+    "status": "passed_tiny_public_safe_quality_smoke_latency_pending",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/63",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-khala-quality-g4-gate.md",
+    "script": "scripts/probe-deepseek-v4-khala-readiness-gce.sh",
+    "generatedReport": ".hydralisk/deepseek-v4-quality-20260624issue63quality1/readiness-report.md",
+    "generatedJson": ".hydralisk/deepseek-v4-quality-20260624issue63quality1/readiness-public.json",
+    "remoteLogDir": "/var/log/hydralisk/deepseek-khala-readiness-20260624issue63quality1",
+    "target": {
+      "instance": "hydralisk-deepseek-v4-b12x-g4-8g-b-20260624155352",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-384",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 8,
+      "provisioningModel": "SPOT",
+      "externalIp": null
+    },
+    "container": {
+      "derivedImage": "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:20260624v3vector2",
+      "derivedImageDigest": "sha256:a43653081fe01ab53901ecdff7415d2d8c40a6ea76b5c923aaff1b0e0e661451"
+    },
+    "promptEvidence": {
+      "promptBytes": 125,
+      "promptSha256": "2148b48dbb93dd81d420509b3360fb79f439df463632f2b2835848e6a998c54f",
+      "promptTextTracked": false,
+      "responseTextTracked": false,
+      "expectationTextTracked": false
+    },
+    "thresholds": {
+      "maxReadySeconds": 180.0,
+      "maxWarmupSeconds": 45.0,
+      "maxTtftP95Seconds": 2.0,
+      "minDecodeTokensPerSecondP50": 8.0,
+      "minEndToEndTokensPerSecondP50": 8.0,
+      "minSuccessfulRequests": 3
+    },
+    "summary": {
+      "khalaReadinessGatePassed": true,
+      "qualityGatePassed": true,
+      "serverStartToReadyWallSeconds": 115,
+      "warmupMaxSeconds": 30.326379,
+      "successfulRequests": 3,
+      "ttftP50Seconds": 0.357261,
+      "ttftP95Seconds": 0.357405,
+      "decodeTokensPerSecondP50": 11.970492,
+      "decodeTokensPerSecondP95": 12.111621,
+      "endToEndTokensPerSecondP50": 9.774685,
+      "endToEndTokensPerSecondP95": 10.0831573
+    },
+    "qualityCases": [
+      {
+        "id": "qa-arithmetic-small",
+        "passed": true,
+        "promptBytes": 43,
+        "promptSha256": "6fcde72d35581650122fc9f2e7ed786feb80e04f4b9d26c7030e81150486f9a6",
+        "responseBytes": 1,
+        "responseSha256": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+        "elapsedSeconds": 10.371589,
+        "promptTokens": 18,
+        "completionTokens": 2,
+        "totalTokens": 20,
+        "finishReason": "stop",
+        "expectedRegexCount": 1,
+        "matchedRegexCount": 1,
+        "expectedSubstringCount": 0,
+        "matchedSubstringCount": 0
+      },
+      {
+        "id": "qa-copy-token",
+        "passed": true,
+        "promptBytes": 63,
+        "promptSha256": "177e5aeaff1d1a615346aee866a5fdaf2ce9a7e60e6d925ef4a5cc895dc3efb8",
+        "responseBytes": 4,
+        "responseSha256": "2f9acb02faa121bb2a3621951f57b4c690655337edee2e5ac350be2b3be88ea8",
+        "elapsedSeconds": 18.172683,
+        "promptTokens": 16,
+        "completionTokens": 3,
+        "totalTokens": 19,
+        "finishReason": "stop",
+        "expectedRegexCount": 1,
+        "matchedRegexCount": 1,
+        "expectedSubstringCount": 0,
+        "matchedSubstringCount": 0
+      },
+      {
+        "id": "qa-common-color",
+        "passed": true,
+        "promptBytes": 65,
+        "promptSha256": "b30a44d041f7ce6df4d7c772bbe71e62ecc57fa29213aafa36277d06d5710b0a",
+        "responseBytes": 4,
+        "responseSha256": "16477688c0e00699c6cfa4497a3612d7e83c532062b64b250fed8908128ed548",
+        "elapsedSeconds": 0.397918,
+        "promptTokens": 18,
+        "completionTokens": 2,
+        "totalTokens": 20,
+        "finishReason": "stop",
+        "expectedRegexCount": 1,
+        "matchedRegexCount": 1,
+        "expectedSubstringCount": 0,
+        "matchedSubstringCount": 0
+      }
+    ],
+    "remainingGatesBeforeKhalaServingClaim": [
+      "broader public-safe quality eval",
+      "investigate tiny nonstream quality latency spikes",
+      "longer output shape",
+      "longer context within or above current max_model_len=2048",
+      "concurrency greater than max_num_seqs=1",
+      "restore or explicitly qualify the SWA-only sparse-indexer bypass"
+    ],
+    "servingBoundary": {
+      "khalaIntegrationCandidate": true,
+      "khalaReadyToServe": false,
+      "why": "The first tiny quality smoke passed and the resident timing gate still passed, but the eval is narrow, two tiny nonstream quality cases had high latency, and longer output/context, concurrency, and sparse-indexer correctness remain ungated."
+    },
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsExpectationText": false,
       "containsWeights": false,
       "containsHiddenReasoning": false
     }

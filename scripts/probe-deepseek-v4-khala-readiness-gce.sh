@@ -13,6 +13,8 @@ OUTPUT_DIR="${OUTPUT_DIR:-$PWD/.hydralisk/deepseek-v4-khala-readiness-$RUN_ID}"
 REMOTE_LOG_DIR="${REMOTE_LOG_DIR:-/var/log/hydralisk/deepseek-khala-readiness-$RUN_ID}"
 BENCH_PROMPT_FILE="${BENCH_PROMPT_FILE:-}"
 BENCH_PROMPT_B64="${BENCH_PROMPT_B64:-}"
+QUALITY_CASES_FILE="${QUALITY_CASES_FILE:-}"
+QUALITY_CASES_B64="${QUALITY_CASES_B64:-}"
 STREAM_REQUESTS="${STREAM_REQUESTS:-5}"
 WARMUP_REQUESTS="${WARMUP_REQUESTS:-1}"
 MAX_TOKENS="${MAX_TOKENS:-32}"
@@ -41,6 +43,10 @@ if [[ -z "$BENCH_PROMPT_B64" ]]; then
     exit 2
   fi
   BENCH_PROMPT_B64="$(base64 < "$BENCH_PROMPT_FILE" | tr -d '\n')"
+fi
+
+if [[ -z "$QUALITY_CASES_B64" && -n "$QUALITY_CASES_FILE" ]]; then
+  QUALITY_CASES_B64="$(base64 < "$QUALITY_CASES_FILE" | tr -d '\n')"
 fi
 
 run_gcloud() {
@@ -166,6 +172,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import statistics
 import time
 import urllib.request
@@ -180,6 +187,7 @@ stream_requests = int(os.environ["STREAM_REQUESTS"])
 warmup_requests = int(os.environ["WARMUP_REQUESTS"])
 max_tokens = int(os.environ["MAX_TOKENS"])
 warmup_max_tokens = int(os.environ["WARMUP_MAX_TOKENS"])
+quality_cases_b64 = os.environ.get("QUALITY_CASES_B64", "")
 
 
 def percentile(values, q):
@@ -217,6 +225,24 @@ def post_json(request):
     )
     with urllib.request.urlopen(req, timeout=request_timeout) as response:
         return response.read()
+
+
+def nonstream_completion(prompt_text, max_output_tokens):
+    req = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt_text}],
+        "max_tokens": max_output_tokens,
+        "temperature": 0,
+    }
+    t0 = time.perf_counter()
+    body = post_json(req)
+    t1 = time.perf_counter()
+    data = json.loads(body)
+    choice = ((data.get("choices") or [{}])[0] or {})
+    message = choice.get("message") or {}
+    response_text = message.get("content") or ""
+    usage = data.get("usage") or {}
+    return data, response_text, usage, choice.get("finish_reason"), t1 - t0
 
 
 def warmup(index):
@@ -346,6 +372,62 @@ passed = (
     and summary["endToEndTokensPerSecondP50"] >= thresholds["minEndToEndTokensPerSecondP50"]
 )
 
+quality_cases = []
+if quality_cases_b64:
+    decoded = base64.b64decode(quality_cases_b64).decode("utf-8")
+    for line in decoded.splitlines():
+        stripped = line.strip()
+        if stripped:
+            quality_cases.append(json.loads(stripped))
+
+quality_results = []
+for index, case in enumerate(quality_cases):
+    case_id = str(case.get("id") or f"case-{index}")
+    case_prompt = str(case["prompt"])
+    case_max_tokens = int(case.get("max_tokens", max_tokens))
+    expected_regexes = [str(item) for item in case.get("expect_regex", [])]
+    expected_substrings = [str(item) for item in case.get("expect_substrings", [])]
+    _, response_text, usage, finish_reason, elapsed = nonstream_completion(
+        case_prompt,
+        case_max_tokens,
+    )
+    regex_matches = [bool(re.search(pattern, response_text, re.IGNORECASE)) for pattern in expected_regexes]
+    substring_matches = [
+        expected.lower() in response_text.lower()
+        for expected in expected_substrings
+    ]
+    has_expectations = bool(expected_regexes or expected_substrings)
+    case_passed = (
+        has_expectations
+        and all(regex_matches)
+        and all(substring_matches)
+    )
+    quality_results.append(
+        {
+            "id": case_id,
+            "passed": case_passed,
+            "elapsedSeconds": round(elapsed, 6),
+            "promptSha256": hashlib.sha256(case_prompt.encode("utf-8")).hexdigest(),
+            "promptBytes": len(case_prompt.encode("utf-8")),
+            "responseSha256": hashlib.sha256(response_text.encode("utf-8")).hexdigest(),
+            "responseBytes": len(response_text.encode("utf-8")),
+            "promptTokens": usage.get("prompt_tokens"),
+            "completionTokens": usage.get("completion_tokens"),
+            "totalTokens": usage.get("total_tokens"),
+            "finishReason": finish_reason,
+            "expectedRegexCount": len(expected_regexes),
+            "matchedRegexCount": sum(1 for item in regex_matches if item),
+            "expectedSubstringCount": len(expected_substrings),
+            "matchedSubstringCount": sum(1 for item in substring_matches if item),
+        }
+    )
+
+quality_gate_passed = (
+    all(item["passed"] for item in quality_results)
+    if quality_cases
+    else None
+)
+
 print(
     json.dumps(
         {
@@ -361,6 +443,8 @@ print(
             "summary": summary,
             "warmups": warmups,
             "streams": streams,
+            "qualityGatePassed": quality_gate_passed,
+            "qualityCases": quality_results,
             "publicSafety": {
                 "containsPromptText": False,
                 "containsResponseText": False,
@@ -416,6 +500,7 @@ remote_env=(
   "MAX_TTFT_P95_SECONDS=$MAX_TTFT_P95_SECONDS"
   "MIN_DECODE_TPS_P50=$MIN_DECODE_TPS_P50"
   "MIN_E2E_TPS_P50=$MIN_E2E_TPS_P50"
+  "QUALITY_CASES_B64=$QUALITY_CASES_B64"
 )
 remote_prefix=""
 for item in "${remote_env[@]}"; do
@@ -454,6 +539,31 @@ def value(name):
     item = summary.get(name)
     return "n/a" if item is None else str(round(item, 6) if isinstance(item, float) else item)
 
+quality_cases = data.get("qualityCases") or []
+quality_lines = []
+if quality_cases:
+    quality_lines = [
+        "",
+        "## Quality cases",
+        "",
+        "| ID | Passed | Prompt SHA-256 | Response SHA-256 | Latency (s) | Completion tokens | Finish reason | Regex matches | Substring matches |",
+        "| --- | ---: | --- | --- | ---: | ---: | --- | ---: | ---: |",
+    ]
+    for case in quality_cases:
+        quality_lines.append(
+            "| {id} | `{passed}` | `{prompt}` | `{response}` | `{elapsed}` | `{tokens}` | `{finish}` | `{regex}` | `{substring}` |".format(
+                id=case.get("id", "unknown"),
+                passed=case.get("passed"),
+                prompt=case.get("promptSha256", "unavailable"),
+                response=case.get("responseSha256", "unavailable"),
+                elapsed=case.get("elapsedSeconds", "n/a"),
+                tokens=case.get("completionTokens", "n/a"),
+                finish=case.get("finishReason", "n/a"),
+                regex=f"{case.get('matchedRegexCount', 0)}/{case.get('expectedRegexCount', 0)}",
+                substring=f"{case.get('matchedSubstringCount', 0)}/{case.get('expectedSubstringCount', 0)}",
+            )
+        )
+
 target.write_text(
     "\n".join(
         [
@@ -465,6 +575,7 @@ target.write_text(
             f"- Model: `{data.get('model', 'unknown')}`",
             f"- Prompt SHA-256: `{data.get('promptSha256', 'unavailable')}`",
             f"- Prompt bytes: `{data.get('promptBytes', 'unavailable')}`",
+            f"- Quality gate passed: `{data.get('qualityGatePassed')}`",
             "",
             "## Summary",
             "",
@@ -477,6 +588,7 @@ target.write_text(
             f"- Decode tok/s p95: `{value('decodeTokensPerSecondP95')}`",
             f"- End-to-end tok/s p50: `{value('endToEndTokensPerSecondP50')}`",
             f"- End-to-end tok/s p95: `{value('endToEndTokensPerSecondP95')}`",
+            f"- Quality cases: `{len(data.get('qualityCases') or [])}`",
             "",
             "## Thresholds",
             "",
@@ -487,6 +599,8 @@ target.write_text(
             "- Contains prompt text: false",
             "- Contains response text: false",
             "- Contains secrets: false",
+            "",
+            *quality_lines,
             "",
         ]
     )

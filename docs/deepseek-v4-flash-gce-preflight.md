@@ -1135,6 +1135,17 @@ justify continuing toward a Khala integration candidate. It is still not a
 serving claim: answer quality, longer outputs, longer context, concurrency,
 and the SWA-only sparse-indexer bypass remain open gates.
 
+Issue #63 extended that readiness harness with runtime-supplied quality cases
+and ran a three-case public-safe eval on the same G4 host. The quality gate
+passed without committing raw prompt text, response text, or expectation text:
+only prompt hashes, response hashes, lengths, token counts, latency, finish
+reasons, pass/fail, and match counts are tracked. The run also passed the
+resident timing gate with 115 s start-to-ready, 30.326 s warmup, TTFT p95
+0.357 s, decode p50 11.970 tok/s, and end-to-end p50 9.775 tok/s. This clears
+the first quality smoke, not a Khala serving claim: two tiny nonstream quality
+cases still took roughly 10 s and 18 s, and longer output/context, concurrency,
+and the SWA-only sparse-indexer bypass remain open gates.
+
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable
 alternate executor was reachable noninteractively from this shell: local

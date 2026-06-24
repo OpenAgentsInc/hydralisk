@@ -1726,12 +1726,23 @@ def test_khala_readiness_probe_is_public_safe_and_metric_bearing() -> None:
 
     assert "BENCH_PROMPT_FILE" in script
     assert "BENCH_PROMPT_B64" in script
+    assert "QUALITY_CASES_FILE" in script
+    assert "QUALITY_CASES_B64" in script
+    assert "expect_regex" in script
+    assert "expect_substrings" in script
     assert "promptSha256" in script
+    assert "responseSha256" in script
+    assert "promptBytes" in script
+    assert "responseBytes" in script
+    assert "matchedRegexCount" in script
+    assert "matchedSubstringCount" in script
     assert "containsPromptText" in script
     assert "containsResponseText" in script
     assert "ttftP95Seconds" in script
     assert "decodeTokensPerSecondP50" in script
     assert "khalaReadinessGatePassed" in script
+    assert "qualityGatePassed" in script
+    assert "Quality cases" in script
     assert "Generate a long" not in script
     assert "Reply with READY" not in script
 
