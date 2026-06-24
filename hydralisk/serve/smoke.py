@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 from typing import Any
 
 import httpx
@@ -80,10 +81,16 @@ def _completion_text(payload: dict[str, Any] | None) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Smoke a Hydralisk proxy")
     parser.add_argument("--base-url", required=True)
-    parser.add_argument("--bearer-token", required=True)
+    parser.add_argument("--bearer-token")
+    parser.add_argument("--bearer-token-env", default="HYDRALISK_BEARER_TOKEN")
     parser.add_argument("--model", default="openai/gpt-oss-20b")
     args = parser.parse_args()
-    result = asyncio.run(run_smoke(args.base_url.rstrip("/"), args.bearer_token, args.model))
+    bearer_token = args.bearer_token or os.environ.get(args.bearer_token_env, "")
+    if not bearer_token:
+        raise SystemExit(
+            f"missing bearer token: set {args.bearer_token_env} or pass --bearer-token"
+        )
+    result = asyncio.run(run_smoke(args.base_url.rstrip("/"), bearer_token, args.model))
     print(json.dumps(result, indent=2, sort_keys=True))
     raise SystemExit(0 if result["passed"] else 1)
 

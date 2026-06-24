@@ -441,9 +441,40 @@
     },
     "evals": {
     "terminalBench20": {
-      "status": "planned",
+      "status": "preliminary_pilot_partial_recipe_ready",
       "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/89",
-      "receiptPolicy": "task IDs, statuses, timings, aggregate metrics, and sanitized error classes only"
+      "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-terminal-bench-20.md",
+      "receiptRef": "docs/evidence/2026-06-24-glm-52-reap-504b-terminal-bench-20-receipt.json",
+      "preflightScript": "scripts/run-glm-52-reap-terminal-bench-preflight.sh",
+      "summaryCommand": "uv run hydralisk-terminal-bench-summary",
+      "datasetRef": "terminal-bench@2.0",
+      "runner": "harbor",
+      "runnerVersion": "0.15.0",
+      "agent": "terminus-2",
+      "modelArgument": "openai/glm-5.2-reap-504b-g4",
+      "nConcurrent": 1,
+      "maxAttempts": 5,
+      "timeoutSeconds": 3600,
+      "counts": {
+        "total": 89,
+        "solved": 60,
+        "failing": 25,
+        "envBroken": 2,
+        "notStarted": 2,
+        "attempted": 87,
+        "properlyAttempted": 85
+      },
+      "rates": {
+        "solvedOverTotal": 0.674157,
+        "solvedOverAttempted": 0.689655,
+        "solvedOverProperlyAttempted": 0.705882
+      },
+      "environmentBrokenTaskIds": [
+        "qemu-alpine-ssh",
+        "qemu-startup"
+      ],
+      "receiptPolicy": "task IDs, statuses, timings, aggregate metrics, and sanitized error classes only; do not commit raw prompts, responses, hidden reasoning, terminal transcripts, raw Harbor run directories, or container logs",
+      "claimBoundary": "preliminary pilot partial; not a public leaderboard claim until queued retries finish and missing not-started task IDs are captured"
     }
   },
   "publicSafety": {

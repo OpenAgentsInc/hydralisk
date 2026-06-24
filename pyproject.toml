@@ -37,6 +37,7 @@ hydralisk-deepseek-v4-fable-transform-smoke = "hydralisk.admission.deepseek_v4_f
 hydralisk-deepseek-v4-fable-context-map = "hydralisk.admission.deepseek_v4_fable:context_map_main"
 hydralisk-deepseek-v4-fable-indexer-loader-proof = "hydralisk.admission.deepseek_v4_fable:indexer_loader_proof_main"
 hydralisk-deepseek-v4-fable-packed-delta = "hydralisk.admission.deepseek_v4_fable:packed_delta_main"
+hydralisk-terminal-bench-summary = "hydralisk.evals.terminal_bench:main"
 
 [build-system]
 requires = ["hatchling"]

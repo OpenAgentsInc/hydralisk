@@ -1,0 +1,95 @@
+{
+  "benchmark": {
+    "datasetRef": "terminal-bench@2.0",
+    "harnessRepository": "https://github.com/harbor-framework/harbor",
+    "name": "Terminal-Bench",
+    "repository": "https://github.com/harbor-framework/terminal-bench-2",
+    "version": "2.0"
+  },
+  "claimStatus": "preliminary_pilot_partial",
+  "comparisonBoundary": "Do not compare publicly unless benchmark version, Harbor version, agent, model alias, sampler settings, retry policy, timeout, and denominator definitions are all named.",
+  "counts": {
+    "attempted": 87,
+    "envBroken": 2,
+    "failing": 25,
+    "notStarted": 2,
+    "properlyAttempted": 85,
+    "solved": 60,
+    "total": 89
+  },
+  "createdAt": "2026-06-24T23:35:47Z",
+  "denominatorDefinitions": {
+    "attempted": "total minus not-started tasks",
+    "attemptedSolved": "solved / attempted",
+    "fullDenominatorSolved": "solved / total",
+    "properlyAttempted": "attempted minus environment-broken tasks",
+    "properlyAttemptedSolved": "solved / properlyAttempted",
+    "total": "all Terminal-Bench 2.0 task IDs in the run set"
+  },
+  "inputSha256": null,
+  "model": {
+    "alias": "glm-5.2-reap-504b-g4",
+    "hardwareProfile": "4x RTX PRO 6000 G4 on admitted 8x fallback host",
+    "profileRef": "profiles/glm-5.2-reap-504b-b12x-g4.json",
+    "revision": "0xSero/GLM-5.2-504B@cb6b1e0451b9d560cda864f84187869c9a679712"
+  },
+  "passAt": {
+    "maxAttempts": 5,
+    "passAt1KnownTasks": 0,
+    "passAt1Solved": null,
+    "passAtNAnySolved": 60
+  },
+  "pilotLimitations": {
+    "notStartedTaskIdsCaptured": false,
+    "queuedRetriesComplete": false
+  },
+  "publicSafe": true,
+  "publicSafety": {
+    "containsHiddenReasoning": false,
+    "containsPrivateSource": false,
+    "containsPrompts": false,
+    "containsRawBenchmarkLogs": false,
+    "containsResponses": false,
+    "containsSecrets": false
+  },
+  "rates": {
+    "attemptedSolved": 0.689655,
+    "fullDenominatorSolved": 0.674157,
+    "knownPassAt1": null,
+    "passAtN": 0.674157,
+    "properlyAttemptedSolved": 0.705882
+  },
+  "runner": {
+    "agent": "terminus-2",
+    "maxAttempts": 5,
+    "model": "openai/glm-5.2-reap-504b-g4",
+    "nConcurrent": 1,
+    "name": "harbor",
+    "retryPolicy": "pass@1 plus up to 4 queued retries for pass@5",
+    "timeoutSeconds": 3600,
+    "version": "0.15.0"
+  },
+  "sampler": {
+    "enableThinking": false,
+    "maxTokens": 1024,
+    "minP": 0.05,
+    "repetitionPenalty": 1.05
+  },
+  "schema": "hydralisk.evals.terminal_bench.summary.v1",
+  "taskIds": {
+    "envBroken": [
+      "qemu-alpine-ssh",
+      "qemu-startup"
+    ],
+    "notStarted": [],
+    "notableSolved": [
+      "compile-compcert",
+      "build-pov-ray",
+      "caffe-cifar-10",
+      "crack-7z-hash",
+      "feal-differential-cryptanalysis",
+      "merge-diff-arc-agi-task",
+      "pytorch-model-recovery"
+    ]
+  }
+}
