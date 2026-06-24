@@ -36,6 +36,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-packed-delta.md`](evidence/2026-06-24-deepseek-v4-fable-packed-delta.md)
 - Upstream payload verification:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-upstream-payload.md`](evidence/2026-06-24-deepseek-v4-fable-upstream-payload.md)
+- Merged-checkpoint G4 preflight:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-g4-preflight.md`](evidence/2026-06-24-deepseek-v4-fable-merged-g4-preflight.md)
 
 ## Summary
 
@@ -515,6 +517,43 @@ the full merged checkpoint path.
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-upstream-payload.md`](evidence/2026-06-24-deepseek-v4-fable-upstream-payload.md)
 
+## Issue #78 result
+
+Issue #78 preflighted the full merged Fable checkpoint against the live G4
+lane without downloading merged shard payloads.
+
+The result is `go_for_staging_high_runtime_risk`.
+
+The live target is:
+
+- instance: `hydralisk-deepseek-v4-b12x-g4-8g-b-20260624155352`;
+- zone: `us-central1-b`;
+- machine type: `g4-standard-384`;
+- GPUs: `8 x NVIDIA RTX PRO 6000 Blackwell Server Edition`;
+- per-GPU memory reported by `nvidia-smi`: `97887 MiB`;
+- boot disk: `900 GB`;
+- free disk on `/`: `663 GB`;
+- running containers during preflight: `0`.
+
+The merged checkpoint is `298425334924` bytes of tensor payload across 47
+shards, so it fits on the current boot disk with about `365 GB` left before
+download scratch and logs. The host can reach Hugging Face from the private
+network path, and the first shard advertises byte ranges, so staging should be
+resumable.
+
+The checkpoint key families are canonical `layers.*.attn.*` and
+`layers.*.ffn.*` names. The current runtime includes the DeepSeek-V4
+`WeightsMapper` and stacked-loader mappings needed to rewrite those names into
+the packed runtime families, so checkpoint naming is not the preflight no-go.
+
+The main risk is artifact/runtime mismatch: Fable merged is FP8, while the
+current proven G4 path is a patched NVIDIA NVFP4 lane with multiple SM120
+fallbacks. Staging is allowed as a private experiment; public serving remains
+blocked.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-merged-g4-preflight.md`](evidence/2026-06-24-deepseek-v4-fable-merged-g4-preflight.md)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
@@ -529,9 +568,11 @@ payload has zero LoRA B tensors, so the packed deltas are zero. Verify the
 upstream adapter payload found no nonzero adapter path at the current latest
 SHA. The next honest path is either to obtain a nonzero adapter artifact or
 intentionally evaluate the full 47-shard merged checkpoint path before a
-semantic canary. Even if a future probe succeeds, Fable should remain an
-authorized-security research capability, not a general Khala model and not a
-public inference product.
+semantic canary. The merged-checkpoint G4 preflight says staging is feasible
+but high-risk because it is an FP8 merged artifact on a patched NVFP4 G4 lane.
+The next step is resumable private staging and a load-only canary. Even if a
+future probe succeeds, Fable should remain an authorized-security research
+capability, not a general Khala model and not a public inference product.
 
 ## Public safety
 

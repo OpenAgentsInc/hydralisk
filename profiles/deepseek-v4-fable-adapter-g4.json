@@ -179,12 +179,30 @@
     "mergedCheckpointShardCount": 47,
     "mergedCheckpointTotalTensorBytes": 298425334924
   },
+  "mergedCheckpointPreflight": {
+    "status": "go_for_staging_high_runtime_risk",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/78",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-merged-g4-preflight.md",
+    "targetInstance": "hydralisk-deepseek-v4-b12x-g4-8g-b-20260624155352",
+    "zone": "us-central1-b",
+    "machineType": "g4-standard-384",
+    "accelerator": "nvidia-rtx-pro-6000",
+    "gpuCount": 8,
+    "bootDiskGb": 900,
+    "freeDiskGb": 663,
+    "checkpointPayloadBytes": 298425334924,
+    "checkpointShardCount": 47,
+    "networkPath": "hf_cdn_head_ok_byte_ranges",
+    "runtimeRisk": "fp8_merged_artifact_on_patched_nvfp4_g4_lane",
+    "stagingAllowed": true,
+    "publicServingAllowed": false
+  },
   "finalDecision": {
     "status": "rejected_runtime_unstable",
     "admittedPrivateAuthorizedSecurityLabCanary": false,
     "publicAliasesAllowed": false,
     "khalaGeneralRouteAllowed": false,
     "mppPublicSaleAllowed": false,
-    "nextStep": "evaluate_full_merged_checkpoint_feasibility_or_get_nonzero_adapter"
+    "nextStep": "stage_merged_checkpoint_on_g4_with_resumable_verification"
   }
 }
