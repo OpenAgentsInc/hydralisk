@@ -96,6 +96,146 @@ def test_capabilities_include_singleflight_admission_policy() -> None:
     }
 
 
+def test_private_models_endpoint_requires_bearer_and_reports_defaults() -> None:
+    client = TestClient(
+        create_app(
+            HydraliskSettings(
+                served_model="glm-5.2-reap-504b-g4",
+                public_model_aliases=("openagents/glm-5.2-reap-504b",),
+                bearer_token="secret",
+                engine_version="0.11.2.dev279+b12x",
+                model_revision="0xSero/GLM-5.2-504B@abc123",
+                model_profile_ref="profiles/glm-5.2-reap-504b-b12x-g4.json",
+                container_image="voipmonitor/vllm@sha256:test",
+                admission_ref="docs/evidence/admission.md",
+                evidence_ref="docs/evidence/smoke.md",
+                require_profile_evidence=True,
+                default_min_p=0.05,
+                default_repetition_penalty=1.05,
+                default_max_tokens=1024,
+                default_enable_thinking=False,
+            )
+        )
+    )
+
+    unauthorized = client.get("/v1/models")
+    authorized = client.get(
+        "/v1/models",
+        headers={"authorization": "Bearer secret"},
+    )
+
+    assert unauthorized.status_code == 401
+    assert authorized.status_code == 200
+    model = authorized.json()["data"][0]
+    assert model["id"] == "glm-5.2-reap-504b-g4"
+    assert model["hydralisk"]["aliases"] == ["openagents/glm-5.2-reap-504b"]
+    assert model["hydralisk"]["requestDefaults"] == {
+        "sampling": {
+            "min_p": 0.05,
+            "repetition_penalty": 1.05,
+            "max_tokens": 1024,
+        },
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    assert "secret" not in str(authorized.json())
+
+
+def test_private_lane_readiness_fails_closed_when_profile_evidence_missing() -> None:
+    client = TestClient(
+        create_app(
+            HydraliskSettings(
+                bearer_token="secret",
+                require_profile_evidence=True,
+            )
+        )
+    )
+
+    health = client.get("/health")
+    models = client.get("/v1/models", headers={"authorization": "Bearer secret"})
+
+    assert health.status_code == 200
+    assert health.json()["status"] == "blocked"
+    assert models.status_code == 503
+    body = models.json()["detail"]
+    assert body["error"]["code"] == "hydralisk_profile_evidence_incomplete"
+    assert {blocker["code"] for blocker in body["blockers"]} >= {
+        "unknown_model_revision",
+        "unknown_engine_version",
+        "missing_model_profile_ref",
+        "missing_container_image",
+        "missing_admission_ref",
+        "missing_evidence_ref",
+    }
+
+
+def test_glm_sampler_defaults_are_applied_before_upstream(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                "usage": {
+                    "prompt_tokens": 2,
+                    "completion_tokens": 3,
+                    "total_tokens": 5,
+                },
+            }
+
+    class FakeAsyncClient:
+        def __init__(self, timeout=None) -> None:
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json):
+            captured["url"] = url
+            captured["json"] = json
+            return FakeResponse()
+
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", FakeAsyncClient)
+    client = TestClient(
+        create_app(
+            HydraliskSettings(
+                served_model="glm-5.2-reap-504b-g4",
+                public_model_aliases=("openagents/glm-5.2-reap-504b",),
+                allow_insecure_dev=True,
+                default_min_p=0.05,
+                default_repetition_penalty=1.05,
+                default_max_tokens=1024,
+                default_enable_thinking=False,
+                receipt_dir=tmp_path,
+            )
+        )
+    )
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "openagents/glm-5.2-reap-504b",
+            "messages": [{"role": "user", "content": "ping"}],
+        },
+    )
+
+    assert response.status_code == 200
+    forwarded = captured["json"]
+    assert isinstance(forwarded, dict)
+    assert forwarded["model"] == "glm-5.2-reap-504b-g4"
+    assert forwarded["min_p"] == 0.05
+    assert forwarded["repetition_penalty"] == 1.05
+    assert forwarded["max_tokens"] == 1024
+    assert forwarded["chat_template_kwargs"] == {"enable_thinking": False}
+
+
 def test_authorized_security_policy_is_public_safe_in_capabilities() -> None:
     client = TestClient(
         create_app(

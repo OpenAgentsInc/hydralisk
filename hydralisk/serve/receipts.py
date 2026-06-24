@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
@@ -58,6 +58,7 @@ def build_capabilities(config: HydraliskSettings) -> dict[str, Any]:
         "responses": True,
         "admission": _admission_policy(config),
         "policy": _policy_capabilities(config),
+        "requestDefaults": _request_defaults(config),
         "toolCalls": "disabled_for_gateway_day_zero",
         "reasoningVisibility": "final_answer_only_for_public_receipts",
         "receiptSchema": RECEIPT_SCHEMA,
@@ -84,7 +85,7 @@ def build_receipt(
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "runRef": run_ref,
-        "createdAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "model": config.served_model,
         "servedModel": config.served_model,
         "servedAlias": served_alias,
@@ -99,6 +100,7 @@ def build_receipt(
         "quantization": {"weights": config.quantization_weights},
         "admission": _admission_policy(config),
         "policy": _policy_receipt(config, policy_context),
+        "requestDefaults": _request_defaults(config),
         "usage": normalize_usage(usage),
         "latency": latency,
         "publicSafe": True,
@@ -221,6 +223,24 @@ def _admission_policy(config: HydraliskSettings) -> dict[str, Any]:
         "queueTimeoutSeconds": config.inflight_queue_timeout_seconds,
         "singleFlight": config.max_inflight_requests == 1,
     }
+
+
+def _request_defaults(config: HydraliskSettings) -> dict[str, Any]:
+    defaults: dict[str, Any] = {}
+    sampling = _compact(
+        {
+            "minP": config.default_min_p,
+            "repetitionPenalty": config.default_repetition_penalty,
+            "maxTokens": config.default_max_tokens,
+        }
+    )
+    if sampling:
+        defaults["sampling"] = sampling
+    if config.default_enable_thinking is not None:
+        defaults["chatTemplateKwargs"] = {
+            "enableThinking": config.default_enable_thinking
+        }
+    return defaults
 
 
 def _policy_capabilities(config: HydraliskSettings) -> dict[str, Any]:

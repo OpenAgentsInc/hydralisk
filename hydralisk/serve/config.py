@@ -36,11 +36,25 @@ def _env_int(name: str, default: int | None = None) -> int | None:
     return int(value)
 
 
+def _env_float(name: str, default: float | None = None) -> float | None:
+    value = _env(name)
+    if value is None:
+        return default
+    return float(value)
+
+
 def _env_positive_int(name: str) -> int | None:
     value = _env_int(name)
     if value is None or value <= 0:
         return None
     return value
+
+
+def _env_optional_flag(name: str) -> bool | None:
+    value = _env(name)
+    if value is None:
+        return None
+    return value.lower() in {"1", "true", "yes", "on", "ready"}
 
 
 @dataclass(frozen=True)
@@ -87,6 +101,11 @@ class HydraliskSettings:
     request_timeout_seconds: float = 600.0
     max_inflight_requests: int | None = None
     inflight_queue_timeout_seconds: float = 0.0
+    require_profile_evidence: bool = False
+    default_min_p: float | None = None
+    default_repetition_penalty: float | None = None
+    default_max_tokens: int | None = None
+    default_enable_thinking: bool | None = None
 
     @property
     def supported_models(self) -> tuple[str, ...]:
@@ -171,5 +190,14 @@ def load_settings() -> HydraliskSettings:
         max_inflight_requests=_env_positive_int("HYDRALISK_MAX_INFLIGHT_REQUESTS"),
         inflight_queue_timeout_seconds=float(
             _env("HYDRALISK_INFLIGHT_QUEUE_TIMEOUT_SECONDS", "0") or "0"
+        ),
+        require_profile_evidence=_env_flag("HYDRALISK_REQUIRE_PROFILE_EVIDENCE"),
+        default_min_p=_env_float("HYDRALISK_DEFAULT_MIN_P"),
+        default_repetition_penalty=_env_float(
+            "HYDRALISK_DEFAULT_REPETITION_PENALTY"
+        ),
+        default_max_tokens=_env_positive_int("HYDRALISK_DEFAULT_MAX_TOKENS"),
+        default_enable_thinking=_env_optional_flag(
+            "HYDRALISK_DEFAULT_ENABLE_THINKING"
         ),
     )

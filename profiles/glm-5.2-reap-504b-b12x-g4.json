@@ -1,10 +1,14 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "glm-5.2-reap-504b-nvfp4-b12x-g4-rtx-pro-6000-4g-20260624",
-    "status": "load_smoke_passed_private_4gpu",
+    "status": "private_endpoint_ready",
   "servedModel": "0xSero/GLM-5.2-504B",
-  "internalModelAlias": "glm-5.2-reap-504b-g4",
-  "publicModelAliases": [],
+    "internalModelAlias": "glm-5.2-reap-504b-g4",
+    "publicModelAliases": [],
+    "privateModelAliases": [
+        "openagents/glm-5.2-reap-504b",
+        "0xSero/GLM-5.2-504B"
+    ],
   "model": {
     "publisher": "0xSero",
     "repository": "0xSero/GLM-5.2-504B",
@@ -281,9 +285,73 @@
             "service reaches health endpoint",
             "OpenAI-compatible completion returns at least one token",
             "receipt records image digest, model revision, launch flags, sampler params, token counts, timing, and GPU memory envelope"
-    ]
-  },
-  "evals": {
+        ]
+    },
+    "privateEndpoint": {
+        "status": "passed",
+        "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/87",
+        "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-private-endpoint.md",
+        "receiptRef": "docs/evidence/2026-06-24-glm-52-reap-504b-private-endpoint-receipt.json",
+        "runId": "20260624231000",
+        "host": {
+            "instance": "hydralisk-glm52-reap-504b-g4-8g-b-20260624214500",
+            "zone": "us-central1-b",
+            "bind": "127.0.0.1:8080",
+            "publicBind": false,
+            "access": "on-host localhost or IAP/SSH tunnel only"
+        },
+        "auth": {
+            "required": true,
+            "tokenStorage": "remote host only; not committed or printed"
+        },
+        "servedModelName": "glm-5.2-reap-504b-g4",
+        "acceptedPrivateAliases": [
+            "openagents/glm-5.2-reap-504b",
+            "0xSero/GLM-5.2-504B"
+        ],
+        "readiness": {
+            "failClosedProfileEvidence": true,
+            "blockers": []
+        },
+        "routes": {
+            "models": "/v1/models",
+            "chatCompletions": "/v1/chat/completions",
+            "capabilities": "/hydralisk/v1/capabilities",
+            "receipts": "/hydralisk/v1/receipts/{runRef}"
+        },
+        "requestDefaults": {
+            "minP": 0.05,
+            "repetitionPenalty": 1.05,
+            "maxTokens": 1024,
+            "chatTemplateKwargs": {
+                "enableThinking": false
+            }
+        },
+        "parsers": {
+            "toolCalls": "glm47",
+            "reasoning": "glm45"
+        },
+        "completionSmoke": {
+            "status": "passed",
+            "httpStatus": 200,
+            "proxyRunRef": "hydralisk-run-36f1856baa364d7bb42bd08354a2aadb",
+            "requestedModelAlias": "openagents/glm-5.2-reap-504b",
+            "requestOmittedDefaults": [
+                "min_p",
+                "repetition_penalty",
+                "max_tokens",
+                "chat_template_kwargs.enable_thinking"
+            ],
+            "promptSha256": "5f8103cbebaac77e42161be89a636352dafbb3ceda5efef0aa6484d67233dfe2",
+            "visibleCompletionSha256": "deb72954879f318cd0fcb41355e82f54fbed51947d68e71b465fd31aba03f166",
+            "visibleCompletionChars": 18,
+            "promptTokens": 22,
+            "completionTokens": 9,
+            "totalTokens": 31,
+            "wallSeconds": 0.4926423070000965
+        }
+    },
+    "evals": {
     "terminalBench20": {
       "status": "planned",
       "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/89",

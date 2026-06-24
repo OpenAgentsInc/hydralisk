@@ -66,6 +66,11 @@ Initial targets:
   `0xSero/GLM-5.2-504B` REAP/NVFP4 on 4 x GCE G4 RTX PRO 6000 with the
   b12x/vLLM SM120 recipe; the older `zai-org/GLM-5.2-FP8` SGLang G4 profile
   remains a blocked FP8 evidence lane, not the REAP serving plan.
+  As of 2026-06-24, that REAP lane has a private Hydralisk proxy bound to
+  `127.0.0.1:8080` on the admitted G4 fallback host, with raw vLLM still bound
+  to localhost, bearer auth required, fail-closed profile evidence checks, and
+  GLM sampler defaults injected by the proxy. See
+  [docs/evidence/2026-06-24-glm-52-reap-504b-private-endpoint.md](docs/evidence/2026-06-24-glm-52-reap-504b-private-endpoint.md).
 - DeepSeek-V4-Flash as a Google GPU admission experiment: G4 capacity was
   admitted on 2026-06-24 with 2 x RTX PRO 6000. The current blocker is now
   past the original vLLM `0.23.0` Blackwell FP8 scaled-mm failure: direct

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
 import json
 from time import perf_counter
 from typing import Any, Callable
@@ -115,15 +116,37 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
                 },
             )
 
+    async def require_ready() -> None:
+        blockers = _readiness_blockers(config)
+        if blockers:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": {
+                        "code": "hydralisk_profile_evidence_incomplete",
+                        "message": "Hydralisk profile evidence is incomplete for this private lane.",
+                    },
+                    "blockers": blockers,
+                },
+            )
+
     @app.get("/health")
     async def health() -> dict[str, Any]:
+        blockers = _readiness_blockers(config)
         return {
-            "status": "ready" if config.bearer_token or config.allow_insecure_dev else "unarmed",
+            "status": (
+                "blocked"
+                if blockers
+                else "ready"
+                if config.bearer_token or config.allow_insecure_dev
+                else "unarmed"
+            ),
             "servedModel": config.served_model,
             "engine": config.engine,
             "engineVersion": config.engine_version,
             "gpuClass": config.gpu_class,
             "authRequired": not config.allow_insecure_dev,
+            "blockers": blockers,
         }
 
     @app.get("/hydralisk/v1/capabilities")
@@ -145,13 +168,43 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
             )
         return stored
 
-    @app.post("/v1/chat/completions", dependencies=[Depends(require_bearer)])
+    @app.get("/v1/models", dependencies=[Depends(require_bearer), Depends(require_ready)])
+    async def models() -> dict[str, Any]:
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": config.served_model,
+                    "object": "model",
+                    "created": int(datetime.now(timezone.utc).timestamp()),
+                    "owned_by": "hydralisk-private",
+                    "root": config.served_model,
+                    "parent": None,
+                    "permission": [],
+                    "hydralisk": {
+                        "aliases": list(config.public_model_aliases),
+                        "engine": config.engine,
+                        "engineVersion": config.engine_version,
+                        "profileRef": config.model_profile_ref,
+                        "evidenceRef": config.evidence_ref,
+                        "containerImage": config.container_image,
+                        "requestDefaults": _request_defaults_for_response(config),
+                    },
+                }
+            ],
+        }
+
+    @app.post(
+        "/v1/chat/completions",
+        dependencies=[Depends(require_bearer), Depends(require_ready)],
+    )
     async def chat_completions(request: Request) -> Response:
         payload = await _json_object(request)
         admitted_model = _admit_model(payload, config)
         policy_context = _admit_policy(payload, config)
         upstream_payload = dict(payload)
         upstream_payload["model"] = config.served_model
+        _apply_chat_defaults(upstream_payload, config)
         run_ref = _run_ref()
         inflight_lease = await inflight_gate.acquire()
 
@@ -195,7 +248,10 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
         finally:
             inflight_lease.release()
 
-    @app.post("/v1/responses", dependencies=[Depends(require_bearer)])
+    @app.post(
+        "/v1/responses",
+        dependencies=[Depends(require_bearer), Depends(require_ready)],
+    )
     async def responses(request: Request) -> Response:
         payload = await _json_object(request)
         admitted_model = _admit_model(payload, config)
@@ -288,6 +344,86 @@ def _admit_model(payload: dict[str, Any], config: HydraliskSettings) -> str:
             "supportedModels": list(config.supported_models),
         },
     )
+
+
+def _apply_chat_defaults(payload: dict[str, Any], config: HydraliskSettings) -> None:
+    if config.default_min_p is not None:
+        payload.setdefault("min_p", config.default_min_p)
+    if config.default_repetition_penalty is not None:
+        payload.setdefault("repetition_penalty", config.default_repetition_penalty)
+    if config.default_max_tokens is not None:
+        payload.setdefault("max_tokens", config.default_max_tokens)
+    if config.default_enable_thinking is not None:
+        chat_template_kwargs = payload.get("chat_template_kwargs")
+        if not isinstance(chat_template_kwargs, dict):
+            chat_template_kwargs = {}
+        payload["chat_template_kwargs"] = {
+            **chat_template_kwargs,
+            "enable_thinking": chat_template_kwargs.get(
+                "enable_thinking",
+                config.default_enable_thinking,
+            ),
+        }
+
+
+def _readiness_blockers(config: HydraliskSettings) -> list[dict[str, str]]:
+    if not config.require_profile_evidence:
+        return []
+    blockers: list[dict[str, str]] = []
+    if config.model_revision == "unknown_model_revision":
+        blockers.append(
+            {
+                "code": "unknown_model_revision",
+                "message": "HYDRALISK_MODEL_REVISION has not been pinned for this lane.",
+            }
+        )
+    if config.engine_version == "unknown_engine_version":
+        blockers.append(
+            {
+                "code": "unknown_engine_version",
+                "message": "HYDRALISK_ENGINE_VERSION has not been pinned for this lane.",
+            }
+        )
+    required_refs = {
+        "missing_model_profile_ref": config.model_profile_ref,
+        "missing_container_image": config.container_image,
+        "missing_admission_ref": config.admission_ref,
+        "missing_evidence_ref": config.evidence_ref,
+    }
+    for code, value in required_refs.items():
+        if not value:
+            blockers.append(
+                {
+                    "code": code,
+                    "message": f"{code.removeprefix('missing_')} is required for this private lane.",
+                }
+            )
+    if not str(config.receipt_dir).strip():
+        blockers.append(
+            {
+                "code": "missing_receipt_dir",
+                "message": "HYDRALISK_RECEIPT_DIR is required for this private lane.",
+            }
+        )
+    return blockers
+
+
+def _request_defaults_for_response(config: HydraliskSettings) -> dict[str, Any]:
+    defaults: dict[str, Any] = {}
+    sampling: dict[str, Any] = {}
+    if config.default_min_p is not None:
+        sampling["min_p"] = config.default_min_p
+    if config.default_repetition_penalty is not None:
+        sampling["repetition_penalty"] = config.default_repetition_penalty
+    if config.default_max_tokens is not None:
+        sampling["max_tokens"] = config.default_max_tokens
+    if sampling:
+        defaults["sampling"] = sampling
+    if config.default_enable_thinking is not None:
+        defaults["chat_template_kwargs"] = {
+            "enable_thinking": config.default_enable_thinking
+        }
+    return defaults
 
 
 def _admit_policy(payload: dict[str, Any], config: HydraliskSettings) -> dict[str, Any] | None:
