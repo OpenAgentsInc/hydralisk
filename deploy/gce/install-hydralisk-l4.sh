@@ -17,7 +17,7 @@ fi
 chown -R hydralisk:hydralisk /var/lib/hydralisk /var/log/hydralisk
 
 apt-get update -y
-apt-get install -y ca-certificates curl git jq
+apt-get install -y ca-certificates curl git jq build-essential ninja-build
 
 if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -49,7 +49,7 @@ HYDRALISK_PUBLIC_MODEL_ALIASES=openagents/khala-oss-20b,gpt-oss-20b
 HYDRALISK_VLLM_BASE_URL=http://127.0.0.1:8000
 HYDRALISK_RECEIPT_DIR=/var/lib/hydralisk/receipts
 HYDRALISK_ENGINE_VERSION=${engine_version}
-HYDRALISK_GPU_NAME=NVIDIA L4
+HYDRALISK_GPU_NAME="NVIDIA L4"
 HYDRALISK_GPU_COUNT=1
 HYDRALISK_QUANTIZATION_WEIGHTS=MXFP4
 HYDRALISK_MAX_OUTPUT_TOKENS=1024

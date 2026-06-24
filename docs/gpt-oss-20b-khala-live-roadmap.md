@@ -2,10 +2,11 @@
 
 Date: 2026-06-23
 
-Status: implementation in progress. The Hydralisk repo now contains the
-authenticated proxy scaffold, public-safe capabilities/receipts, systemd units,
-smoke script, and a GCE L4 runbook. The service is not yet promoted behind
-OpenAgents until the live host smoke and receipt gate pass.
+Status: day-zero Hydralisk serving lane live as of 2026-06-24. The Hydralisk
+repo contains the authenticated proxy scaffold, public-safe
+capabilities/receipts, systemd units, smoke script, and a GCE L4 runbook. The
+live GCE host passed both localhost and public HTTPS origin smoke; OpenAgents
+Worker arming uses secret-backed transport plus public-safe evidence refs.
 
 ## Goal
 
@@ -70,15 +71,19 @@ surface today is `/v1/chat/completions`.
 
 Target: one GCE L4 instance in `openagentsgemini`, preferably `us-central1`.
 
-2026-06-23 GCP audit:
+2026-06-24 GCP state after promotion:
 
-- `us-central1` has `NVIDIA_L4_GPUS` limit 16, usage 1.
+- `us-central1` has `NVIDIA_L4_GPUS` limit 16, usage 3.
 - `us-central1` has `PREEMPTIBLE_NVIDIA_L4_GPUS` limit 16, usage 0.
-- The running L4 VM is `gswarm508-clean2-20260325044551-contrib` in
-  `us-central1-b`; labels identify it as a Psion training contributor, so it is
-  not a Hydralisk target unless an operator explicitly reclaims it.
-- Hydralisk should provision a fresh `g2-standard-8` L4 host for day-zero
-  inference. See [`gce-l4-vllm-runbook.md`](gce-l4-vllm-runbook.md).
+- The Psion L4 hosts remain Psion-labeled and were not repurposed.
+- Hydralisk runs on fresh instance `hydralisk-gptoss20b-l4-20260624000550` in
+  `us-central1-a`; shape `g2-standard-8`, 1 x NVIDIA L4.
+- Public-safe evidence refs:
+  - `preflight.hydralisk.gpt_oss_20b.l4.20260624T002313Z`
+  - `receipt.hydralisk.gpt_oss_20b.l4.hydralisk-run-88ccd454ea4f4fc7baee9a72c4894527`
+
+See [`gce-l4-vllm-runbook.md`](gce-l4-vllm-runbook.md) for the exact live-host
+setup notes and rollback commands.
 
 Minimum instance shape:
 
@@ -91,11 +96,8 @@ Minimum instance shape:
 Runtime:
 
 ```bash
-uv venv --python 3.12 --seed
-source .venv/bin/activate
-uv pip install vllm --torch-backend=auto
-
-vllm serve openai/gpt-oss-20b --host 127.0.0.1 --port 8000
+sudo deploy/gce/install-hydralisk-l4.sh
+sudo systemctl start vllm-gpt-oss-20b.service hydralisk-proxy.service
 ```
 
 The public-facing process should not expose raw vLLM directly. Put a Hydralisk
@@ -112,6 +114,11 @@ reasoning traces, private source, model cache paths, or local host details in
 receipts.
 
 ## Phase 1: Hydralisk service contract
+
+Status: complete for day zero. The live public-origin smoke exercised health,
+capabilities, non-streaming chat completion, streaming chat completion, and
+receipt fetch. The streaming receipt reported 77 ms TTFT, 2050 ms wall time,
+and 195 total tokens.
 
 Before OpenAgents routes paid traffic, the Hydralisk endpoint must prove:
 
@@ -160,6 +167,9 @@ Day-zero receipt schema can be small:
 
 ## Phase 2: OpenAgents Worker code changes
 
+Status: complete in `OpenAgentsInc/openagents@7e7b75382e` and retained through
+current `main` after the durable streaming merge.
+
 Make the smallest product-side change that can route a model to Hydralisk.
 
 Files to touch:
@@ -203,15 +213,19 @@ Do not add fuzzy routing. This is a bounded model-id and lane selector.
 
 ## Phase 3: OpenAgents deploy config
 
+Status: in production rollout. `HYDRALISK_BASE_URL` and
+`HYDRALISK_BEARER_TOKEN` are Worker secrets; only the ready flag and
+public-safe evidence refs are committed as Worker vars.
+
 Worker secrets/config:
 
 ```text
 INFERENCE_GATEWAY_ENABLED=true
 HYDRALISK_GPT_OSS_20B_ENABLED=ready
-HYDRALISK_BASE_URL=https://<hydralisk-host>
+HYDRALISK_BASE_URL=<worker-secret>
 HYDRALISK_BEARER_TOKEN=<worker-secret>
-HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF=preflight.hydralisk.gpt_oss_20b.l4.v1
-HYDRALISK_GPT_OSS_20B_RECEIPT_REF=receipt.hydralisk.gpt_oss_20b.l4.smoke.v1
+HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF=preflight.hydralisk.gpt_oss_20b.l4.20260624T002313Z
+HYDRALISK_GPT_OSS_20B_RECEIPT_REF=receipt.hydralisk.gpt_oss_20b.l4.hydralisk-run-88ccd454ea4f4fc7baee9a72c4894527
 ```
 
 Important: `HYDRALISK_BASE_URL` should point at the Hydralisk origin root, for

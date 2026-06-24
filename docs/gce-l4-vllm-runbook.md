@@ -2,6 +2,35 @@
 
 Date: 2026-06-23
 
+## 2026-06-24 live promotion
+
+Hydralisk GPT-OSS 20B is live on a dedicated GCE L4 host:
+
+- project: `openagentsgemini`
+- instance: `hydralisk-gptoss20b-l4-20260624000550`
+- zone: `us-central1-a`
+- shape: `g2-standard-8`, 1 x NVIDIA L4
+- image family used: `common-cu129-ubuntu-2204-nvidia-580`
+- public HTTPS origin: stored as the OpenAgents Worker
+  `HYDRALISK_BASE_URL` secret
+- service stack: vLLM `0.23.0` serving `openai/gpt-oss-20b`; Hydralisk proxy on
+  `127.0.0.1:8080`; Caddy `2.11.4` fronting HTTPS
+- public-safe smoke refs:
+  - `preflight.hydralisk.gpt_oss_20b.l4.20260624T002313Z`
+  - `receipt.hydralisk.gpt_oss_20b.l4.hydralisk-run-88ccd454ea4f4fc7baee9a72c4894527`
+
+The public-origin smoke passed through HTTPS and exercised health,
+capabilities, non-streaming chat completion, streaming chat completion, and
+receipt fetch. The latest public-safe receipts observed:
+
+- `hydralisk-run-0e65f1ef6281413eab28f8aa71580c7b`: non-streaming,
+  81 total tokens, 2578 ms wall time.
+- `hydralisk-run-88ccd454ea4f4fc7baee9a72c4894527`: streaming,
+  195 total tokens, 77 ms TTFT, 2050 ms wall time.
+
+No bearer token, prompt, response body, local cache path, or private host
+material belongs in this repo, GitHub issues, or public readiness payloads.
+
 ## Current Google state
 
 Project: `openagentsgemini`
@@ -10,7 +39,7 @@ Region: `us-central1`
 
 Live quota observed with `gcloud compute regions describe us-central1`:
 
-- `NVIDIA_L4_GPUS`: limit 16, usage 1
+- `NVIDIA_L4_GPUS`: limit 16, usage 3 after the Hydralisk promotion
 - `PREEMPTIBLE_NVIDIA_L4_GPUS`: limit 16, usage 0
 - `CPUS`: limit 3000, usage 47
 - `SSD_TOTAL_GB`: limit 40960, usage 6532
@@ -19,11 +48,14 @@ Existing L4 VMs observed:
 
 - `gswarm508-clean2-20260325044551-contrib`, `us-central1-b`, running,
   `g2-standard-8`, 1 x L4, labels identify it as a Psion training contributor.
-- `gswarm508-clean2-20260325044551-coord`, `us-central1-a`, terminated,
+- `gswarm508-clean2-20260325044551-coord`, `us-central1-a`, running,
   `g2-standard-8`, 1 x L4, labels identify it as a Psion training coordinator.
+- `hydralisk-gptoss20b-l4-20260624000550`, `us-central1-a`, running,
+  `g2-standard-8`, 1 x L4, labels identify it as Hydralisk inference for
+  GPT-OSS 20B.
 
-Do not repurpose the running Psion contributor without an explicit operator
-decision. Hydralisk has enough L4 quota for a fresh `g2-standard-8` lane.
+Do not repurpose the running Psion hosts without an explicit operator decision.
+Hydralisk has enough L4 quota for additional fresh `g2-standard-8` lanes.
 
 The terminated coordinator-shaped L4 VM can be repurposed if the operator wants
 to reuse existing infrastructure instead of creating a fresh host. Clear the old
@@ -50,7 +82,7 @@ gcloud compute instances start \
 
 ```bash
 export PROJECT_ID=openagentsgemini
-export ZONE=us-central1-b
+export ZONE=us-central1-a
 export INSTANCE=hydralisk-gptoss20b-l4-$(date -u +%Y%m%d%H%M%S)
 
 gcloud compute instances create "$INSTANCE" \
@@ -62,9 +94,10 @@ gcloud compute instances create "$INSTANCE" \
   --provisioning-model STANDARD \
   --boot-disk-size 250GB \
   --boot-disk-type pd-ssd \
-  --image-family common-cu128-ubuntu-2204-py310 \
+  --image-family common-cu129-ubuntu-2204-nvidia-580 \
   --image-project deeplearning-platform-release \
   --metadata enable-oslogin=TRUE \
+  --tags hydralisk-host,gpt-oss-20b,l4 \
   --labels lane=hydralisk,workload=inference,model=gpt-oss-20b,environment=internal
 ```
 
@@ -79,11 +112,7 @@ sudo chown -R hydralisk:hydralisk /var/lib/hydralisk
 git clone https://github.com/OpenAgentsInc/hydralisk.git /opt/hydralisk
 cd /opt/hydralisk
 
-curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-uv venv --python 3.12 --seed
-uv pip install vllm --torch-backend=auto
-uv pip install -e .
+sudo deploy/gce/install-hydralisk-l4.sh
 ```
 
 Create `/etc/hydralisk/hydralisk.env` from
@@ -122,6 +151,21 @@ sudo systemctl reload caddy
 DNS must point the chosen host name at the Hydralisk VM before Caddy can issue a
 certificate. For private day-zero smoke, use SSH port forwarding and keep the
 VM firewall closed to public ingress.
+
+For a public Worker origin, add a tag-targeted HTTPS firewall rule. The proxy
+still requires bearer auth, and raw vLLM stays bound to localhost:
+
+```bash
+gcloud compute firewall-rules create hydralisk-host-https \
+  --project openagentsgemini \
+  --direction INGRESS \
+  --priority 1000 \
+  --network default \
+  --action ALLOW \
+  --rules tcp:80,tcp:443 \
+  --source-ranges 0.0.0.0/0 \
+  --target-tags hydralisk-host
+```
 
 ## Host-local smoke
 
