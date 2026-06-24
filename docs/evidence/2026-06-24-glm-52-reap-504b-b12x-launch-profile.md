@@ -150,7 +150,16 @@ ACTION=stop RUN_ID=<run-id> \
   scripts/launch-glm-52-reap-504b-b12x-gce.sh
 ```
 
+## Issue #86 update
+
+The first live load smoke found that the b12x image can carry an empty
+`NCCL_GRAPH_FILE`, causing NCCL to try to open a blank XML graph path during
+communicator initialization. The launcher now unsets `NCCL_GRAPH_FILE` inside
+the container before starting vLLM. With that correction, run
+`20260624224500` loaded the model on GPUs `0,1,2,3` and passed a private
+OpenAI-compatible completion smoke.
+
 ## Next step
 
-Issue #86 should run `ACTION=start`, wait for `/v1/models`, and submit one
-public-safe synthetic completion using the upstream sampler guardrails.
+Issue #87 should expose the already-running service through a private,
+fail-closed endpoint.

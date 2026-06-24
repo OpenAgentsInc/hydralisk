@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "glm-5.2-reap-504b-nvfp4-b12x-g4-rtx-pro-6000-4g-20260624",
-  "status": "launch_profile_ready_load_smoke_pending",
+    "status": "load_smoke_passed_private_4gpu",
   "servedModel": "0xSero/GLM-5.2-504B",
   "internalModelAlias": "glm-5.2-reap-504b-g4",
   "publicModelAliases": [],
@@ -74,7 +74,7 @@
   "engine": {
     "name": "vllm",
     "distribution": "b12x SM120 recipe",
-    "status": "prepared",
+        "status": "serving_smoke_passed",
     "version": "0.11.2.dev279+black.benediction.b12xpr11.cu132.20260608",
     "containerImageTag": "voipmonitor/vllm:black-benediction-b12xpr11-vllmbb6c5b7-b12xd90d89c-fi3395b41aa8d-dg324aced12c-cu132-20260608",
     "containerImageDigest": "sha256:ce23a9b075bd7138ce3b12ee29609b98606e5050e2def4a29bbb917ad96e5997",
@@ -190,7 +190,7 @@
     }
   },
   "runtimePlan": {
-    "status": "launch_profile_ready",
+        "status": "load_smoke_passed",
     "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/85",
     "launchScript": "scripts/launch-glm-52-reap-504b-b12x-gce.sh",
     "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-b12x-launch-profile.md",
@@ -213,14 +213,74 @@
       "mtp": "enabled with num_speculative_tokens=3 if quality and stability gates pass"
     }
   },
-  "smoke": {
-    "status": "pending",
-    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/86",
-    "publicSafePromptPolicy": "synthetic prompts only; store hashes and aggregate metrics, never raw private prompts, private source, responses, or hidden reasoning traces",
-    "successCriteria": [
-      "service reaches health endpoint",
-      "OpenAI-compatible completion returns at least one token",
-      "receipt records image digest, model revision, launch flags, sampler params, token counts, timing, and GPU memory envelope"
+    "smoke": {
+        "status": "passed",
+        "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/86",
+        "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-load-smoke.md",
+        "receiptRef": "docs/evidence/2026-06-24-glm-52-reap-504b-load-smoke-receipt.json",
+        "passedAt": "2026-06-24T22:23:24Z",
+        "runId": "20260624224500",
+        "host": {
+            "instance": "hydralisk-glm52-reap-504b-g4-8g-b-20260624214500",
+            "zone": "us-central1-b",
+            "machineType": "g4-standard-384",
+            "gpuDevices": "0,1,2,3",
+            "note": "4 GPUs used on the admitted 8x fallback host because primary 4x G4 capacity was unavailable."
+        },
+        "launchFixes": [
+            "unset empty NCCL_GRAPH_FILE inside the b12x container before vLLM starts",
+            "run the container with SYS_NICE capability",
+            "capture NCCL_DEBUG and NCCL_SHM_DISABLE in public launch metadata"
+        ],
+        "modelsEndpoint": {
+            "status": "ready",
+            "servedModelName": "glm-5.2-reap-504b-g4",
+            "maxModelLenTokens": 32768
+        },
+        "completionSmoke": {
+            "status": "passed",
+            "httpStatus": 200,
+            "promptSha256": "5f8103cbebaac77e42161be89a636352dafbb3ceda5efef0aa6484d67233dfe2",
+            "visibleCompletionSha256": "deb72954879f318cd0fcb41355e82f54fbed51947d68e71b465fd31aba03f166",
+            "visibleCompletionChars": 18,
+            "promptTokens": 22,
+            "completionTokens": 9,
+            "totalTokens": 31,
+            "visibleTtftSeconds": 0.23759857799996098,
+            "totalSeconds": 0.4609617249998337,
+            "completionTokensPerSecond": 19.524397605903715,
+            "sampler": {
+                "temperature": 0,
+                "maxTokens": 64,
+                "minP": 0.05,
+                "repetitionPenalty": 1.05,
+                "chatTemplateKwargs": {
+                    "enableThinking": false
+                }
+            }
+        },
+        "memoryEnvelope": {
+            "gpuMemoryMiBUsedBySelectedGpu": [
+                93333,
+                93335,
+                93331,
+                93331
+            ],
+            "gpuMemoryMiBFreeBySelectedGpu": [
+                3918,
+                3916,
+                3920,
+                3920
+            ],
+            "containerHostMemoryUsage": "13.08GiB / 1.384TiB",
+            "hostMemAvailable": "1451299520 kB",
+            "disk": "1.5T root disk, 338G used, 1.1T available"
+        },
+        "publicSafePromptPolicy": "synthetic prompts only; store hashes and aggregate metrics, never raw private prompts, private source, responses, or hidden reasoning traces",
+        "successCriteria": [
+            "service reaches health endpoint",
+            "OpenAI-compatible completion returns at least one token",
+            "receipt records image digest, model revision, launch flags, sampler params, token counts, timing, and GPU memory envelope"
     ]
   },
   "evals": {
@@ -240,7 +300,7 @@
     "redactionPolicy": "Do not commit model weights, checkpoints, compiled engines, generated benchmark dumps, GPU profiler dumps, raw prompts, raw responses, hidden reasoning traces, private source, model-provider credentials, bearer tokens, or cloud credentials."
   },
   "claimBoundary": {
-    "currentClaim": "planned profile only; no serving claim",
+        "currentClaim": "private 4-GPU load and completion smoke passed on the admitted 8x G4 fallback host using GPUs 0-3; primary 4x G4 machine admission remains capacity-blocked",
     "publicClaimRequirement": "A public claim must name exact model revision, runtime image digest, GCE shape, GPU count, context/concurrency ceiling, sampler settings, and eval denominator."
   }
 }

@@ -1,0 +1,130 @@
+{
+  "claimBoundary": "Private 4-GPU load and completion smoke passed on GPUs 0,1,2,3 of the admitted 8x G4 fallback host. This does not prove admission of a standalone 4x g4-standard-192 host, which remained capacity-blocked.",
+  "completionSmoke": {
+    "checkedAt": "2026-06-24T22:23:24Z",
+    "errorSummary": null,
+    "errorType": null,
+    "finishReasons": [
+      "stop"
+    ],
+    "httpStatus": 200,
+    "nonvisibleDeltaCount": 2,
+    "promptSha256": "5f8103cbebaac77e42161be89a636352dafbb3ceda5efef0aa6484d67233dfe2",
+    "request": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      },
+      "max_tokens": 64,
+      "min_p": 0.05,
+      "repetition_penalty": 1.05,
+      "stream": true,
+      "temperature": 0
+    },
+    "runId": "20260624224500",
+    "servedModelName": "glm-5.2-reap-504b-g4",
+    "status": "passed",
+    "streamChunks": 11,
+    "timings": {
+      "completionTokensPerSecond": 19.524397605903715,
+      "firstAnyDeltaSeconds": 0.23757640800022273,
+      "totalSeconds": 0.4609617249998337,
+      "visibleTtftSeconds": 0.23759857799996098
+    },
+    "usage": {
+      "completion_tokens": 9,
+      "prompt_tokens": 22,
+      "total_tokens": 31
+    },
+    "visibleCompletionChars": 18,
+    "visibleCompletionSha256": "deb72954879f318cd0fcb41355e82f54fbed51947d68e71b465fd31aba03f166"
+  },
+  "hostEnvelope": {
+    "checkedAt": "2026-06-24T22:23:38Z",
+    "containerHostMemoryUsage": "13.08GiB / 1.384TiB",
+    "containerPids": 1052,
+    "disk": {
+      "filesystem": "/dev/root",
+      "size": "1.5T",
+      "used": "338G",
+      "available": "1.1T",
+      "usePercent": "24%"
+    },
+    "gpuMemory": [
+      {
+        "freeMiB": 3918,
+        "index": 0,
+        "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+        "totalMiB": 97887,
+        "usedMiB": 93333
+      },
+      {
+        "freeMiB": 3916,
+        "index": 1,
+        "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+        "totalMiB": 97887,
+        "usedMiB": 93335
+      },
+      {
+        "freeMiB": 3920,
+        "index": 2,
+        "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+        "totalMiB": 97887,
+        "usedMiB": 93331
+      },
+      {
+        "freeMiB": 3920,
+        "index": 3,
+        "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+        "totalMiB": 97887,
+        "usedMiB": 93331
+      }
+    ],
+    "hostMemory": {
+      "MemAvailable": "1451299520 kB",
+      "MemTotal": "1486031632 kB",
+      "SwapFree": "0 kB",
+      "SwapTotal": "0 kB"
+    }
+  },
+  "launch": {
+    "attentionBackend": "B12X_MLA_SPARSE",
+    "containerImageDigest": "sha256:ce23a9b075bd7138ce3b12ee29609b98606e5050e2def4a29bbb917ad96e5997",
+    "containerImageRef": "voipmonitor/vllm@sha256:ce23a9b075bd7138ce3b12ee29609b98606e5050e2def4a29bbb917ad96e5997",
+    "decodeContextParallelSize": 4,
+    "gpuDevices": "0,1,2,3",
+    "kvCacheDtype": "fp8",
+    "maxModelLenTokens": 32768,
+    "maxNumBatchedTokens": 4096,
+    "maxNumSeqs": 1,
+    "moeBackend": "b12x",
+    "ncclGraphFileHandling": "unset inside container before vLLM starts",
+    "quantization": "modelopt_fp4",
+    "tensorParallelSize": 4
+  },
+  "model": {
+    "repository": "0xSero/GLM-5.2-504B",
+    "revision": "cb6b1e0451b9d560cda864f84187869c9a679712",
+    "servedModelName": "glm-5.2-reap-504b-g4"
+  },
+  "modelsEndpoint": {
+    "checkedAt": "2026-06-24T22:21:10Z",
+    "maxModelLenTokens": 32768,
+    "status": "ready"
+  },
+  "publicSafety": {
+    "containsCompiledEngines": false,
+    "containsHiddenReasoning": false,
+    "containsPrompts": false,
+    "containsResponses": false,
+    "containsSecrets": false,
+    "containsWeights": false
+  },
+  "runId": "20260624224500",
+  "startup": {
+    "containerStartedAt": "2026-06-24T22:17:30Z",
+    "engineInitSeconds": 107.32,
+    "engineCompilationSeconds": 39.06,
+    "serverListeningAt": "2026-06-24T22:20:54Z",
+    "statusReadyCheckedAt": "2026-06-24T22:21:10Z"
+  }
+}
