@@ -44,6 +44,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-staging-manifest.tsv`](evidence/2026-06-24-deepseek-v4-fable-merged-staging-manifest.tsv)
 - Merged-checkpoint private canary:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-canary.md`](evidence/2026-06-24-deepseek-v4-fable-merged-canary.md)
+- Google G4 final tracker:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-google-g4-final.md`](evidence/2026-06-24-deepseek-v4-fable-google-g4-final.md)
 
 ## Summary
 
@@ -631,6 +633,21 @@ quality/latency.
 
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-merged-canary.md`](evidence/2026-06-24-deepseek-v4-fable-merged-canary.md)
+
+## Issue #81 result
+
+Issue #81 records the final answer for this pass:
+`no_go_current_b12x_g4_runtime_envelope`.
+
+Google G4 capacity is sufficient to stage the full merged Fable checkpoint, but
+the checkpoint does not load on the current Hydralisk B12x runtime envelope.
+The precise blocker is the vLLM MoE backend selector rejecting
+`flashinfer_b12x` for the staged checkpoint's selected MXFP4 MoE path. The next
+executable step is a private supported-backend probe, most likely `triton`
+first for correctness, or B12x support for this quantization path.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-google-g4-final.md`](evidence/2026-06-24-deepseek-v4-fable-google-g4-final.md)
 
 ## Decision
 

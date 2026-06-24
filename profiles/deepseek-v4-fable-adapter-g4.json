@@ -240,6 +240,17 @@
     "blocker": "vLLM selected its MXFP4 MoE backend selector for the staged Fable checkpoint and rejected moe_backend='flashinfer_b12x'.",
     "publicServingAllowed": false
   },
+  "googleG4FinalDecision": {
+    "status": "no_go_current_b12x_g4_runtime_envelope",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/81",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-google-g4-final.md",
+    "artifactStaged": true,
+    "privateCanaryLoaded": false,
+    "generationSucceeded": false,
+    "primaryBlockerClass": "runtime_loader_backend_selection",
+    "canRunOnCurrentGoogleG4EnvelopeToday": false,
+    "nextStep": "probe_triton_or_other_supported_moe_backend_against_staged_checkpoint"
+  },
   "finalDecision": {
     "status": "rejected_runtime_unstable",
     "admittedPrivateAuthorizedSecurityLabCanary": false,
