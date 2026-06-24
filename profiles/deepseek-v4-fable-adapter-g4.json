@@ -57,9 +57,19 @@
     "reason": "Issue #67 rejected the adapter before load, so issue #68 did not start vLLM, fetch adapter payload bytes, or interact with the G4 model host."
   },
   "policy": {
+    "status": "policy_harness_implemented_fail_closed",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/69",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-authorized-security-policy.md",
+    "mode": "authorized_security_lab_only",
     "publicSharedServing": false,
     "khalaGeneralRouteAllowed": false,
     "mppPublicSaleAllowed": false,
-    "authorizedSecurityLabOnly": true
+    "authorizedSecurityLabOnly": true,
+    "requiredMetadata": [
+      "scopeId",
+      "authorizationRef",
+      "toolPolicy",
+      "networkPolicy"
+    ]
   }
 }

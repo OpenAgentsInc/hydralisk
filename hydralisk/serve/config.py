@@ -78,6 +78,11 @@ class HydraliskSettings:
     speculative_decoding: str | None = None
     admission_ref: str | None = None
     evidence_ref: str | None = None
+    model_policy: str = "standard"
+    adapter_revision: str | None = None
+    authorized_security_scope_ids: tuple[str, ...] = ()
+    authorized_security_tool_policies: tuple[str, ...] = ()
+    authorized_security_network_policies: tuple[str, ...] = ()
     receipt_dir: Path = Path(".hydralisk/receipts")
     request_timeout_seconds: float = 600.0
     max_inflight_requests: int | None = None
@@ -142,6 +147,20 @@ def load_settings() -> HydraliskSettings:
         speculative_decoding=_env("HYDRALISK_SPECULATIVE_DECODING"),
         admission_ref=_env("HYDRALISK_ADMISSION_REF"),
         evidence_ref=_env("HYDRALISK_EVIDENCE_REF"),
+        model_policy=_env("HYDRALISK_MODEL_POLICY", "standard") or "standard",
+        adapter_revision=_env("HYDRALISK_ADAPTER_REVISION"),
+        authorized_security_scope_ids=_env_csv(
+            "HYDRALISK_AUTHORIZED_SECURITY_SCOPE_IDS",
+            (),
+        ),
+        authorized_security_tool_policies=_env_csv(
+            "HYDRALISK_AUTHORIZED_SECURITY_TOOL_POLICIES",
+            (),
+        ),
+        authorized_security_network_policies=_env_csv(
+            "HYDRALISK_AUTHORIZED_SECURITY_NETWORK_POLICIES",
+            (),
+        ),
         receipt_dir=Path(
             _env("HYDRALISK_RECEIPT_DIR", ".hydralisk/receipts")
             or ".hydralisk/receipts"

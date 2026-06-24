@@ -149,6 +149,7 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
     async def chat_completions(request: Request) -> Response:
         payload = await _json_object(request)
         admitted_model = _admit_model(payload, config)
+        policy_context = _admit_policy(payload, config)
         upstream_payload = dict(payload)
         upstream_payload["model"] = config.served_model
         run_ref = _run_ref()
@@ -164,6 +165,7 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
                     receipts=receipts,
                     run_ref=run_ref,
                     admitted_model=admitted_model,
+                    policy_context=policy_context,
                     headers={
                         "x-hydralisk-run-ref": run_ref,
                         "x-hydralisk-receipt-ref": f"/hydralisk/v1/receipts/{run_ref}",
@@ -188,6 +190,7 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
                 config=config,
                 receipts=receipts,
                 wall_ms=wall_ms,
+                policy_context=policy_context,
             )
         finally:
             inflight_lease.release()
@@ -196,6 +199,7 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
     async def responses(request: Request) -> Response:
         payload = await _json_object(request)
         admitted_model = _admit_model(payload, config)
+        policy_context = _admit_policy(payload, config)
         upstream_payload = dict(payload)
         upstream_payload["model"] = config.served_model
         run_ref = _run_ref()
@@ -211,6 +215,7 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
                     receipts=receipts,
                     run_ref=run_ref,
                     admitted_model=admitted_model,
+                    policy_context=policy_context,
                     headers={
                         "x-hydralisk-run-ref": run_ref,
                         "x-hydralisk-receipt-ref": f"/hydralisk/v1/receipts/{run_ref}",
@@ -235,6 +240,7 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
                 config=config,
                 receipts=receipts,
                 wall_ms=wall_ms,
+                policy_context=policy_context,
             )
         finally:
             inflight_lease.release()
@@ -284,6 +290,94 @@ def _admit_model(payload: dict[str, Any], config: HydraliskSettings) -> str:
     )
 
 
+def _admit_policy(payload: dict[str, Any], config: HydraliskSettings) -> dict[str, Any] | None:
+    if config.model_policy != "authorized_security_lab_only":
+        return None
+
+    metadata = payload.get("metadata")
+    context = None
+    if isinstance(metadata, dict):
+        context = metadata.get("hydraliskAuthorizedSecurity")
+        if context is None:
+            context = metadata.get("hydralisk_authorized_security")
+    if not isinstance(context, dict):
+        _raise_policy_denied(
+            "authorized_security_metadata_required",
+            "Authorized-security metadata is required for this model policy.",
+        )
+
+    scope_id = _required_policy_string(context, "scopeId", "scope_id")
+    authorization_ref = _required_policy_string(
+        context,
+        "authorizationRef",
+        "authorization_ref",
+        "labRunId",
+        "lab_run_id",
+    )
+    tool_policy = _required_policy_string(context, "toolPolicy", "tool_policy")
+    network_policy = _required_policy_string(context, "networkPolicy", "network_policy")
+
+    if (
+        config.authorized_security_scope_ids
+        and scope_id not in set(config.authorized_security_scope_ids)
+    ):
+        _raise_policy_denied(
+            "authorized_security_scope_not_allowed",
+            "Authorized-security scope is not configured for this Hydralisk lane.",
+        )
+    if (
+        config.authorized_security_tool_policies
+        and tool_policy not in set(config.authorized_security_tool_policies)
+    ):
+        _raise_policy_denied(
+            "authorized_security_tool_policy_not_allowed",
+            "Authorized-security tool policy is not configured for this Hydralisk lane.",
+        )
+    if (
+        config.authorized_security_network_policies
+        and network_policy not in set(config.authorized_security_network_policies)
+    ):
+        _raise_policy_denied(
+            "authorized_security_network_policy_not_allowed",
+            "Authorized-security network policy is not configured for this Hydralisk lane.",
+        )
+
+    return {
+        "admissionResult": "admitted",
+        "scopeId": scope_id,
+        "authorizationRef": authorization_ref,
+        "toolPolicy": tool_policy,
+        "networkPolicy": network_policy,
+    }
+
+
+def _required_policy_string(source: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = source.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    _raise_policy_denied(
+        "authorized_security_metadata_incomplete",
+        "Authorized-security metadata is missing a required field.",
+    )
+
+
+def _raise_policy_denied(code: str, message: str) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "error": {
+                "code": code,
+                "message": message,
+            },
+            "policy": {
+                "mode": "authorized_security_lab_only",
+                "admissionResult": "rejected",
+            },
+        },
+    )
+
+
 async def _stream_to_upstream(
     *,
     url: str,
@@ -292,6 +386,7 @@ async def _stream_to_upstream(
     receipts: ReceiptStore,
     run_ref: str,
     admitted_model: str,
+    policy_context: dict[str, Any] | None,
     headers: dict[str, str],
     release_inflight: Callable[[], None] | None = None,
 ) -> StreamingResponse:
@@ -313,6 +408,7 @@ async def _stream_to_upstream(
                 usage=None,
                 latency={"ttftMs": None, "wallMs": wall_ms},
                 config=config,
+                policy_context=policy_context,
                 blockers=[
                     {
                         "code": "upstream_http_error",
@@ -358,6 +454,7 @@ async def _stream_to_upstream(
                     usage=usage,
                     latency={"ttftMs": stream_state["ttftMs"], "wallMs": wall_ms},
                     config=config,
+                    policy_context=policy_context,
                     blockers=blockers,
                 )
             )
@@ -385,6 +482,7 @@ def _json_upstream_response(
     config: HydraliskSettings,
     receipts: ReceiptStore,
     wall_ms: int,
+    policy_context: dict[str, Any] | None,
 ) -> JSONResponse:
     headers = {
         "x-hydralisk-run-ref": run_ref,
@@ -402,6 +500,7 @@ def _json_upstream_response(
                 usage=None,
                 latency={"ttftMs": None, "wallMs": wall_ms},
                 config=config,
+                policy_context=policy_context,
                 blockers=[
                     {
                         "code": "upstream_non_json_response",
@@ -435,6 +534,7 @@ def _json_upstream_response(
                 usage=None,
                 latency={"ttftMs": None, "wallMs": wall_ms},
                 config=config,
+                policy_context=policy_context,
                 blockers=[
                     {
                         "code": "upstream_http_error",
@@ -461,6 +561,7 @@ def _json_upstream_response(
             usage=usage,
             latency={"ttftMs": None, "wallMs": wall_ms},
             config=config,
+            policy_context=policy_context,
             blockers=blockers,
         )
     )

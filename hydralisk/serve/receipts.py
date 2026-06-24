@@ -57,6 +57,7 @@ def build_capabilities(config: HydraliskSettings) -> dict[str, Any]:
         "chatCompletions": True,
         "responses": True,
         "admission": _admission_policy(config),
+        "policy": _policy_capabilities(config),
         "toolCalls": "disabled_for_gateway_day_zero",
         "reasoningVisibility": "final_answer_only_for_public_receipts",
         "receiptSchema": RECEIPT_SCHEMA,
@@ -76,6 +77,7 @@ def build_receipt(
     usage: dict[str, Any] | None,
     latency: dict[str, int | None],
     config: HydraliskSettings,
+    policy_context: dict[str, Any] | None = None,
     blockers: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     all_blockers = [*_model_revision_blockers(config), *(blockers or [])]
@@ -96,6 +98,7 @@ def build_receipt(
         },
         "quantization": {"weights": config.quantization_weights},
         "admission": _admission_policy(config),
+        "policy": _policy_receipt(config, policy_context),
         "usage": normalize_usage(usage),
         "latency": latency,
         "publicSafe": True,
@@ -217,6 +220,33 @@ def _admission_policy(config: HydraliskSettings) -> dict[str, Any]:
         "maxInflightRequests": config.max_inflight_requests,
         "queueTimeoutSeconds": config.inflight_queue_timeout_seconds,
         "singleFlight": config.max_inflight_requests == 1,
+    }
+
+
+def _policy_capabilities(config: HydraliskSettings) -> dict[str, Any]:
+    authorized_security = config.model_policy == "authorized_security_lab_only"
+    return {
+        "mode": config.model_policy,
+        "adapterRevision": config.adapter_revision,
+        "authorizedSecurity": {
+            "required": authorized_security,
+            "scopeIdsConfigured": bool(config.authorized_security_scope_ids),
+            "toolPoliciesConfigured": bool(config.authorized_security_tool_policies),
+            "networkPoliciesConfigured": bool(
+                config.authorized_security_network_policies
+            ),
+        },
+    }
+
+
+def _policy_receipt(
+    config: HydraliskSettings,
+    policy_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "mode": config.model_policy,
+        "adapterRevision": config.adapter_revision,
+        "authorization": policy_context,
     }
 
 

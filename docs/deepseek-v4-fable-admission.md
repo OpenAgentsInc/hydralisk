@@ -18,6 +18,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md`](evidence/2026-06-24-deepseek-v4-fable-adapter-compatibility.md)
 - Load canary evidence:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-load-canary.md`](evidence/2026-06-24-deepseek-v4-fable-load-canary.md)
+- Authorized-security policy evidence:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-authorized-security-policy.md`](evidence/2026-06-24-deepseek-v4-fable-authorized-security-policy.md)
 
 ## Summary
 
@@ -245,6 +247,20 @@ timing traffic.
 
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-load-canary.md`](evidence/2026-06-24-deepseek-v4-fable-load-canary.md)
+
+## Issue #69 result
+
+Issue #69 added the `authorized_security_lab_only` Hydralisk proxy admission
+mode. When this mode is enabled, requests must include explicit scope,
+authorization, tool-policy, and network-policy metadata before upstream
+inference. Missing or unconfigured metadata fails closed before upstream
+construction, and admitted receipts record the policy context.
+
+This policy harness does not admit Fable for serving; it is the minimum gateway
+boundary required before any future private Fable lab canary.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-authorized-security-policy.md`](evidence/2026-06-24-deepseek-v4-fable-authorized-security-policy.md)
 
 ## Decision
 
