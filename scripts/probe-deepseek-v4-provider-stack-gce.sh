@@ -4,7 +4,10 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-openagentsgemini}"
 TARGET_INSTANCE="${TARGET_INSTANCE:-}"
 TARGET_ZONE="${TARGET_ZONE:-}"
+ISSUE_NUMBER="${ISSUE_NUMBER:-13}"
 MODEL_ID="${MODEL_ID:-deepseek-ai/DeepSeek-V4-Flash}"
+MODEL_REVISION="${MODEL_REVISION:-}"
+MOE_BACKEND="${MOE_BACKEND:-auto}"
 BASE_IMAGE="${BASE_IMAGE:-vllm/vllm-openai:latest}"
 INSTALL_DEEPGEMM="${INSTALL_DEEPGEMM:-1}"
 DERIVED_IMAGE="${DERIVED_IMAGE:-hydralisk-deepseek-v4-provider-vllm}"
@@ -39,10 +42,14 @@ render_markdown() {
     echo
     echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo
-    echo "- Issue: https://github.com/OpenAgentsInc/hydralisk/issues/13"
+    echo "- Issue: https://github.com/OpenAgentsInc/hydralisk/issues/$ISSUE_NUMBER"
     echo "- Target instance: \`$TARGET_INSTANCE\`"
     echo "- Target zone: \`$TARGET_ZONE\`"
     echo "- Model: \`$MODEL_ID\`"
+    if [[ -n "$MODEL_REVISION" ]]; then
+      echo "- Model revision: \`$MODEL_REVISION\`"
+    fi
+    echo "- MoE backend: \`$MOE_BACKEND\`"
     echo "- Base image: \`$BASE_IMAGE\`"
     echo "- Derived image: \`$DERIVED_IMAGE\`"
     echo "- Install DeepGEMM helper: \`$INSTALL_DEEPGEMM\`"
@@ -136,6 +143,8 @@ fi
 
 remote_script="$(
   printf 'MODEL_ID=%q\n' "$MODEL_ID"
+  printf 'MODEL_REVISION=%q\n' "$MODEL_REVISION"
+  printf 'MOE_BACKEND=%q\n' "$MOE_BACKEND"
   printf 'BASE_IMAGE=%q\n' "$BASE_IMAGE"
   printf 'INSTALL_DEEPGEMM=%q\n' "$INSTALL_DEEPGEMM"
   printf 'DERIVED_IMAGE=%q\n' "$DERIVED_IMAGE:$TS"
@@ -280,6 +289,8 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
 {
   printf "BACKEND\tdocker_provider_stack\n"
   printf "MODEL_ID\t%s\n" "$MODEL_ID"
+  printf "MODEL_REVISION\t%s\n" "${MODEL_REVISION:-unconfigured}"
+  printf "MOE_BACKEND\t%s\n" "$MOE_BACKEND"
   printf "BASE_IMAGE\t%s\n" "$BASE_IMAGE"
   printf "DERIVED_IMAGE\t%s\n" "$DERIVED_IMAGE"
   printf "TENSOR_PARALLEL_SIZE\t%s\n" "$gpu_count"
@@ -292,6 +303,14 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
 } > "$REMOTE_LOG_DIR/provider-stack-engine.txt"
 
 sudo docker rm -f "$container_name" >/dev/null 2>&1 || true
+revision_args=()
+if [[ -n "$MODEL_REVISION" ]]; then
+  revision_args+=(--revision "$MODEL_REVISION" --tokenizer-revision "$MODEL_REVISION")
+fi
+moe_backend_args=()
+if [[ "$MOE_BACKEND" != "auto" ]]; then
+  moe_backend_args+=(--moe-backend "$MOE_BACKEND")
+fi
 sudo docker run --rm --gpus all --ipc=host --network host \
   --name "$container_name" \
   -v /var/lib/hydralisk/huggingface:/root/.cache/huggingface \
@@ -300,6 +319,8 @@ sudo docker run --rm --gpus all --ipc=host --network host \
   -e VLLM_LOG_STATS_INTERVAL=1 \
   "$DERIVED_IMAGE" \
   "$MODEL_ID" \
+  "${revision_args[@]}" \
+  "${moe_backend_args[@]}" \
   --host 127.0.0.1 \
   --port 8000 \
   --trust-remote-code \
@@ -332,9 +353,21 @@ while [ "$SECONDS" -lt "$deadline" ]; do
 done
 
 if [ "$ready" = "1" ]; then
+  completion_payload="$(python3 - "$MODEL_ID" <<'PY'
+import json
+import sys
+
+print(json.dumps({
+    "model": sys.argv[1],
+    "messages": [{"role": "user", "content": "Reply with READY."}],
+    "max_tokens": 8,
+    "temperature": 0,
+}))
+PY
+)"
   curl -fsS http://127.0.0.1:8000/v1/chat/completions \
     -H 'content-type: application/json' \
-    -d '{"model":"deepseek-ai/DeepSeek-V4-Flash","messages":[{"role":"user","content":"Reply with READY."}],"max_tokens":8,"temperature":0}' \
+    -d "$completion_payload" \
     | jq '{id: .id, model: .model, usage: .usage, finish_reason: .choices[0].finish_reason}' \
     > "$REMOTE_LOG_DIR/provider-stack-completion-public.json" || true
 else

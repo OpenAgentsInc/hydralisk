@@ -115,6 +115,7 @@ attempt() {
     --image-family "$IMAGE_FAMILY" \
     --image-project "$IMAGE_PROJECT" \
     --accelerator "type=$gpu,count=$count" \
+    --no-address \
     --metadata enable-oslogin=TRUE \
     --tags hydralisk-probe,deepseek-v4 \
     --labels lane=hydralisk,workload=deepseek-v4-smoke,model=deepseek-v4,probe="$label",issue="$ISSUE_NUMBER" \

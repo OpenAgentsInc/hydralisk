@@ -155,6 +155,7 @@ attempt_create() {
     --image-family "$IMAGE_FAMILY" \
     --image-project "$IMAGE_PROJECT" \
     --accelerator "type=$accelerator,count=$count" \
+    --no-address \
     --metadata enable-oslogin=TRUE \
     --tags hydralisk-probe,deepseek-v4,published-recipe \
     --labels lane=hydralisk,workload=deepseek-v4-published-recipe,model=deepseek-v4,probe="$label",issue=14 \

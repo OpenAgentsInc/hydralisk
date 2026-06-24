@@ -73,8 +73,11 @@ Initial targets:
   on the original CUTLASS `dispatch_scaled_mm` path. The published-recipe
   GCE probe can see H100/H200/B200/GB200 catalog entries and machine types, but
   this project currently exposes only L4 regional GPU quota. The available
-  Google lane today is therefore a custom RTX PRO 6000 Triton/offload kernel
-  path unless we obtain H100/H200/B200/GB200 quota.
+  Google lane today is therefore a custom RTX PRO 6000 kernel/offload path
+  unless we obtain H100/H200/B200/GB200 quota. The NVFP4 Blackwell variant
+  (`nvidia/DeepSeek-V4-Flash-NVFP4`) also builds and imports on the G4 host,
+  but stock vLLM rejects every tested NVFP4 MoE backend before readiness; the
+  remaining G4 path starts at the FlashInfer TRTLLM NVFP4 device gate.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -107,6 +110,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md`](docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md`](docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

@@ -37,6 +37,9 @@ Provider-stack evidence:
 Published-recipe GCE admission evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md`](evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md)
 
+NVFP4 G4 evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -174,12 +177,34 @@ every candidate blocked on missing regional quota metrics. The probed regions
 exposed L4 GPU quota only. No create attempt was made because `ATTEMPT_CREATE=0`
 by default and the candidates were quota-blocked before create.
 
+The NVFP4 Blackwell variant was then probed on a fresh
+`g4-standard-96` host with 2 x RTX PRO 6000. The model revision
+`nvidia/DeepSeek-V4-Flash-NVFP4@e3cd60e7de98e9867116860d522499a728de1cf9`
+is public and ungated. The clean vLLM/DeepGEMM image built successfully,
+DeepGEMM imported on both GPUs, and the failure moved away from the native-FP8
+`dispatch_scaled_mm` path. Stock vLLM still did not reach `/v1/models`.
+
+The NVFP4 blocker is now vLLM's MoE backend selector:
+
+```text
+NotImplementedError:
+No NvFp4 MoE backend supports the deployment configuration.
+```
+
+An explicit backend matrix showed that FlashInfer TRTLLM is the only plausible
+clamp-capable path for this model config, and it rejects the current G4 device:
+
+```text
+flashinfer_trtllm  blocked: kernel does not support current device cuda
+other backends     blocked: swiglu_limit=10.0 and no SwiGLU clamp support
+```
+
 The next issue should stop treating the two-card G4 stock-vLLM path as a
 near-serving lane. The published-recipe path is administratively blocked until
 we obtain H100/H200/B200/GB200 quota. The Google hardware admitted today is
-G4 RTX PRO 6000, so the next executable lane is a custom G4 implementation
-that owns Triton FP8, expert offload/prefetch, and the remaining DeepGEMM or
-replacement-kernel behavior.
+G4 RTX PRO 6000, so the next executable lane is a custom G4 implementation.
+The immediate next hard thing is to isolate and validate the FlashInfer TRTLLM
+NVFP4 device support gate for RTX PRO 6000 before retrying the full model.
 
 The first viable lanes are:
 
@@ -260,7 +285,9 @@ condition above. More random flag trials on the same host are not the next
 useful step; the useful split is now an 8-GPU H100/H200/B200 allocation that
 matches the published recipe, or a custom expert-prefetch/offload route for
 RTX PRO 6000. The published-recipe allocation is currently blocked by missing
-H100/H100 Mega/H200/B200/GB200 quota in this project.
+H100/H100 Mega/H200/B200/GB200 quota in this project. The NVFP4 stock-vLLM
+route is currently blocked by vLLM/FlashInfer backend support for this exact
+G4 device/configuration, not by the prior FP8 CUTLASS scaled-mm signature.
 
 ## Promotion boundary
 

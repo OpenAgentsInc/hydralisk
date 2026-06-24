@@ -149,6 +149,7 @@ def test_gce_smoke_script_exposes_backend_and_issue_knobs() -> None:
     assert 'printf "HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE\\t%s\\n"' in script
     assert '[[ "$FORCE_PYTHON_VLLM" != "1" ]] && command -v docker' in script
     assert '[[ "$REUSE_PYTHON_VENV" != "1" || ! -x .venv/bin/python ]]' in script
+    assert "--no-address" in script
     assert '--linear-backend "$VLLM_LINEAR_BACKEND"' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_RECIPE="$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE"' in script
     assert (
@@ -259,16 +260,78 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     script = (repo_root / "scripts" / "probe-deepseek-v4-provider-stack-gce.sh").read_text()
 
+    assert 'ISSUE_NUMBER="${ISSUE_NUMBER:-13}"' in script
+    assert 'MODEL_REVISION="${MODEL_REVISION:-}"' in script
+    assert 'MOE_BACKEND="${MOE_BACKEND:-auto}"' in script
     assert 'BASE_IMAGE="${BASE_IMAGE:-vllm/vllm-openai:latest}"' in script
     assert "tools/install_deepgemm.sh" in script
     assert "cuda-libraries-dev-13-0" in script
     assert "UV_SYSTEM_PYTHON=1 bash /tmp/install_deepgemm.sh" in script
     assert "LOCAL_SITE_PACKAGES_PATCHES\\tfalse" in script
+    assert '--revision "$MODEL_REVISION"' in script
+    assert '--tokenizer-revision "$MODEL_REVISION"' in script
+    assert '--moe-backend "$MOE_BACKEND"' in script
     assert "--kv-cache-dtype fp8" in script
     assert "--block-size 256" in script
     assert "--enable-expert-parallel" in script
     assert "--tensor-parallel-size \"$gpu_count\"" in script
     assert "HYDRALISK_DEEPSEEK_O_PROJ" not in script
+
+
+def test_nvfp4_g4_probe_script_is_public_safe_in_dry_run(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-deepseek-v4-nvfp4-g4-gce.sh"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path),
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "nvfp4-g4-probe.md").read_text()
+    plan = (tmp_path / "nvfp4-g4-plan.tsv").read_text()
+
+    assert "Wrote" in result.stdout
+    assert "nvidia/DeepSeek-V4-Flash-NVFP4" in evidence
+    assert "e3cd60e7de98e9867116860d522499a728de1cf9" in evidence
+    assert "MoE backend: `auto`" in evidence
+    assert "g4-standard-96" in plan
+    assert "nvidia-rtx-pro-6000" in plan
+    assert "--no-address" in script.read_text()
+    assert "hydralisk-gptoss" not in plan
+    assert "khala" not in plan.lower()
+    assert "Contains weights: false" in evidence
+
+
+def test_nvfp4_g4_probe_refuses_non_probe_targets(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-deepseek-v4-nvfp4-g4-gce.sh"
+
+    rejected = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path / "rejected"),
+            "TARGET_INSTANCE": "hydralisk-gptoss20b-l4-prod",
+            "TARGET_ZONE": "us-central1-a",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert rejected.returncode == 2
+    assert "fresh hydralisk-deepseek-v4" in rejected.stderr
 
 
 def test_published_recipe_probe_script_is_public_safe_in_dry_run(
@@ -314,9 +377,23 @@ def test_published_recipe_probe_requires_explicit_create() -> None:
     assert "--provisioning-model \"$PROVISIONING_MODEL\"" in script
     assert "--instance-termination-action DELETE" in script
     assert "--max-run-duration \"$MAX_RUN_DURATION\"" in script
+    assert "--no-address" in script
     assert "hydralisk-probe,deepseek-v4,published-recipe" in script
     assert 'quota_${quota%%:*}' in script
     assert "ATTEMPT_CREATE=0" in script
+
+
+def test_gce_probe_create_paths_are_private_only() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+
+    for name in [
+        "scripts/probe-deepseek-v4-nvfp4-g4-gce.sh",
+        "scripts/probe-deepseek-v4-published-recipe-gce.sh",
+        "scripts/smoke-deepseek-v4-gce.sh",
+        "scripts/probe-glm-52-gce-admission.sh",
+    ]:
+        script = (repo_root / name).read_text()
+        assert "--no-address" in script
 
 
 def test_e8m0_upcast_patch_script_is_public_safe_and_target_scoped(

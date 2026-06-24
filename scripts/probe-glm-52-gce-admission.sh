@@ -46,6 +46,7 @@ attempt() {
     --boot-disk-type "$BOOT_DISK_TYPE" \
     --image-family "$IMAGE_FAMILY" \
     --image-project "$IMAGE_PROJECT" \
+    --no-address \
     --metadata enable-oslogin=TRUE \
     --tags hydralisk-probe,glm-52 \
     --labels lane=hydralisk,workload=glm52-preflight,model=glm-5-2,probe="$label" \

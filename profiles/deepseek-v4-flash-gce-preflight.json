@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "blocked_published_recipe_gpu_quota_missing_custom_g4_required",
+  "status": "blocked_nvfp4_flashinfer_trtllm_device_gate_on_g4",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -128,7 +128,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/11",
       "https://github.com/OpenAgentsInc/hydralisk/issues/12",
       "https://github.com/OpenAgentsInc/hydralisk/issues/13",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/14"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/14",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/15"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -139,7 +140,8 @@
       "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-provider-stack-g4.md",
-      "docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md"
+      "docs/evidence/2026-06-24-deepseek-v4-flash-published-recipe-gce-admission.md",
+      "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -203,6 +205,41 @@
       "createAttempted": false
     }
   },
+  "nvfp4G4Probe": {
+    "status": "blocked_before_ready",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/15",
+    "script": "scripts/probe-deepseek-v4-nvfp4-g4-gce.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-g4-probe.md",
+    "model": {
+      "repository": "nvidia/DeepSeek-V4-Flash-NVFP4",
+      "revision": "e3cd60e7de98e9867116860d522499a728de1cf9"
+    },
+    "host": {
+      "instance": "hydralisk-deepseek-v4-nvfp4-g4-2g-b-20260624073921",
+      "project": "openagentsgemini",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-96",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 2,
+      "publicNat": "removed_after_probe",
+      "futureCreatePolicy": "no_address"
+    },
+    "engine": {
+      "name": "vllm",
+      "version": "0.23.0",
+      "torch": "2.11.0+cu130",
+      "cudaRuntime": "13.0",
+      "baseImage": "vllm/vllm-openai:latest@sha256:6d8429e38e3747723ca07ee1b17972e09bb9c51c4032b266f24fb1cc3b22ed8f",
+      "derivedImage": "hydralisk-deepseek-v4-nvfp4-vllm:20260624074009@sha256:35149725614cca7842ba16ea02f5b3765e0b875f85e8f192f1a2ba2a4bcfc9f5",
+      "deepGemm": "2.5.0+891d57b"
+    },
+    "blocker": {
+      "stage": "model_initialization_nvfp4_moe_backend_selection",
+      "message": "Stock vLLM rejects the two-card G4 NVFP4 deployment before readiness: auto reports no NvFp4 MoE backend supports the configuration; explicit flashinfer_trtllm reports the kernel does not support the current device; other tested backends reject the model's swiglu_limit=10.0 clamp requirement.",
+      "previousFp8CutlassBlockerReached": false,
+      "nextProbe": "isolate and validate the FlashInfer TRTLLM NVFP4 device-support guard for RTX PRO 6000"
+    }
+  },
   "promotionGates": [
     "exact model revision or local artifact digest pinned",
     "engine version and container image digest pinned",
@@ -213,8 +250,8 @@
     "public-safe Hydralisk receipt is emitted"
   ],
   "recommendation": {
-    "nextLane": "custom_g4_triton_offload_kernel_path",
-    "why": "Google admitted the two-card G4 lane, the host has enough memory and disk for a low-context smoke, and a clean provider-guided vLLM/DeepGEMM container now builds and imports on RTX PRO 6000. Stock vLLM still fails on CUTLASS dispatch_scaled_mm before readiness. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. Serving DeepSeek-V4-Flash on available Google infrastructure now requires custom RTX PRO 6000 work around Triton FP8, expert offload/prefetch, and replacement/owned kernel behavior unless new quota is obtained.",
+    "nextLane": "patch_or_validate_flashinfer_trtllm_nvfp4_device_gate_on_g4",
+    "why": "Google admitted the two-card G4 lane and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects every tested NVFP4 MoE backend for this two-card G4 configuration. The next executable step is to isolate the FlashInfer TRTLLM NVFP4 current-device guard and validate a minimal kernel smoke on RTX PRO 6000 before retrying the full model.",
     "publicClaim": "none"
   },
   "publicSafety": {
