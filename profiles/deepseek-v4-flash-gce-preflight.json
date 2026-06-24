@@ -156,7 +156,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/39",
       "https://github.com/OpenAgentsInc/hydralisk/issues/40",
       "https://github.com/OpenAgentsInc/hydralisk/issues/41",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/42"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/42",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/43"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -194,7 +195,8 @@
       "docs/evidence/2026-06-24-deepseek-b12x-full-model-g4.md",
       "docs/evidence/2026-06-24-deepseek-b12x-eager-mla-g4.md",
       "docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md",
-      "docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md"
+      "docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md",
+      "docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -1358,7 +1360,7 @@
     "nextLane": "run_flashinfer_sparse_dsv4_backend_g4_smoke",
     "why": "Google admitted the two-card and eight-card G4 lanes, and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects unsupported MoE backends for this G4 configuration unless the backend implements the model's swiglu_limit=10.0 clamp. A derived-image SM120 gate patch advances the FlashInfer TRTLLM NVFP4 path into vLLM startup. Cloud NAT fixes private outbound artifact access without restoring a VM external IP, and HF_HUB_DISABLE_XET=1 avoids the prior transfer wedge. Forcing --linear-backend triton with the E8M0 upcast patch clears the dense FP8 CUTLASS blocker. The provider-image o_proj patch confirms the valid two-card TRTLLM path is blocked by DeepGEMM scale-factor layout, and an invalid zero-o_proj load-only bypass exposes a second blocker in FlashInfer TRTLLM NVFP4 MoE GEMM on the SM100-family kernel path. The synthetic FlashInfer TRTLLM repro reproduces that MoE GEMM failure without model weights, Hugging Face transfer, vLLM scheduling, prompts, or o_proj. The B12x probe shows a better SM120 synthetic kernel path when all experts are local, but the wide-G4 full-model attempt proved that current vLLM rejects B12x for DeepSeek-V4 because B12x does not apply the required SwiGLU clamp. The clamp-backend wide-G4 probe removes flashinfer_cutlass for the same clamp reason and confirms flashinfer_trtllm is the remaining credible stock-ish backend on RTX PRO 6000. The explicit bf16_einsum o_proj fallback moves the full model past DeepGEMM o_proj on all eight ranks. The exact full-model MoE shape then fails synthetically without weights or vLLM scheduling, proving stock FlashInfer TRTLLM NVFP4 MoE is blocked on SM120: trtllm_batched_gemm_runner.cu:286, numBatches=32, GemmMNK=512 4096 4096, clamped SwiGLU SM100-family kernel. The B12x viability probe shows B12x is still the promising SM120 kernel direction, but current FlashInfer 0.6.12 exposes no swiglu_limit clamp surface and rejects the exact direct 32/256 expert-parallel call. The local-shard remap probe then proves B12x can run the exact per-rank shard when global expert IDs are remapped to a local 32-expert kernel domain. Hydralisk now has a pure-Python nonzero reference fixture for DeepSeek clamp plus local expert remap semantics. Therefore the next G4 work is to test or build a GPU B12x clamp surface and compare a tiny local-shard output against that reference before any full-model retry. The live wrapper-surface probe found B12xMoEWrapper in FlashInfer 0.6.12 on RTX PRO 6000, but that installed wrapper lacks local_expert_offset and swiglu_limit, so Hydralisk still needs either a newer B12x wrapper or a local dispatcher/clamp shim before a full-model retry. The matched FlashInfer nightly probe reached 0.6.13.dev20260612 with core, cubin, and cu130 jit-cache packages installed together, but the B12x wrapper surface still lacks local_expert_offset and swiglu_limit. The wrapper-upgrade shortcut is exhausted for this image; the next G4 step is a Hydralisk-local dispatcher/clamp shim validated against the reference fixture. Hydralisk now implements the dispatcher side of the local B12x shim: global-to-local expert remap, fixed top-k preservation, zero-scale masking for nonlocal routes, and fail-closed clamp admission. The remaining blocker is GPU-side DeepSeek clamp semantics, either by wiring only to a clamp-capable B12x surface or patching a clamp-capable B12x kernel path. The live masked-dispatch G4 probe proves B12x accepts Hydralisk dispatcher-shaped fixed top-k local routes with zero-scale masking on RTX PRO 6000, so the route input contract is no longer a blocker. The remaining B12x blocker is DeepSeek swiglu_limit=10.0 clamp semantics in the GPU path. The B12x clamp source audit now maps the remaining blocker precisely: FlashInfer B12x exposes activation and local-expert knobs, but not swiglu_limit or gemm1_clamp_limit at the API, launch, or audited SM120 kernel term level. vLLM does expose the required DeepSeek clamp contract. Therefore the next issue should patch B12x clamp semantics and run a tiny local-shard correctness fixture before any full-model retry. Hydralisk now has a repeatable FlashInfer B12x clamp overlay: the API and launch surfaces accept swiglu_limit, the wrapper forwards it, and the static/micro/dynamic/W4A16 gated activation sites are source-marked with the vLLM clamp contract. The overlay dry-runs cleanly against the local FlashInfer reference checkout, but it is not yet a compiled GPU proof. The next step is to convert the source markers into real CuTe/CUTLASS clamp operations on the G4 host and validate the tiny nonzero local-shard fixture. Issue #36 converted the static B12x marker into real CuTe/CUTLASS clamp ops in a disposable G4 container and ran both zero and nonzero tiny static fixtures with swiglu_limit=10.0; the nonzero fixture returned finite output on RTX PRO 6000. That advances the B12x lane from source overlay to static GPU proof. The next blocker is the DeepSeek-shape dynamic backend: 512-token masked local-shard routing selects dynamic, so the next issue should patch moe_dynamic_kernel.py and run that serving-shape fixture before any full-model retry. Issue #37 then converted the dynamic B12x marker into real CuTe/CUTLASS clamp ops and ran the 512-token DeepSeek-shaped masked local-shard fixture with swiglu_limit=10.0; both zero and nonzero dynamic runs passed with finite output. Static and dynamic synthetic B12x clamp blockers are now cleared on RTX PRO 6000. Issue #38 built the clamp-patched B12x full-model image and moved past o_proj with bf16_einsum fallback, then stopped in DeepGEMM MLA metadata during cudagraph profiling. Issue #39 added eager-mode serving, moved past that metadata blocker to a live /v1/models endpoint, and exposed the next generation blocker: DeepSeek V4's FlashMLA sparse prefill kernel rejects SM120 with 'Sparse Attention Forward Kernel is only supported on SM90a and SM100f architectures.' Issue #40 audited vLLM and found an existing explicit DeepSeek V4 FlashInfer sparse MLA backend, FLASHINFER_MLA_SPARSE_DSV4, selected via --attention-config. Hydralisk now exposes VLLM_ATTENTION_BACKEND=FLASHINFER_MLA_SPARSE_DSV4, so the next GPU run should try that existing backend before writing a custom FlashMLA sparse-prefill fallback.",
     "publicClaim": "none",
-    "latestSignal": "gcloud_auth_preflight_blocks_before_gpu_admission"
+    "latestSignal": "dedicated_flashinfer_dsv4_g4_wrapper_ready_auth_blocked"
   },
   "publicSafety": {
     "containsSecrets": false,
@@ -1949,6 +1951,45 @@
       }
     ],
     "plainEnglishNext": "Run gcloud auth login and gcloud auth application-default login interactively, then rerun issue #41 with ISSUE_NUMBER=41 and VLLM_ATTENTION_BACKEND=FLASHINFER_MLA_SPARSE_DSV4. This blocker is local auth, not evidence about G4 capacity or DeepSeek kernels.",
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekFlashinferDsv4G4Wrapper": {
+    "status": "ready_but_gcloud_auth_blocked",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/43",
+    "script": "scripts/probe-deepseek-v4-flashinfer-dsv4-g4-gce.sh",
+    "delegatesTo": "scripts/probe-deepseek-v4-b12x-g4-gce.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md",
+    "defaults": {
+      "ISSUE_NUMBER": "41",
+      "VLLM_ATTENTION_BACKEND": "FLASHINFER_MLA_SPARSE_DSV4",
+      "VLLM_ENFORCE_EAGER": "1",
+      "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK": "bf16_einsum",
+      "HYDRALISK_B12X_CLAMP_PATCH": "1",
+      "HYDRALISK_B12X_CLAMP_LIMIT": "10.0",
+      "MAX_MODEL_LEN": "2048",
+      "MAX_NUM_BATCHED_TOKENS": "512",
+      "GPU_MEMORY_UTILIZATION": "0.95",
+      "RUN_MODEL_SMOKE": "1"
+    },
+    "dryRun": {
+      "rendersIssue41LaunchShape": true,
+      "plannedCandidates": [
+        "g4-standard-384 / 8 x nvidia-rtx-pro-6000 / us-central1-b",
+        "g4-standard-192 / 4 x nvidia-rtx-pro-6000 / us-central1-b"
+      ]
+    },
+    "liveAttempt": {
+      "reachedGceAdmission": false,
+      "status": "blocked_auth",
+      "reason": "local gcloud credentials require interactive reauthentication"
+    },
+    "plainEnglishNext": "After interactive gcloud reauth, run bash scripts/probe-deepseek-v4-flashinfer-dsv4-g4-gce.sh. That is the canonical issue #41 command.",
     "publicSafety": {
       "containsSecrets": false,
       "containsPrompts": false,

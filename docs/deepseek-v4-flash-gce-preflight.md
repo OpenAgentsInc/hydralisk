@@ -935,17 +935,17 @@ gcloud auth application-default login
 Then rerun issue #41 with:
 
 ```bash
-ISSUE_NUMBER=41 \
-VLLM_ATTENTION_BACKEND=FLASHINFER_MLA_SPARSE_DSV4 \
-VLLM_ENFORCE_EAGER=1 \
-HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum \
-HYDRALISK_B12X_CLAMP_PATCH=1 \
-HYDRALISK_B12X_CLAMP_LIMIT=10.0 \
-MAX_MODEL_LEN=2048 \
-MAX_NUM_BATCHED_TOKENS=512 \
-GPU_MEMORY_UTILIZATION=0.95 \
-bash scripts/probe-deepseek-v4-b12x-g4-gce.sh
+bash scripts/probe-deepseek-v4-flashinfer-dsv4-g4-gce.sh
 ```
+
+Issue #43 added that dedicated wrapper so the issue #41 launch contract is no
+longer an error-prone bundle of environment variables. It delegates to the B12x
+G4 harness with defaults for `ISSUE_NUMBER=41`,
+`VLLM_ATTENTION_BACKEND=FLASHINFER_MLA_SPARSE_DSV4`,
+`VLLM_ENFORCE_EAGER=1`, `HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum`, the
+B12x clamp overlay, and the low-context smoke limits. A dry run renders the
+intended launch contract, and a live attempt on this Mac still stops at
+`blocked_auth` before GCE admission.
 
 ## Promotion boundary
 
