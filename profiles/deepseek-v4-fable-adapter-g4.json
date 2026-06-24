@@ -168,12 +168,23 @@
     "mechanicalTransformProven": true,
     "semanticAdapterCanaryAllowed": false
   },
+  "upstreamPayloadVerification": {
+    "status": "adapter_payload_zero_delta_merged_checkpoint_only_semantic_path",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/77",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-upstream-payload.md",
+    "latestSha": "999909137c15e0b5539fee887431824fa7cb5b10",
+    "latestEqualsPinned": true,
+    "adapterNonzeroPathFound": false,
+    "mergedCheckpointPathExists": true,
+    "mergedCheckpointShardCount": 47,
+    "mergedCheckpointTotalTensorBytes": 298425334924
+  },
   "finalDecision": {
     "status": "rejected_runtime_unstable",
     "admittedPrivateAuthorizedSecurityLabCanary": false,
     "publicAliasesAllowed": false,
     "khalaGeneralRouteAllowed": false,
     "mppPublicSaleAllowed": false,
-    "nextStep": "verify_upstream_adapter_payload_or_find_nonzero_revision_before_private_canary"
+    "nextStep": "evaluate_full_merged_checkpoint_feasibility_or_get_nonzero_adapter"
   }
 }

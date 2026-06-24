@@ -34,6 +34,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md`](evidence/2026-06-24-deepseek-v4-fable-indexer-loader-proof.md)
 - Packed delta transform evidence:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-packed-delta.md`](evidence/2026-06-24-deepseek-v4-fable-packed-delta.md)
+- Upstream payload verification:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-upstream-payload.md`](evidence/2026-06-24-deepseek-v4-fable-upstream-payload.md)
 
 ## Summary
 
@@ -483,6 +485,36 @@ revision/artifact or intentionally evaluate the full merged checkpoint path.
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-packed-delta.md`](evidence/2026-06-24-deepseek-v4-fable-packed-delta.md)
 
+## Issue #77 result
+
+Issue #77 verified current upstream payload availability. The latest Hugging
+Face SHA for `Chunjiang-Intelligence/DeepSeek-v4-Fable` is the same SHA
+Hydralisk pinned and tested: `999909137c15e0b5539fee887431824fa7cb5b10`.
+
+The result is
+`adapter_payload_zero_delta_merged_checkpoint_only_semantic_path`.
+
+Current upstream exposes:
+
+- `adapter_model.safetensors`, which is the zero-delta adapter payload already
+  tested;
+- `model.safetensors.index.json`;
+- 47 merged checkpoint shards, `model-00001-of-00047.safetensors` through
+  `model-00047-of-00047.safetensors`.
+
+`model.safetensors.index.json` reports:
+
+- weight-map entries: `35020`;
+- total tensor payload size: `298425334924` bytes;
+- shard count: `47`.
+
+No current nonzero adapter artifact or revision was found. The only currently
+visible upstream artifact family that could contain semantic Fable behavior is
+the full merged checkpoint path.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-upstream-payload.md`](evidence/2026-06-24-deepseek-v4-fable-upstream-payload.md)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
@@ -494,10 +526,12 @@ the adapter config. The context map narrowed the path to one hard runtime
 question, and the indexer loader proof resolved it. The next technical step is
 not a load canary yet: the transform writer works, but the published adapter
 payload has zero LoRA B tensors, so the packed deltas are zero. Verify the
-upstream adapter payload, find a nonzero revision, or intentionally evaluate
-the full merged checkpoint path before a semantic canary. Even if a future
-probe succeeds, Fable should remain an authorized-security research
-capability, not a general Khala model and not a public inference product.
+upstream adapter payload found no nonzero adapter path at the current latest
+SHA. The next honest path is either to obtain a nonzero adapter artifact or
+intentionally evaluate the full 47-shard merged checkpoint path before a
+semantic canary. Even if a future probe succeeds, Fable should remain an
+authorized-security research capability, not a general Khala model and not a
+public inference product.
 
 ## Public safety
 
