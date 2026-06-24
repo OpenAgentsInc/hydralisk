@@ -112,6 +112,85 @@
     ],
     "fallbackPolicy": "Use 8x G4 only after 4x G4 admission, load, or smoke evidence fails; do not rewrite the 4x accessibility claim."
   },
+  "fallbackMatrix": {
+    "status": "documented",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/90",
+    "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-fallback-matrix.md",
+    "claimGuardrail": "Every public claim must name exact model, revision, GPU family, GPU count, host shape, context ceiling, concurrency ceiling, sampler settings, benchmark version, and denominator definitions.",
+    "lanes": [
+      {
+        "order": 1,
+        "laneId": "glm52_reap_504b_4x_g4_primary",
+        "modelRepository": "0xSero/GLM-5.2-504B",
+        "hardware": "g4-standard-192, 4 x nvidia-rtx-pro-6000",
+        "currentStatus": "capacity_blocked_for_standalone_4x",
+        "trigger": "default accessibility claim path; retry when standalone 4x G4 capacity is available",
+        "requiredGates": [
+          "admission",
+          "staging",
+          "launch",
+          "smoke",
+          "private_endpoint",
+          "tuning",
+          "terminal_bench_eval"
+        ],
+        "claimLanguage": "504B REAP/NVFP4 on standalone 4x RTX PRO 6000 G4"
+      },
+      {
+        "order": 2,
+        "laneId": "glm52_reap_504b_8x_g4_capacity_or_runtime_fallback",
+        "modelRepository": "0xSero/GLM-5.2-504B",
+        "hardware": "g4-standard-384, 8 x nvidia-rtx-pro-6000",
+        "currentStatus": "capacity_fallback_admitted",
+        "trigger": "4x G4 capacity unavailable, explicit 8-GPU runtime experiment, or need for more scheduler headroom",
+        "requiredGates": [
+          "admission",
+          "staging_manifest_recheck",
+          "8gpu_launch_if_all_gpus_used",
+          "8gpu_smoke_if_all_gpus_used",
+          "separate_tuning",
+          "separate_terminal_bench_eval"
+        ],
+        "claimLanguage": "504B REAP/NVFP4 on 8x RTX PRO 6000 G4 fallback"
+      },
+      {
+        "order": 3,
+        "laneId": "glm52_reap_469b_4x_g4_model_size_fallback",
+        "modelRepository": "0xSero/GLM-5.2-NVFP4-REAP-469B",
+        "hardware": "g4-standard-192, 4 x nvidia-rtx-pro-6000",
+        "currentStatus": "not_started",
+        "trigger": "504B fails a required admission, load, smoke, tuning, or eval gate on the 4x G4 envelope",
+        "requiredGates": [
+          "distinct_profile_and_aliases",
+          "admission",
+          "staging",
+          "launch",
+          "smoke",
+          "private_endpoint",
+          "tuning",
+          "terminal_bench_eval"
+        ],
+        "claimLanguage": "469B REAP/NVFP4 on 4x RTX PRO 6000 G4"
+      },
+      {
+        "order": 4,
+        "laneId": "glm52_reap_504b_h200_b200_premium_proof",
+        "modelRepository": "0xSero/GLM-5.2-504B",
+        "hardware": "H200 or B200 host class, exact machine type TBD",
+        "currentStatus": "not_started_for_reap_504b",
+        "trigger": "G4-specific runtime, memory, scheduler, or long-context blocker needs a hardware-control proof",
+        "requiredGates": [
+          "premium_admission",
+          "staging",
+          "launch",
+          "smoke",
+          "separate_tuning",
+          "separate_terminal_bench_eval"
+        ],
+        "claimLanguage": "504B REAP/NVFP4 on H200/B200; not the accessible G4 claim"
+      }
+    ]
+  },
   "admission": {
     "status": "primary_4x_capacity_blocked_8x_fallback_admitted",
     "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/83",
