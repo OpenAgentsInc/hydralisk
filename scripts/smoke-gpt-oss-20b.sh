@@ -59,13 +59,15 @@ curl -fsS "${origin}/v1/chat/completions" \
   -H "content-type: application/json" \
   -d '{
     "model": "openagents/khala",
+    "reasoning_effort": "low",
     "messages": [
       { "role": "user", "content": "Say READY in one word." }
     ],
-    "max_tokens": 8
+    "max_tokens": 128
   }' \
   -o "$nonstream"
 assert_json "$nonstream" "isinstance(data.get('usage'), dict) and data['usage'].get('total_tokens', 0) > 0"
+assert_json "$nonstream" "data.get('choices', [{}])[0].get('message', {}).get('content', '').strip() != ''"
 
 run_ref="$(extract_header "$nonstream_headers" "x-hydralisk-run-ref")"
 receipt="${tmp_dir}/receipt.json"
@@ -81,6 +83,7 @@ curl -fsS -N "${origin}/v1/chat/completions" \
   -d '{
     "model": "openagents/khala",
     "stream": true,
+    "reasoning_effort": "low",
     "messages": [
       { "role": "user", "content": "Write a two sentence service status report." }
     ],

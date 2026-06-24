@@ -13,18 +13,21 @@ async def run_smoke(base_url: str, bearer_token: str, model: str) -> dict[str, A
     request = {
         "model": model,
         "messages": [{"role": "user", "content": "Say READY in one word."}],
-        "max_tokens": 8,
+        "max_tokens": 128,
+        "reasoning_effort": "low",
     }
     async with httpx.AsyncClient(timeout=180.0) as client:
         health = await client.get(f"{base_url}/health")
         completion = await client.post(f"{base_url}/v1/chat/completions", headers=headers, json=request)
+        completion_json = _json_or_none(completion)
+        completion_text = _completion_text(completion_json)
 
         stream_chunks = 0
         async with client.stream(
             "POST",
             f"{base_url}/v1/chat/completions",
             headers=headers,
-            json={**request, "stream": True, "max_tokens": 32},
+            json={**request, "stream": True},
         ) as stream:
             async for chunk in stream.aiter_bytes():
                 if chunk:
@@ -36,14 +39,16 @@ async def run_smoke(base_url: str, bearer_token: str, model: str) -> dict[str, A
         "healthStatus": health.status_code,
         "completionStatus": completion.status_code,
         "completionRunRef": completion.headers.get("x-hydralisk-run-ref"),
-        "completionHasUsage": isinstance(_json_or_none(completion), dict)
-        and isinstance(_json_or_none(completion).get("usage"), dict),
+        "completionHasUsage": isinstance(completion_json, dict)
+        and isinstance(completion_json.get("usage"), dict),
+        "completionHasFinalContent": completion_text != "",
         "streamChunksObserved": stream_chunks,
         "passed": all(
             [
                 health.status_code == 200,
                 completion.status_code == 200,
                 bool(completion.headers.get("x-hydralisk-run-ref")),
+                completion_text != "",
                 stream_chunks > 0,
             ]
         ),
@@ -56,6 +61,20 @@ def _json_or_none(response: httpx.Response) -> dict[str, Any] | None:
     except ValueError:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _completion_text(payload: dict[str, Any] | None) -> str:
+    choices = payload.get("choices") if isinstance(payload, dict) else None
+    if not isinstance(choices, list) or not choices:
+        return ""
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        return ""
+    message = choice.get("message")
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    return content.strip() if isinstance(content, str) else ""
 
 
 def main() -> None:
@@ -71,4 +90,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
