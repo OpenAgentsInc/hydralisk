@@ -126,12 +126,29 @@
       "self_attn.compressor.indexer.gate_proj"
     ]
   },
+  "contextMap": {
+    "status": "blocked_indexer_loader_mapping_required",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/74",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-context-map.md",
+    "adapterPayloadInspected": true,
+    "headerOnly": true,
+    "tensorValuesRead": false,
+    "readyContextFamilies": [
+      "mlp_shared_experts.gate_proj",
+      "mlp_shared_experts.up_proj",
+      "mlp_shared_experts.down_proj",
+      "attention_compressor.gate_proj"
+    ],
+    "blockedContextFamilies": [
+      "attention_compressor_indexer.gate_proj"
+    ]
+  },
   "finalDecision": {
     "status": "rejected_runtime_unstable",
     "admittedPrivateAuthorizedSecurityLabCanary": false,
     "publicAliasesAllowed": false,
     "khalaGeneralRouteAllowed": false,
     "mppPublicSaleAllowed": false,
-    "nextStep": "map_actual_adapter_payload_contexts_or_pivot_canonical_runtime"
+    "nextStep": "prove_indexer_compressor_loader_mapping_then_write_context_transform"
   }
 }

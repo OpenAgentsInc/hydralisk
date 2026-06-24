@@ -28,6 +28,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-o-proj-ownership.md`](evidence/2026-06-24-deepseek-v4-fable-o-proj-ownership.md)
 - Packed-LoRA transform smoke evidence:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md`](evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md)
+- Adapter context-map evidence:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-context-map.md`](evidence/2026-06-24-deepseek-v4-fable-context-map.md)
 
 ## Summary
 
@@ -370,6 +372,41 @@ The next useful implementation issue is either:
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md`](evidence/2026-06-24-deepseek-v4-fable-transform-smoke.md)
 
+## Issue #74 result
+
+Issue #74 mapped the real Fable adapter contexts against the current packed
+DeepSeek-V4 G4 runtime surfaces. It used header-only safetensors inspection and
+the live G4 image source inventory; it did not commit adapter bytes, tensor
+values, prompts, responses, or weights.
+
+The result is `blocked_indexer_loader_mapping_required`.
+
+Ready context families:
+
+- `mlp_shared_experts.gate_proj`: maps to
+  `layers.*.mlp.shared_experts.gate_up_proj` shard 0;
+- `mlp_shared_experts.up_proj`: maps to
+  `layers.*.mlp.shared_experts.gate_up_proj` shard 1;
+- `mlp_shared_experts.down_proj`: maps directly to
+  `layers.*.mlp.shared_experts.down_proj`;
+- `attention_compressor.gate_proj`: probable map to
+  `layers.*.self_attn.compressor.fused_wkv_wgate` shard 1 via
+  `compressor.wgate`.
+
+Remaining blocker:
+
+- `attention_compressor_indexer.gate_proj`: runtime source shows a nested
+  `indexer.compressor.fused_wkv_wgate`, but the checkpoint loader path for
+  the published `self_attn.compressor.indexer.gate_proj` adapter keys still
+  needs proof before Hydralisk writes a transform.
+
+This makes the next step narrow: prove the nested indexer compressor loader
+mapping, then implement a context-specific packed LoRA transform. If that
+loader proof fails, pivot to a canonical DeepSeek-V4-Flash runtime probe.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-context-map.md`](evidence/2026-06-24-deepseek-v4-fable-context-map.md)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
@@ -377,8 +414,10 @@ The adapter compatibility probe now rejects the current G4 runtime path before
 load, and the final lab-eval gate rejects the profile because no private load
 canary was admitted. `o_proj` ownership is proven as a kernel/provider path,
 but the real adapter payload does not include the q/k/v/o tensors implied by
-the adapter config. The next useful technical step is to map the actual payload
-contexts, not the config target list. If that stalls, pivot to a canonical
+the adapter config. The context map narrows the path to one hard runtime
+question: prove the nested indexer compressor loader mapping, then write a
+context-specific packed LoRA transform for shared-expert MLP, plain compressor
+gate, and nested indexer compressor gate. If that stalls, pivot to a canonical
 base/runtime path that can load the adapter as published. Even if a future
 probe succeeds, Fable should remain an authorized-security research
 capability, not a general Khala model and not a public inference product.

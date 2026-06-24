@@ -14,13 +14,16 @@ from hydralisk.admission.deepseek_v4_fable import (
     FABLE_SCHEMA,
     FABLE_LOAD_CANARY_SCHEMA,
     FABLE_TRANSFORM_SMOKE_SCHEMA,
+    FABLE_CONTEXT_MAP_SCHEMA,
     FableProbeError,
+    build_context_map_report,
     build_lab_eval_report,
     build_load_canary_report,
     build_o_proj_ownership_report,
     build_retarget_plan_report,
     build_report,
     build_transform_smoke_report,
+    context_map_main,
     compare_adapter_targets,
     lab_eval_main,
     load_metadata_from_dir,
@@ -34,6 +37,7 @@ from hydralisk.admission.deepseek_v4_fable import (
     render_o_proj_ownership_markdown,
     render_retarget_plan_markdown,
     render_transform_smoke_markdown,
+    render_context_map_markdown,
     retarget_plan_main,
     transform_smoke_main,
     validate_requested_files,
@@ -391,6 +395,54 @@ def test_transform_smoke_cli_writes_public_safe_report(tmp_path: Path) -> None:
     assert "Contains weights: false" in evidence
 
 
+def test_context_map_identifies_indexer_loader_blocker(tmp_path: Path) -> None:
+    adapter_path = tmp_path / "adapter_model.safetensors"
+    _write_fake_fable_context_adapter(adapter_path)
+
+    report = build_context_map_report(
+        adapter_path=adapter_path,
+        created_at=datetime(2026, 6, 24, tzinfo=UTC),
+    )
+    rendered = render_context_map_markdown(report)
+
+    assert report["schema"] == FABLE_CONTEXT_MAP_SCHEMA
+    assert report["status"] == "blocked_indexer_loader_mapping_required"
+    assert report["decision"]["nextStep"] == (
+        "prove_indexer_compressor_loader_mapping_then_write_context_transform"
+    )
+    shared_gate = _context_entry(report, "mlp_shared_experts", "gate_proj")
+    assert shared_gate["runtimeCandidate"]["candidate"] == (
+        "layers.*.mlp.shared_experts.gate_up_proj"
+    )
+    assert shared_gate["status"] == "candidate_transform_ready"
+    indexer_gate = _context_entry(report, "attention_compressor_indexer", "gate_proj")
+    assert indexer_gate["runtimeCandidate"]["candidate"].endswith(
+        "indexer.compressor.fused_wkv_wgate"
+    )
+    assert indexer_gate["blockers"][0]["code"] == "loader_path_proof_required"
+    assert "nested indexer compressor family" in rendered
+
+
+def test_context_map_cli_writes_public_safe_report(tmp_path: Path) -> None:
+    adapter_path = tmp_path / "adapter_model.safetensors"
+    _write_fake_fable_context_adapter(adapter_path)
+    output_dir = tmp_path / "out"
+
+    status = context_map_main(
+        [
+            "--adapter-path",
+            str(adapter_path),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert status == 2
+    evidence = (output_dir / "deepseek-v4-fable-context-map.md").read_text()
+    assert "Status: `blocked_indexer_loader_mapping_required`" in evidence
+    assert "Contains tensor values: false" in evidence
+
+
 def _write_fable_metadata(directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "adapter_config.json").write_text(
@@ -564,6 +616,39 @@ def _write_fake_fable_adapter(
             entries[f"{module}.lora_A.weight"] = ("F32", [4, 8])
             entries[f"{module}.lora_B.weight"] = ("F32", [16, 4])
     _write_fake_safetensors(path, entries)
+
+
+def _write_fake_fable_context_adapter(path: Path) -> None:
+    entries: dict[str, tuple[str, list[int]]] = {}
+    for layer in (2, 4):
+        for target, b_rows in (
+            ("gate_proj", 2048),
+            ("up_proj", 2048),
+            ("down_proj", 4096),
+        ):
+            a_cols = 2048 if target == "down_proj" else 4096
+            module = f"base_model.model.model.layers.{layer}.mlp.shared_experts.{target}"
+            entries[f"{module}.lora_A.weight"] = ("F32", [16, a_cols])
+            entries[f"{module}.lora_B.weight"] = ("F32", [b_rows, 16])
+        compressor = (
+            f"base_model.model.model.layers.{layer}.self_attn.compressor.gate_proj"
+        )
+        entries[f"{compressor}.lora_A.weight"] = ("F32", [16, 4096])
+        entries[f"{compressor}.lora_B.weight"] = ("F32", [512, 16])
+        indexer = (
+            "base_model.model.model.layers."
+            f"{layer}.self_attn.compressor.indexer.gate_proj"
+        )
+        entries[f"{indexer}.lora_A.weight"] = ("F32", [16, 4096])
+        entries[f"{indexer}.lora_B.weight"] = ("F32", [256, 16])
+    _write_fake_safetensors(path, entries)
+
+
+def _context_entry(report: dict, context: str, target: str) -> dict:
+    for entry in report["contextMap"]:
+        if entry["adapterContext"] == context and entry["target"] == target:
+            return entry
+    raise AssertionError(f"missing context map entry {context}.{target}")
 
 
 def _write_fake_safetensors(

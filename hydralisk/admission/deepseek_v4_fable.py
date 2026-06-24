@@ -20,6 +20,7 @@ FABLE_LAB_EVAL_SCHEMA = "hydralisk.deepseek-v4-fable.lab-eval-decision.v1"
 FABLE_RETARGET_SCHEMA = "hydralisk.deepseek-v4-fable.retarget-plan.v1"
 FABLE_OPROJ_OWNERSHIP_SCHEMA = "hydralisk.deepseek-v4-fable.o-proj-ownership.v1"
 FABLE_TRANSFORM_SMOKE_SCHEMA = "hydralisk.deepseek-v4-fable.transform-smoke.v1"
+FABLE_CONTEXT_MAP_SCHEMA = "hydralisk.deepseek-v4-fable.context-map.v1"
 FABLE_REPO = "Chunjiang-Intelligence/DeepSeek-v4-Fable"
 FABLE_REVISION = "999909137c15e0b5539fee887431824fa7cb5b10"
 FABLE_BASE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
@@ -31,6 +32,7 @@ LAB_EVAL_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/70"
 RETARGET_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/71"
 OPROJ_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/72"
 TRANSFORM_SMOKE_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/73"
+CONTEXT_MAP_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/74"
 
 SMALL_METADATA_FILES = (
     "adapter_config.json",
@@ -67,6 +69,66 @@ EXPECTED_LORA_CONTEXTS = {
     "gate_proj": ("mlp",),
     "up_proj": ("mlp",),
     "down_proj": ("mlp",),
+}
+DEFAULT_FABLE_RUNTIME_CONTEXT_INVENTORY = {
+    "image": "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:20260624v3vector2",
+    "inspection": "gce_docker_source_summary",
+    "sources": [
+        "vllm.models.deepseek_v4.nvidia.model",
+        "vllm.models.deepseek_v4.attention",
+        "vllm.models.deepseek_v4.compressor",
+    ],
+    "loadMappings": [
+        {"runtime": "gate_up_proj", "checkpoint": "w1", "shard": 0},
+        {"runtime": "gate_up_proj", "checkpoint": "w3", "shard": 1},
+        {"runtime": "attn.fused_wqa_wkv", "checkpoint": "attn.wq_a", "shard": 0},
+        {"runtime": "attn.fused_wqa_wkv", "checkpoint": "attn.wkv", "shard": 1},
+        {
+            "runtime": "compressor.fused_wkv_wgate",
+            "checkpoint": "compressor.wkv",
+            "shard": 0,
+        },
+        {
+            "runtime": "compressor.fused_wkv_wgate",
+            "checkpoint": "compressor.wgate",
+            "shard": 1,
+        },
+    ],
+    "runtimeSurfaces": {
+        "mlp_shared_experts.gate_proj": {
+            "candidate": "layers.*.mlp.shared_experts.gate_up_proj",
+            "checkpoint": "shared_experts.w1",
+            "shard": 0,
+            "confidence": "high",
+        },
+        "mlp_shared_experts.up_proj": {
+            "candidate": "layers.*.mlp.shared_experts.gate_up_proj",
+            "checkpoint": "shared_experts.w3",
+            "shard": 1,
+            "confidence": "high",
+        },
+        "mlp_shared_experts.down_proj": {
+            "candidate": "layers.*.mlp.shared_experts.down_proj",
+            "checkpoint": "shared_experts.w2",
+            "shard": None,
+            "confidence": "high",
+        },
+        "attention_compressor.gate_proj": {
+            "candidate": "layers.*.self_attn.compressor.fused_wkv_wgate",
+            "checkpoint": "compressor.wgate",
+            "shard": 1,
+            "confidence": "probable",
+        },
+        "attention_compressor_indexer.gate_proj": {
+            "candidate": (
+                "layers.*.self_attn.compressor.indexer.compressor."
+                "fused_wkv_wgate"
+            ),
+            "checkpoint": "compressor.indexer.compressor.wgate",
+            "shard": 1,
+            "confidence": "medium",
+        },
+    },
 }
 
 
@@ -1779,6 +1841,290 @@ def write_transform_smoke_report(
     return json_path, md_path
 
 
+def build_context_map_report(
+    *,
+    adapter_path: Path,
+    runtime_inventory: dict[str, Any] | None = None,
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    created_at = created_at or datetime.now(UTC)
+    runtime_inventory = runtime_inventory or DEFAULT_FABLE_RUNTIME_CONTEXT_INVENTORY
+    header = read_safetensors_header(adapter_path)
+    manifest = safetensor_manifest_from_header(header)
+    pairs = collect_lora_pairs(manifest)
+    context_entries = _build_context_entries(pairs, runtime_inventory)
+    blockers = [
+        blocker
+        for entry in context_entries
+        for blocker in entry["blockers"]
+    ]
+    unresolved_indexer = any(
+        entry["adapterContext"] == "attention_compressor_indexer"
+        and entry["status"] != "candidate_transform_ready"
+        for entry in context_entries
+    )
+    if unresolved_indexer:
+        status = "blocked_indexer_loader_mapping_required"
+        next_step = "prove_indexer_compressor_loader_mapping_then_write_context_transform"
+    elif blockers:
+        status = "blocked_context_mapping_incomplete"
+        next_step = "complete_missing_context_runtime_mappings"
+    else:
+        status = "context_map_ready_for_transform_writer"
+        next_step = "implement_context_specific_packed_lora_transform"
+
+    return {
+        "schema": FABLE_CONTEXT_MAP_SCHEMA,
+        "createdAt": created_at.isoformat().replace("+00:00", "Z"),
+        "issue": CONTEXT_MAP_ISSUE_URL,
+        "dependsOn": [TRANSFORM_SMOKE_ISSUE_URL],
+        "profileRef": PROFILE_REF,
+        "status": status,
+        "adapter": {
+            "path": str(adapter_path),
+            "fileBytes": adapter_path.stat().st_size,
+            "tensorCount": len(manifest),
+            "loraModuleCount": len(pairs),
+            "tensorValuesRead": False,
+            "headerOnly": True,
+        },
+        "runtimeInventory": runtime_inventory,
+        "contextMap": context_entries,
+        "blockers": blockers,
+        "decision": {
+            "status": status,
+            "canWritePackedDeltaNow": False,
+            "canImplementContextTransform": status == "context_map_ready_for_transform_writer",
+            "requiresCanonicalRuntimeProbe": status == "blocked_context_mapping_incomplete",
+            "canRouteKhalaGeneralTraffic": False,
+            "canExposePublicAliases": False,
+            "canExposeMppPublicSale": False,
+            "nextStep": next_step,
+        },
+        "publicSafety": {
+            "containsSecrets": False,
+            "containsPrompts": False,
+            "containsResponses": False,
+            "containsWeights": False,
+            "containsTensorValues": False,
+            "containsHiddenReasoning": False,
+            "containsExploitPayloads": False,
+            "containsTargetDetails": False,
+            "containsFullThirdPartySource": False,
+        },
+    }
+
+
+def _build_context_entries(
+    pairs: dict[str, dict[str, Any]],
+    runtime_inventory: dict[str, Any],
+) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for module in pairs.values():
+        if not module["loraA"] or not module["loraB"]:
+            continue
+        context_family = _context_family(module["module"], module["context"])
+        groups.setdefault((context_family, module["target"]), []).append(module)
+
+    entries = []
+    for (context_family, target), modules in sorted(groups.items()):
+        key = f"{context_family}.{target}"
+        runtime_surface = runtime_inventory.get("runtimeSurfaces", {}).get(key)
+        layers = sorted(
+            {
+                module["layer"]
+                for module in modules
+                if module["layer"] is not None
+            }
+        )
+        ranks = sorted({module["loraA"]["shape"][0] for module in modules})
+        input_cols = sorted({module["loraA"]["shape"][1] for module in modules})
+        output_rows = sorted({module["loraB"]["shape"][0] for module in modules})
+        blockers = _context_mapping_blockers(
+            context_family=context_family,
+            target=target,
+            runtime_surface=runtime_surface,
+            layers=layers,
+        )
+        entries.append(
+            {
+                "adapterContext": context_family,
+                "target": target,
+                "moduleCount": len(modules),
+                "layers": layers,
+                "ranks": ranks,
+                "inputColumns": input_cols,
+                "outputRows": output_rows,
+                "sampleModules": [module["module"] for module in modules[:3]],
+                "runtimeCandidate": runtime_surface,
+                "status": "candidate_transform_ready" if not blockers else "blocked",
+                "blockers": blockers,
+            }
+        )
+    return entries
+
+
+def _context_family(module_path: str, context: str) -> str:
+    if context == "mlp" and ".shared_experts." in module_path:
+        return "mlp_shared_experts"
+    return context
+
+
+def _context_mapping_blockers(
+    *,
+    context_family: str,
+    target: str,
+    runtime_surface: dict[str, Any] | None,
+    layers: list[int],
+) -> list[dict[str, str]]:
+    if runtime_surface is None:
+        return [
+            {
+                "code": "missing_runtime_surface",
+                "context": context_family,
+                "target": target,
+                "message": "No candidate packed runtime surface is known for this adapter context.",
+            }
+        ]
+    blockers = []
+    if context_family == "attention_compressor_indexer":
+        blockers.append(
+            {
+                "code": "loader_path_proof_required",
+                "context": context_family,
+                "target": target,
+                "message": (
+                    "Runtime source shows a nested indexer compressor, but the "
+                    "checkpoint loader mapping for this adapter key family still "
+                    "needs to be proven before writing a transform."
+                ),
+            }
+        )
+    if target in {"gate_proj", "up_proj", "down_proj"} and not layers:
+        blockers.append(
+            {
+                "code": "missing_layer_coverage",
+                "context": context_family,
+                "target": target,
+                "message": "No layer coverage was detected for this adapter context.",
+            }
+        )
+    return blockers
+
+
+def render_context_map_markdown(report: dict[str, Any]) -> str:
+    rows = [
+        "| Adapter context | Target | Modules | Layers | Output rows | Runtime candidate | Confidence | Status | Blockers |",
+        "| --- | --- | ---: | --- | --- | --- | --- | --- | --- |",
+    ]
+    for entry in report["contextMap"]:
+        candidate = entry["runtimeCandidate"] or {}
+        blocker_codes = ", ".join(blocker["code"] for blocker in entry["blockers"])
+        rows.append(
+            "| `{context}` | `{target}` | {modules} | `{layers}` | `{rows}` | `{candidate}` | `{confidence}` | `{status}` | {blockers} |".format(
+                context=entry["adapterContext"],
+                target=entry["target"],
+                modules=entry["moduleCount"],
+                layers=", ".join(str(layer) for layer in entry["layers"]) or "none",
+                rows=", ".join(str(row) for row in entry["outputRows"]) or "none",
+                candidate=candidate.get("candidate", "none"),
+                confidence=candidate.get("confidence", "none"),
+                status=entry["status"],
+                blockers=blocker_codes or "-",
+            )
+        )
+    context_table = "\n".join(rows)
+    blocker_lines = "\n".join(
+        "- `{code}` on `{context}.{target}`: {message}".format(**item)
+        for item in report["blockers"]
+    ) or "- None"
+
+    return f"""# DeepSeek-V4-Fable adapter context map
+
+Date: {report["createdAt"]}
+
+Issue: {report["issue"]}
+
+Depends on: {", ".join(report["dependsOn"])}
+
+Profile: `{report["profileRef"]}`
+
+Status: `{report["status"]}`
+
+## Decision
+
+- Packed delta can be written now: `{str(report["decision"]["canWritePackedDeltaNow"]).lower()}`
+- Context transform can be implemented now: `{str(report["decision"]["canImplementContextTransform"]).lower()}`
+- Canonical runtime probe required: `{str(report["decision"]["requiresCanonicalRuntimeProbe"]).lower()}`
+- Khala general route allowed: `{str(report["decision"]["canRouteKhalaGeneralTraffic"]).lower()}`
+- Public aliases allowed: `{str(report["decision"]["canExposePublicAliases"]).lower()}`
+- MPP public sale allowed: `{str(report["decision"]["canExposeMppPublicSale"]).lower()}`
+- Next step: `{report["decision"]["nextStep"]}`
+
+## Adapter inspection
+
+- Adapter path: `{report["adapter"]["path"]}`
+- Adapter file bytes: `{report["adapter"]["fileBytes"]}`
+- Tensor count: `{report["adapter"]["tensorCount"]}`
+- LoRA module count: `{report["adapter"]["loraModuleCount"]}`
+- Header-only inspection: `{str(report["adapter"]["headerOnly"]).lower()}`
+- Tensor values read: `{str(report["adapter"]["tensorValuesRead"]).lower()}`
+
+## Runtime inventory
+
+- Image: `{report["runtimeInventory"]["image"]}`
+- Inspection: `{report["runtimeInventory"]["inspection"]}`
+- Sources: `{", ".join(report["runtimeInventory"]["sources"])}`
+
+## Context map
+
+{context_table}
+
+## Blockers
+
+{blocker_lines}
+
+## Interpretation
+
+The real Fable adapter is not a q/k/v/o adapter. The shared-expert MLP LoRA
+payload has a high-confidence packed target: `shared_experts.gate_proj` and
+`shared_experts.up_proj` map to `shared_experts.gate_up_proj` shards, while
+`shared_experts.down_proj` maps directly to `shared_experts.down_proj`.
+
+The plain attention compressor gate path is also a probable packed transform:
+runtime loading maps `compressor.wgate` into `compressor.fused_wkv_wgate`
+shard 1. The remaining hard blocker is the nested indexer compressor family.
+Runtime source shows `indexer.compressor.fused_wkv_wgate`, but Hydralisk still
+needs loader-path proof for the published
+`self_attn.compressor.indexer.gate_proj` adapter keys before writing a
+transform or running another private load canary.
+
+## Public safety
+
+- Contains secrets: false
+- Contains prompts: false
+- Contains responses: false
+- Contains weights: false
+- Contains tensor values: false
+- Contains hidden reasoning: false
+- Contains exploit payloads: false
+- Contains target details: false
+- Contains full third-party source: false
+"""
+
+
+def write_context_map_report(
+    report: dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "deepseek-v4-fable-context-map.json"
+    md_path = output_dir / "deepseek-v4-fable-context-map.md"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    md_path.write_text(render_context_map_markdown(report))
+    return json_path, md_path
+
+
 def _hf_resolve_url(repo: str, revision: str, filename: str) -> str:
     return f"https://huggingface.co/{repo}/resolve/{revision}/{filename}"
 
@@ -2001,6 +2347,40 @@ def transform_smoke_main(argv: list[str] | None = None) -> int:
     json_path, md_path = write_transform_smoke_report(report, args.output_dir)
     print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
     return 0 if report["decision"]["canImplementPackedDeltaWriter"] else 2
+
+
+def context_map_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Emit a public-safe DeepSeek-V4-Fable adapter context map."
+    )
+    parser.add_argument(
+        "--adapter-path",
+        type=Path,
+        required=True,
+        help="Local Fable adapter_model.safetensors path in ignored evidence space.",
+    )
+    parser.add_argument(
+        "--runtime-inventory",
+        type=Path,
+        help="Optional JSON source inventory. Defaults to the recorded G4 runtime inventory.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(".hydralisk/deepseek-v4-fable-context-map"),
+    )
+    args = parser.parse_args(argv)
+
+    runtime_inventory = None
+    if args.runtime_inventory:
+        runtime_inventory = json.loads(args.runtime_inventory.read_text())
+    report = build_context_map_report(
+        adapter_path=args.adapter_path,
+        runtime_inventory=runtime_inventory,
+    )
+    json_path, md_path = write_context_map_report(report, args.output_dir)
+    print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
+    return 0 if report["decision"]["canImplementContextTransform"] else 2
 
 
 if __name__ == "__main__":  # pragma: no cover
