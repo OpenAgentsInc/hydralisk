@@ -645,6 +645,8 @@ def test_flashinfer_b12x_moe_probe_is_public_safe_and_target_scoped(
     assert "Contains weights: false" in evidence
     assert "b12x_fused_moe" in script_text
     assert "hydralisk.flashinfer.b12x-moe.synthetic.v1" in script_text
+    assert "B12xMoEWrapper" in script_text
+    assert "supportsLocalExpertOffsetKwarg" in script_text
     assert "supportsSwigluLimitKwarg" in script_text
     assert "b12x_swiglu_limit_kwarg_probe" in script_text
     assert "deepseek_shape_local_shard_remap" in script_text

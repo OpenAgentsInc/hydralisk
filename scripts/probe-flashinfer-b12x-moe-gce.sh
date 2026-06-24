@@ -4,7 +4,7 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-openagentsgemini}"
 TARGET_INSTANCE="${TARGET_INSTANCE:-}"
 TARGET_ZONE="${TARGET_ZONE:-}"
-ISSUE_NUMBER="${ISSUE_NUMBER:-28}"
+ISSUE_NUMBER="${ISSUE_NUMBER:-30}"
 IMAGE="${IMAGE:-hydralisk-deepseek-v4-oproj-fallback-g4-vllm:20260624095206}"
 SEQ_LEN="${SEQ_LEN:-512}"
 HIDDEN_SIZE="${HIDDEN_SIZE:-4096}"
@@ -143,6 +143,7 @@ def module_record() -> dict:
         "flashinfer.gemm",
     ]
     required_attrs = [
+        "B12xMoEWrapper",
         "b12x_fused_moe",
         "convert_sf_to_mma_layout",
         "Sm120B12xBlockScaledDenseGemmKernel",
@@ -167,6 +168,10 @@ def module_record() -> dict:
                 "file": getattr(mod, "__file__", None),
                 "attrs": [attr for attr in required_attrs if hasattr(mod, attr)],
             }
+            if name == "flashinfer.fused_moe":
+                record[name]["b12xAttrs"] = sorted(
+                    attr for attr in dir(mod) if "b12x" in attr.lower()
+                )
         except Exception as exc:
             record[name] = {
                 "ok": False,
@@ -211,6 +216,30 @@ def module_record() -> dict:
                 "does not yet support Expert Parallelism" in source
             ),
         }
+        wrapper = getattr(fm, "B12xMoEWrapper", None)
+        if wrapper is not None:
+            wrapper_signature = inspect.signature(wrapper)
+            record["b12xWrapper"] = {
+                "name": "B12xMoEWrapper",
+                "signature": str(wrapper_signature),
+                "supportsNumLocalExpertsKwarg": (
+                    "num_local_experts" in wrapper_signature.parameters
+                ),
+                "supportsLocalExpertOffsetKwarg": (
+                    "local_expert_offset" in wrapper_signature.parameters
+                ),
+                "supportsSwigluLimitKwarg": (
+                    "swiglu_limit" in wrapper_signature.parameters
+                ),
+                "supportsActivationKwarg": (
+                    "activation" in wrapper_signature.parameters
+                ),
+            }
+        else:
+            record["b12xWrapper"] = {
+                "name": "B12xMoEWrapper",
+                "available": False,
+            }
     except Exception as exc:
         record["runtimeError"] = {
             "type": type(exc).__name__,

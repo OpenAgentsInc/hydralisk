@@ -127,7 +127,12 @@ Initial targets:
   leaves clamp semantics plus dispatcher/offload correctness as the next real
   implementation step. Hydralisk now has a pure-Python local-shard reference
   fixture for that boundary: DeepSeek/vLLM SwiGLU clamp, global-to-local expert
-  remap, nonlocal expert skipping, and deterministic nonzero routed output.
+  remap, nonlocal expert skipping, and deterministic nonzero routed output. A
+  live wrapper-surface probe then found `B12xMoEWrapper` in the installed
+  FlashInfer `0.6.12` image, but it only exposes `num_local_experts`; it lacks
+  both `local_expert_offset` and `swiglu_limit`, so the G4 path still needs a
+  wrapper upgrade or a Hydralisk-local B12x dispatcher/clamp shim before any
+  full-model retry.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -175,6 +180,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-clamp-ep-g4.md)
 - [`docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-local-shard-remap-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md`](docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md)
+- [`docs/evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

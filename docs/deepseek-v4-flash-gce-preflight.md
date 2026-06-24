@@ -82,6 +82,9 @@ B12x local expert-shard remap evidence:
 B12x local-shard reference fixture evidence:
 [`docs/evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md`](evidence/2026-06-24-deepseek-b12x-local-shard-reference-fixture.md)
 
+B12x wrapper-surface evidence:
+[`docs/evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md`](evidence/2026-06-24-flashinfer-b12x-wrapper-surface-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -664,6 +667,28 @@ nonlocal experts, and accumulates routed local experts on a nonzero deterministi
 toy MoE. This means the next GPU issue has a pass/fail target: a B12x wrapper,
 shim, or upgraded FlashInfer path must match the reference on the tiny local
 shard before Hydralisk retries DeepSeek-V4 weights.
+
+The live wrapper-surface probe then checked whether the installed B12x wrapper
+already provides that missing surface. It does not. FlashInfer `0.6.12` on the
+same private 8 x G4 host exposes `B12xMoEWrapper`, but the wrapper signature
+only covers `num_local_experts`; it does not expose `local_expert_offset` and
+does not expose `swiglu_limit`. The direct `b12x_fused_moe` entry point still
+rejects `swiglu_limit=10.0`, and the global `256 / 32` expert-parallel call
+still raises `NotImplementedError`. The local-shard remap control remains
+positive:
+
+```text
+globalNumExperts=256
+kernelNumExperts=32
+localNumExperts=32
+routingDomain=local_shard_remapped
+outShape=[512,4096]
+```
+
+So the next issue is not another full-model launch. The next issue should
+either probe a newer FlashInfer/vLLM B12x wrapper on RTX PRO 6000 or implement
+a Hydralisk-local B12x shim that supplies local-offset routing plus DeepSeek's
+SwiGLU clamp and compares against the reference fixture.
 
 ## Promotion boundary
 
