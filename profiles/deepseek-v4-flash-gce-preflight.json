@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "deepseek_v4_nvfp4_8x_g4_concurrency_failed_singleflight_canary_only",
+  "status": "deepseek_v4_nvfp4_8x_g4_singleflight_canary_envelope_ready",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -3293,6 +3293,55 @@
       "singleFlightCanaryOnly": true,
       "why": "The lane completes concurrent requests but fails TTFT and throughput at max_num_seqs=2. It is currently credible only as resident, prewarmed, single-flight canary traffic."
     },
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekV4Issue66SingleFlightEnvelope": {
+    "status": "implemented_proxy_singleflight_canary_envelope",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/66",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-singleflight-envelope.md",
+    "files": [
+      "hydralisk/serve/config.py",
+      "hydralisk/serve/proxy.py",
+      "hydralisk/serve/receipts.py",
+      "tests/test_proxy.py"
+    ],
+    "configuration": {
+      "maxInflightRequestsEnv": "HYDRALISK_MAX_INFLIGHT_REQUESTS",
+      "queueTimeoutSecondsEnv": "HYDRALISK_INFLIGHT_QUEUE_TIMEOUT_SECONDS",
+      "deepseekCanaryRecommendedMaxInflightRequests": 1,
+      "deepseekCanaryRecommendedQueueTimeoutSeconds": 0
+    },
+    "behavior": {
+      "defaultUnlimited": true,
+      "saturatedStatusCode": 429,
+      "saturatedErrorCode": "hydralisk_inflight_saturated",
+      "holdsSlotForStreamingBody": true,
+      "capabilitiesExposeAdmission": true,
+      "receiptsExposeAdmission": true
+    },
+    "validation": {
+      "compile": "uv run python -m py_compile hydralisk/serve/config.py hydralisk/serve/receipts.py hydralisk/serve/proxy.py",
+      "tests": "uv run pytest -q",
+      "result": "81 passed, 1 existing Starlette/httpx warning"
+    },
+    "servingBoundary": {
+      "khalaIntegrationCandidate": true,
+      "khalaReadyToServe": false,
+      "singleFlightCanaryOnly": true,
+      "why": "The proxy can now enforce the single-flight boundary required by the failed max_num_seqs=2 concurrency gate, but this is still a canary envelope rather than true shared serving."
+    },
+    "remainingGatesBeforeKhalaServingClaim": [
+      "make max_num_seqs greater than 1 viable for shared serving",
+      "restore or explicitly qualify the SWA-only sparse-indexer bypass",
+      "broader public-safe quality eval",
+      "context above current max_model_len=2048"
+    ],
     "publicSafety": {
       "containsSecrets": false,
       "containsPrompts": false,

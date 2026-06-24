@@ -1169,6 +1169,15 @@ honest boundary is now single-flight, resident, explicitly prewarmed canary
 traffic only unless we add a queueing envelope or make `max_num_seqs > 1`
 viable.
 
+Issue #66 added that explicit envelope to the Hydralisk proxy. Operators can
+set `HYDRALISK_MAX_INFLIGHT_REQUESTS=1` and
+`HYDRALISK_INFLIGHT_QUEUE_TIMEOUT_SECONDS=0` to fail closed with HTTP 429 when
+the canary lane is saturated. The proxy holds the inflight slot through the
+full streaming response, not just response headers, and capabilities/receipts
+now expose the admission policy. This makes the current DeepSeek V4 G4 path
+enforceably single-flight and prewarmed for internal canary use; it still does
+not fix true concurrent serving.
+
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable
 alternate executor was reachable noninteractively from this shell: local

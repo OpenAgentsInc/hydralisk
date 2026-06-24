@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 import json
 from time import perf_counter
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
@@ -20,15 +21,74 @@ from hydralisk.serve.receipts import (
 )
 
 
+class _InflightLease:
+    def __init__(self, release_once: Callable[[], None]) -> None:
+        self._release_once = release_once
+        self._released = False
+
+    def release(self) -> None:
+        if self._released:
+            return
+        self._released = True
+        self._release_once()
+
+
+class _InflightGate:
+    def __init__(
+        self,
+        *,
+        limit: int | None,
+        queue_timeout_seconds: float,
+    ) -> None:
+        self.limit = limit
+        self.queue_timeout_seconds = max(queue_timeout_seconds, 0.0)
+        self._semaphore = asyncio.Semaphore(limit) if limit else None
+
+    async def acquire(self) -> _InflightLease:
+        if self._semaphore is None:
+            return _InflightLease(lambda: None)
+        if self.queue_timeout_seconds == 0 and self._semaphore.locked():
+            self._raise_saturated()
+        try:
+            await asyncio.wait_for(
+                self._semaphore.acquire(),
+                timeout=self.queue_timeout_seconds if self.queue_timeout_seconds else None,
+            )
+        except TimeoutError:
+            self._raise_saturated()
+        return _InflightLease(self._semaphore.release)
+
+    def _raise_saturated(self) -> None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": {
+                    "code": "hydralisk_inflight_saturated",
+                    "message": "Hydralisk is at its configured inflight request limit.",
+                },
+                "admission": {
+                    "maxInflightRequests": self.limit,
+                    "queueTimeoutSeconds": self.queue_timeout_seconds,
+                    "singleFlight": self.limit == 1,
+                },
+            },
+        )
+
+
 def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
     config = settings or load_settings()
     receipts = ReceiptStore(config.receipt_dir)
+    inflight_gate = _InflightGate(
+        limit=config.max_inflight_requests,
+        queue_timeout_seconds=config.inflight_queue_timeout_seconds,
+    )
     app = FastAPI(
         title="Hydralisk GPT-OSS 20B Proxy",
         version="0.1.0",
         docs_url=None,
         redoc_url=None,
     )
+    app.state.hydralisk_inflight_gate = inflight_gate
 
     async def require_bearer(request: Request) -> None:
         if config.bearer_token is None and not config.allow_insecure_dev:
@@ -92,36 +152,45 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
         upstream_payload = dict(payload)
         upstream_payload["model"] = config.served_model
         run_ref = _run_ref()
+        inflight_lease = await inflight_gate.acquire()
 
         if upstream_payload.get("stream") is True:
             _request_stream_usage(upstream_payload)
-            return await _stream_to_upstream(
-                url=config.upstream_chat_url,
-                payload=upstream_payload,
-                config=config,
-                receipts=receipts,
-                run_ref=run_ref,
-                admitted_model=admitted_model,
-                headers={
-                    "x-hydralisk-run-ref": run_ref,
-                    "x-hydralisk-receipt-ref": f"/hydralisk/v1/receipts/{run_ref}",
-                    "x-hydralisk-served-model": config.served_model,
-                    "x-hydralisk-served-alias": admitted_model,
-                },
-            )
+            try:
+                return await _stream_to_upstream(
+                    url=config.upstream_chat_url,
+                    payload=upstream_payload,
+                    config=config,
+                    receipts=receipts,
+                    run_ref=run_ref,
+                    admitted_model=admitted_model,
+                    headers={
+                        "x-hydralisk-run-ref": run_ref,
+                        "x-hydralisk-receipt-ref": f"/hydralisk/v1/receipts/{run_ref}",
+                        "x-hydralisk-served-model": config.served_model,
+                        "x-hydralisk-served-alias": admitted_model,
+                    },
+                    release_inflight=inflight_lease.release,
+                )
+            except Exception:
+                inflight_lease.release()
+                raise
 
         started = perf_counter()
-        async with httpx.AsyncClient(timeout=config.request_timeout_seconds) as client:
-            upstream = await client.post(config.upstream_chat_url, json=upstream_payload)
-        wall_ms = int((perf_counter() - started) * 1000)
-        return _json_upstream_response(
-            upstream,
-            run_ref=run_ref,
-            admitted_model=admitted_model,
-            config=config,
-            receipts=receipts,
-            wall_ms=wall_ms,
-        )
+        try:
+            async with httpx.AsyncClient(timeout=config.request_timeout_seconds) as client:
+                upstream = await client.post(config.upstream_chat_url, json=upstream_payload)
+            wall_ms = int((perf_counter() - started) * 1000)
+            return _json_upstream_response(
+                upstream,
+                run_ref=run_ref,
+                admitted_model=admitted_model,
+                config=config,
+                receipts=receipts,
+                wall_ms=wall_ms,
+            )
+        finally:
+            inflight_lease.release()
 
     @app.post("/v1/responses", dependencies=[Depends(require_bearer)])
     async def responses(request: Request) -> Response:
@@ -130,36 +199,45 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
         upstream_payload = dict(payload)
         upstream_payload["model"] = config.served_model
         run_ref = _run_ref()
+        inflight_lease = await inflight_gate.acquire()
 
         if upstream_payload.get("stream") is True:
             _request_stream_usage(upstream_payload)
-            return await _stream_to_upstream(
-                url=config.upstream_responses_url,
-                payload=upstream_payload,
-                config=config,
-                receipts=receipts,
-                run_ref=run_ref,
-                admitted_model=admitted_model,
-                headers={
-                    "x-hydralisk-run-ref": run_ref,
-                    "x-hydralisk-receipt-ref": f"/hydralisk/v1/receipts/{run_ref}",
-                    "x-hydralisk-served-model": config.served_model,
-                    "x-hydralisk-served-alias": admitted_model,
-                },
-            )
+            try:
+                return await _stream_to_upstream(
+                    url=config.upstream_responses_url,
+                    payload=upstream_payload,
+                    config=config,
+                    receipts=receipts,
+                    run_ref=run_ref,
+                    admitted_model=admitted_model,
+                    headers={
+                        "x-hydralisk-run-ref": run_ref,
+                        "x-hydralisk-receipt-ref": f"/hydralisk/v1/receipts/{run_ref}",
+                        "x-hydralisk-served-model": config.served_model,
+                        "x-hydralisk-served-alias": admitted_model,
+                    },
+                    release_inflight=inflight_lease.release,
+                )
+            except Exception:
+                inflight_lease.release()
+                raise
 
         started = perf_counter()
-        async with httpx.AsyncClient(timeout=config.request_timeout_seconds) as client:
-            upstream = await client.post(config.upstream_responses_url, json=upstream_payload)
-        wall_ms = int((perf_counter() - started) * 1000)
-        return _json_upstream_response(
-            upstream,
-            run_ref=run_ref,
-            admitted_model=admitted_model,
-            config=config,
-            receipts=receipts,
-            wall_ms=wall_ms,
-        )
+        try:
+            async with httpx.AsyncClient(timeout=config.request_timeout_seconds) as client:
+                upstream = await client.post(config.upstream_responses_url, json=upstream_payload)
+            wall_ms = int((perf_counter() - started) * 1000)
+            return _json_upstream_response(
+                upstream,
+                run_ref=run_ref,
+                admitted_model=admitted_model,
+                config=config,
+                receipts=receipts,
+                wall_ms=wall_ms,
+            )
+        finally:
+            inflight_lease.release()
 
     return app
 
@@ -215,6 +293,7 @@ async def _stream_to_upstream(
     run_ref: str,
     admitted_model: str,
     headers: dict[str, str],
+    release_inflight: Callable[[], None] | None = None,
 ) -> StreamingResponse:
     client = httpx.AsyncClient(timeout=None)
     started = perf_counter()
@@ -224,6 +303,8 @@ async def _stream_to_upstream(
         body = await upstream.aread()
         await upstream.aclose()
         await client.aclose()
+        if release_inflight is not None:
+            release_inflight()
         wall_ms = int((perf_counter() - started) * 1000)
         receipts.write(
             build_receipt(
@@ -282,6 +363,8 @@ async def _stream_to_upstream(
             )
             await upstream.aclose()
             await client.aclose()
+            if release_inflight is not None:
+                release_inflight()
 
     response_headers = {
         "cache-control": "no-cache",

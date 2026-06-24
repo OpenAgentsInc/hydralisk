@@ -56,6 +56,7 @@ def build_capabilities(config: HydraliskSettings) -> dict[str, Any]:
         "quantization": {"weights": config.quantization_weights},
         "chatCompletions": True,
         "responses": True,
+        "admission": _admission_policy(config),
         "toolCalls": "disabled_for_gateway_day_zero",
         "reasoningVisibility": "final_answer_only_for_public_receipts",
         "receiptSchema": RECEIPT_SCHEMA,
@@ -94,6 +95,7 @@ def build_receipt(
             "count": config.gpu_count,
         },
         "quantization": {"weights": config.quantization_weights},
+        "admission": _admission_policy(config),
         "usage": normalize_usage(usage),
         "latency": latency,
         "publicSafe": True,
@@ -208,6 +210,14 @@ def _profile_evidence(config: HydraliskSettings) -> dict[str, Any]:
         profile["evidence"] = evidence
 
     return profile
+
+
+def _admission_policy(config: HydraliskSettings) -> dict[str, Any]:
+    return {
+        "maxInflightRequests": config.max_inflight_requests,
+        "queueTimeoutSeconds": config.inflight_queue_timeout_seconds,
+        "singleFlight": config.max_inflight_requests == 1,
+    }
 
 
 def _compact(source: dict[str, Any]) -> dict[str, Any]:

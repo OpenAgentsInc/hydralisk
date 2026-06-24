@@ -36,6 +36,13 @@ def _env_int(name: str, default: int | None = None) -> int | None:
     return int(value)
 
 
+def _env_positive_int(name: str) -> int | None:
+    value = _env_int(name)
+    if value is None or value <= 0:
+        return None
+    return value
+
+
 @dataclass(frozen=True)
 class HydraliskSettings:
     served_model: str = "openai/gpt-oss-20b"
@@ -73,6 +80,8 @@ class HydraliskSettings:
     evidence_ref: str | None = None
     receipt_dir: Path = Path(".hydralisk/receipts")
     request_timeout_seconds: float = 600.0
+    max_inflight_requests: int | None = None
+    inflight_queue_timeout_seconds: float = 0.0
 
     @property
     def supported_models(self) -> tuple[str, ...]:
@@ -139,5 +148,9 @@ def load_settings() -> HydraliskSettings:
         ),
         request_timeout_seconds=float(
             _env("HYDRALISK_REQUEST_TIMEOUT_SECONDS", "600") or "600"
+        ),
+        max_inflight_requests=_env_positive_int("HYDRALISK_MAX_INFLIGHT_REQUESTS"),
+        inflight_queue_timeout_seconds=float(
+            _env("HYDRALISK_INFLIGHT_QUEUE_TIMEOUT_SECONDS", "0") or "0"
         ),
     )

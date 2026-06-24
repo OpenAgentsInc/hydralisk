@@ -251,6 +251,11 @@ Initial targets:
   `3.0 tok/s`, end-to-end p50 to `2.5 tok/s`, and one request waited `13.7s`
   for first token. The current G4 lane is therefore single-flight/prewarmed
   canary material only, not a shared Khala serving lane.
+  Issue #66 added that explicit canary envelope to the Hydralisk proxy:
+  `HYDRALISK_MAX_INFLIGHT_REQUESTS=1` fail-closes saturated traffic with HTTP
+  429, holds the slot through full streaming responses, and publishes admission
+  metadata in capabilities and receipts. This makes the current DeepSeek lane
+  enforceably single-flight; it does not fix true concurrency.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
