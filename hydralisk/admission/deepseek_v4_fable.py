@@ -15,12 +15,15 @@ from urllib.request import Request, urlopen
 
 FABLE_SCHEMA = "hydralisk.deepseek-v4-fable.adapter-compatibility.v1"
 FABLE_LOAD_CANARY_SCHEMA = "hydralisk.deepseek-v4-fable.load-canary.v1"
+FABLE_LAB_EVAL_SCHEMA = "hydralisk.deepseek-v4-fable.lab-eval-decision.v1"
 FABLE_REPO = "Chunjiang-Intelligence/DeepSeek-v4-Fable"
 FABLE_REVISION = "999909137c15e0b5539fee887431824fa7cb5b10"
 FABLE_BASE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 PROFILE_REF = "profiles/deepseek-v4-fable-adapter-g4.json"
 ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/67"
 LOAD_CANARY_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/68"
+POLICY_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/69"
+LAB_EVAL_ISSUE_URL = "https://github.com/OpenAgentsInc/hydralisk/issues/70"
 
 SMALL_METADATA_FILES = (
     "adapter_config.json",
@@ -314,6 +317,8 @@ def render_markdown(report: dict[str, Any]) -> str:
     for item in report["targetCompatibility"]["matches"]:
         modules = ", ".join(f"`{module}`" for module in item["matchedRuntimeModules"])
         target_rows.append(f"| `{item['target']}` | `{item['status']}` | {modules or '-'} |")
+    file_table = "\n".join(file_rows)
+    target_table = "\n".join(target_rows)
 
     return f"""# DeepSeek-V4-Fable adapter compatibility evidence
 
@@ -347,7 +352,7 @@ Status: `{report["status"]}`
 
 ## Files
 
-{"\n".join(file_rows)}
+{file_table}
 
 Merged checkpoint shards detected in index:
 `{report["mergedCheckpoint"]["shardCount"]}`
@@ -372,7 +377,7 @@ Runtime source:
 Runtime module count:
 `{report["runtime"]["moduleCount"]}`
 
-{"\n".join(target_rows)}
+{target_table}
 
 Missing targets:
 `{", ".join(report["targetCompatibility"]["missingTargets"]) or "none"}`
@@ -566,6 +571,200 @@ def write_load_canary_report(
     return json_path, md_path
 
 
+def build_lab_eval_report(
+    *,
+    load_canary_report: dict[str, Any],
+    policy_status: str = "policy_harness_implemented_fail_closed",
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    created_at = created_at or datetime.now(UTC)
+    load_decision = load_canary_report.get("decision") or {}
+    load_canary = load_canary_report.get("loadCanary") or {}
+    can_attempt_load = bool(load_decision.get("canAttemptPrivateAdapterLoad"))
+    load_attempted = bool(load_canary.get("attempted"))
+    blockers = list(load_canary_report.get("blockers") or ())
+
+    if can_attempt_load and load_attempted:
+        status = "rejected_quality_or_safety_gate_failed"
+        reason = "lab_eval_metrics_not_recorded"
+        next_step = "run_public_safe_authorized_lab_eval_with_metric_capture"
+        blockers.append(
+            {
+                "code": "lab_eval_metrics_missing",
+                "message": (
+                    "The private load canary reported an attempted load, but no "
+                    "public-safe lab eval metrics were supplied to this gate."
+                ),
+            }
+        )
+    else:
+        status = "rejected_runtime_unstable"
+        reason = "blocked_before_eval_by_private_load_canary"
+        next_step = "map_or_retarget_fable_lora_modules_before_any_lab_eval"
+
+    return {
+        "schema": FABLE_LAB_EVAL_SCHEMA,
+        "createdAt": created_at.isoformat().replace("+00:00", "Z"),
+        "issue": LAB_EVAL_ISSUE_URL,
+        "dependsOn": [LOAD_CANARY_ISSUE_URL, POLICY_ISSUE_URL],
+        "profileRef": PROFILE_REF,
+        "status": status,
+        "model": load_canary_report.get("model", {}),
+        "prerequisites": {
+            "loadCanaryStatus": load_canary_report.get("status"),
+            "loadCanaryAttempted": load_attempted,
+            "canAttemptPrivateAdapterLoad": can_attempt_load,
+            "policyHarnessStatus": policy_status,
+            "authorizedSecurityUnscopedRequestsBlocked": (
+                policy_status == "policy_harness_implemented_fail_closed"
+            ),
+        },
+        "labEval": {
+            "attempted": can_attempt_load and load_attempted,
+            "authorizedSandboxTasksOnly": True,
+            "productionTargetsUsed": False,
+            "thirdPartyTargetsUsed": False,
+            "rawPromptsCommitted": False,
+            "rawOutputsCommitted": False,
+            "reason": reason,
+            "metrics": {
+                "taskCategories": [],
+                "verifierResults": [],
+                "turnCountSummary": None,
+                "toolCallCountSummary": None,
+                "timeoutOrErrorClasses": [],
+                "ttftSecondsSummary": None,
+                "decodeTokensPerSecondSummary": None,
+                "baseDeepSeekV4FlashComparison": None,
+            },
+        },
+        "blockers": blockers,
+        "decision": {
+            "status": status,
+            "admittedPrivateAuthorizedSecurityLabCanary": False,
+            "canRouteKhalaGeneralTraffic": False,
+            "canExposePublicAliases": False,
+            "canExposeMppPublicSale": False,
+            "nextStep": next_step,
+        },
+        "publicSafety": {
+            "containsSecrets": False,
+            "containsPrompts": False,
+            "containsResponses": False,
+            "containsWeights": False,
+            "containsHiddenReasoning": False,
+            "containsExploitPayloads": False,
+            "containsTargetDetails": False,
+        },
+    }
+
+
+def render_lab_eval_markdown(report: dict[str, Any]) -> str:
+    blockers = report.get("blockers") or []
+    if blockers:
+        blocker_lines = "\n".join(
+            f"- `{item['code']}`: {item['message']}"
+            for item in blockers
+        )
+    else:
+        blocker_lines = "- None"
+    metrics = report["labEval"]["metrics"]
+    turn_count = _metric_value(metrics["turnCountSummary"])
+    tool_call_count = _metric_value(metrics["toolCallCountSummary"])
+    ttft = _metric_value(metrics["ttftSecondsSummary"])
+    decode_tps = _metric_value(metrics["decodeTokensPerSecondSummary"])
+    base_comparison = _metric_value(metrics["baseDeepSeekV4FlashComparison"])
+    return f"""# DeepSeek-V4-Fable lab eval decision
+
+Date: {report["createdAt"]}
+
+Issue: {report["issue"]}
+
+Depends on: {", ".join(report["dependsOn"])}
+
+Profile: `{report["profileRef"]}`
+
+Status: `{report["status"]}`
+
+## Decision
+
+- Private authorized-security lab canary admitted: `{str(report["decision"]["admittedPrivateAuthorizedSecurityLabCanary"]).lower()}`
+- Khala general route allowed: `{str(report["decision"]["canRouteKhalaGeneralTraffic"]).lower()}`
+- Public aliases allowed: `{str(report["decision"]["canExposePublicAliases"]).lower()}`
+- MPP public sale allowed: `{str(report["decision"]["canExposeMppPublicSale"]).lower()}`
+- Next step: `{report["decision"]["nextStep"]}`
+
+## Prerequisites
+
+- Load canary status: `{report["prerequisites"]["loadCanaryStatus"]}`
+- Load canary attempted: `{str(report["prerequisites"]["loadCanaryAttempted"]).lower()}`
+- Private adapter load can be attempted: `{str(report["prerequisites"]["canAttemptPrivateAdapterLoad"]).lower()}`
+- Authorized-security policy harness: `{report["prerequisites"]["policyHarnessStatus"]}`
+- Unscoped requests blocked by policy harness: `{str(report["prerequisites"]["authorizedSecurityUnscopedRequestsBlocked"]).lower()}`
+
+## Lab eval
+
+- Attempted: `{str(report["labEval"]["attempted"]).lower()}`
+- Authorized sandbox tasks only: `{str(report["labEval"]["authorizedSandboxTasksOnly"]).lower()}`
+- Production targets used: `{str(report["labEval"]["productionTargetsUsed"]).lower()}`
+- Third-party targets used: `{str(report["labEval"]["thirdPartyTargetsUsed"]).lower()}`
+- Raw prompts committed: `{str(report["labEval"]["rawPromptsCommitted"]).lower()}`
+- Raw outputs committed: `{str(report["labEval"]["rawOutputsCommitted"]).lower()}`
+- Reason: `{report["labEval"]["reason"]}`
+
+No lab eval traffic was run because the model never reached an admitted private
+load canary state.
+
+## Public-safe metrics
+
+- Task categories: `{", ".join(metrics["taskCategories"]) or "none"}`
+- Verifier results: `{", ".join(metrics["verifierResults"]) or "none"}`
+- Turn-count summary: `{turn_count}`
+- Tool-call-count summary: `{tool_call_count}`
+- Timeout/error classes: `{", ".join(metrics["timeoutOrErrorClasses"]) or "none"}`
+- TTFT summary: `{ttft}`
+- Decode throughput summary: `{decode_tps}`
+- Base DeepSeek V4 Flash comparison: `{base_comparison}`
+
+## Blockers
+
+{blocker_lines}
+
+## Interpretation
+
+Issue #70 cannot honestly run or admit a Fable lab eval while issue #68 remains
+blocked. The final decision is therefore `rejected_runtime_unstable`: the
+adapter-backed runtime path is not stable/admitted enough to evaluate. Fable
+remains disallowed for general Khala routing, public aliases, and MPP sale.
+
+## Public safety
+
+- Contains secrets: false
+- Contains prompts: false
+- Contains responses: false
+- Contains weights: false
+- Contains hidden reasoning: false
+- Contains exploit payloads: false
+- Contains target details: false
+"""
+
+
+def _metric_value(value: Any) -> str:
+    return "none" if value is None else str(value)
+
+
+def write_lab_eval_report(
+    report: dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "deepseek-v4-fable-lab-eval-decision.json"
+    md_path = output_dir / "deepseek-v4-fable-lab-eval-decision.md"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    md_path.write_text(render_lab_eval_markdown(report))
+    return json_path, md_path
+
+
 def _hf_resolve_url(repo: str, revision: str, filename: str) -> str:
     return f"https://huggingface.co/{repo}/resolve/{revision}/{filename}"
 
@@ -685,6 +884,38 @@ def load_canary_main(argv: list[str] | None = None) -> int:
     json_path, md_path = write_load_canary_report(report, args.output_dir)
     print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
     return 0 if report["decision"]["canAttemptPrivateAdapterLoad"] else 2
+
+
+def lab_eval_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Emit a public-safe DeepSeek-V4-Fable lab eval admit/reject decision."
+    )
+    parser.add_argument(
+        "--load-canary-report",
+        type=Path,
+        required=True,
+        help="JSON report from hydralisk-deepseek-v4-fable-load-canary.",
+    )
+    parser.add_argument(
+        "--policy-status",
+        default="policy_harness_implemented_fail_closed",
+        help="Public-safe status from the authorized-security policy harness.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(".hydralisk/deepseek-v4-fable-lab-eval"),
+    )
+    args = parser.parse_args(argv)
+
+    load_canary_report = json.loads(args.load_canary_report.read_text())
+    report = build_lab_eval_report(
+        load_canary_report=load_canary_report,
+        policy_status=args.policy_status,
+    )
+    json_path, md_path = write_lab_eval_report(report, args.output_dir)
+    print(json.dumps({"json": str(json_path), "markdown": str(md_path), "status": report["status"]}, indent=2))
+    return 0 if report["decision"]["admittedPrivateAuthorizedSecurityLabCanary"] else 2
 
 
 if __name__ == "__main__":  # pragma: no cover

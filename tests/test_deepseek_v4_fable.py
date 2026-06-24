@@ -7,17 +7,21 @@ from pathlib import Path
 import pytest
 
 from hydralisk.admission.deepseek_v4_fable import (
+    FABLE_LAB_EVAL_SCHEMA,
     FABLE_SCHEMA,
     FABLE_LOAD_CANARY_SCHEMA,
     FableProbeError,
+    build_lab_eval_report,
     build_load_canary_report,
     build_report,
     compare_adapter_targets,
+    lab_eval_main,
     load_metadata_from_dir,
     load_canary_main,
     load_runtime_module_names,
     main,
     render_load_canary_markdown,
+    render_lab_eval_markdown,
     render_markdown,
     validate_requested_files,
 )
@@ -169,6 +173,56 @@ def test_load_canary_cli_writes_public_safe_blocked_report(tmp_path: Path) -> No
     assert "Status: `blocked_adapter_incompatible`" in evidence
     assert "Attempted: `false`" in evidence
     assert "Contains weights: false" in evidence
+
+
+def test_lab_eval_rejects_when_load_canary_blocked(tmp_path: Path) -> None:
+    compatibility = _rejected_compatibility_report(tmp_path)
+    load_report = build_load_canary_report(
+        compatibility_report=compatibility,
+        created_at=datetime(2026, 6, 24, tzinfo=UTC),
+    )
+
+    report = build_lab_eval_report(
+        load_canary_report=load_report,
+        created_at=datetime(2026, 6, 24, tzinfo=UTC),
+    )
+    rendered = render_lab_eval_markdown(report)
+
+    assert report["schema"] == FABLE_LAB_EVAL_SCHEMA
+    assert report["status"] == "rejected_runtime_unstable"
+    assert report["labEval"]["attempted"] is False
+    assert report["decision"]["admittedPrivateAuthorizedSecurityLabCanary"] is False
+    assert report["decision"]["canRouteKhalaGeneralTraffic"] is False
+    assert report["prerequisites"]["authorizedSecurityUnscopedRequestsBlocked"] is True
+    assert report["blockers"][0]["code"] == "adapter_runtime_targets_missing"
+    assert "No lab eval traffic was run" in rendered
+    assert "Contains prompts: false" in rendered
+
+
+def test_lab_eval_cli_writes_public_safe_rejection_report(tmp_path: Path) -> None:
+    compatibility = _rejected_compatibility_report(tmp_path)
+    load_report = build_load_canary_report(
+        compatibility_report=compatibility,
+        created_at=datetime(2026, 6, 24, tzinfo=UTC),
+    )
+    load_path = tmp_path / "load-canary.json"
+    load_path.write_text(json.dumps(load_report))
+    output_dir = tmp_path / "out"
+
+    status = lab_eval_main(
+        [
+            "--load-canary-report",
+            str(load_path),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert status == 2
+    evidence = (output_dir / "deepseek-v4-fable-lab-eval-decision.md").read_text()
+    assert "Status: `rejected_runtime_unstable`" in evidence
+    assert "Attempted: `false`" in evidence
+    assert "Contains target details: false" in evidence
 
 
 def _write_fable_metadata(directory: Path) -> Path:

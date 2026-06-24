@@ -20,6 +20,8 @@ Source:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-load-canary.md`](evidence/2026-06-24-deepseek-v4-fable-load-canary.md)
 - Authorized-security policy evidence:
   [`docs/evidence/2026-06-24-deepseek-v4-fable-authorized-security-policy.md`](evidence/2026-06-24-deepseek-v4-fable-authorized-security-policy.md)
+- Lab eval decision evidence:
+  [`docs/evidence/2026-06-24-deepseek-v4-fable-lab-eval-decision.md`](evidence/2026-06-24-deepseek-v4-fable-lab-eval-decision.md)
 
 ## Summary
 
@@ -262,15 +264,31 @@ boundary required before any future private Fable lab canary.
 Evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-fable-authorized-security-policy.md`](evidence/2026-06-24-deepseek-v4-fable-authorized-security-policy.md)
 
+## Issue #70 result
+
+Issue #70 added the final public-safe lab-eval decision artifact. Because issue
+#68 never reached an admitted private load canary, Hydralisk did not run lab
+traffic, did not record raw prompts or model outputs, did not touch production
+or third-party targets, and did not collect timing or quality metrics.
+
+The final Fable profile status is `rejected_runtime_unstable`: the
+adapter-backed runtime path is not stable/admitted enough to evaluate. Fable is
+not admitted as a private authorized-security canary, a general Khala model, a
+public alias, or an MPP/public-sale product.
+
+Evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-fable-lab-eval-decision.md`](evidence/2026-06-24-deepseek-v4-fable-lab-eval-decision.md)
+
 ## Decision
 
 Hydralisk should not attempt a merged-checkpoint admission for Fable today.
 The adapter compatibility probe now rejects the current G4 runtime path before
-load. The next useful technical step is an explicit adapter-to-packed-runtime
-mapping, or a different base/runtime path that exposes the Fable target module
-names. Even if a future probe succeeds, Fable should remain an
-authorized-security research capability, not a general Khala model and not a
-public inference product.
+load, and the final lab-eval gate rejects the profile because no private load
+canary was admitted. The next useful technical step is an explicit
+adapter-to-packed-runtime mapping, or a different base/runtime path that
+exposes the Fable target module names. Even if a future probe succeeds, Fable
+should remain an authorized-security research capability, not a general Khala
+model and not a public inference product.
 
 ## Public safety
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-fable-adapter-g4-20260624",
-  "status": "rejected_adapter_incompatible",
+  "status": "rejected_runtime_unstable",
   "servedModel": "Chunjiang-Intelligence/DeepSeek-v4-Fable",
   "publicModelAliases": [],
   "model": {
@@ -71,5 +71,20 @@
       "toolPolicy",
       "networkPolicy"
     ]
+  },
+  "labEval": {
+    "status": "rejected_runtime_unstable",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/70",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-fable-lab-eval-decision.md",
+    "attempted": false,
+    "reason": "Issue #68 blocked the private load canary before runtime/model interaction, so issue #70 did not run authorized-security lab eval traffic or collect quality/timing metrics."
+  },
+  "finalDecision": {
+    "status": "rejected_runtime_unstable",
+    "admittedPrivateAuthorizedSecurityLabCanary": false,
+    "publicAliasesAllowed": false,
+    "khalaGeneralRouteAllowed": false,
+    "mppPublicSaleAllowed": false,
+    "nextStep": "map_or_retarget_fable_lora_modules_before_any_lab_eval"
   }
 }
