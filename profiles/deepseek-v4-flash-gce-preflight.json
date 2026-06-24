@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "blocked_nvfp4_oproj_and_flashinfer_trtllm_moe_on_g4_sm120",
+  "status": "blocked_nvfp4_oproj_and_synthetic_flashinfer_trtllm_moe_on_g4_sm120",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -134,7 +134,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/17",
       "https://github.com/OpenAgentsInc/hydralisk/issues/18",
       "https://github.com/OpenAgentsInc/hydralisk/issues/19",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/20"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/20",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/21"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -151,7 +152,8 @@
       "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-private-egress-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-no-xet-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-triton-g4.md",
-      "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-oproj-g4.md"
+      "docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-oproj-g4.md",
+      "docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-g4.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -491,6 +493,57 @@
       "nextProbe": "isolate the FlashInfer TRTLLM NVFP4 MoE kernel on SM120 with a small repro, or stop the stock-vLLM G4 route and move to known-good H100/H200/B200/GB200/DGX hardware or a custom SGLang/offload engine"
     }
   },
+  "flashinferTrtllmNvfp4MoeG4Repro": {
+    "status": "failed_synthetic_flashinfer_trtllm_nvfp4_moe_gemm_on_sm120",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/21",
+    "script": "scripts/probe-flashinfer-trtllm-nvfp4-moe-gce.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-g4.md",
+    "host": {
+      "instance": "hydralisk-deepseek-v4-nvfp4-g4-2g-b-20260624073921",
+      "project": "openagentsgemini",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-96",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 2,
+      "gpuName": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "driverVersion": "580.159.03",
+      "externalIp": null
+    },
+    "image": "hydralisk-deepseek-v4-nvfp4-sm120-oproj-bypass-vllm:20260624085429",
+    "runtime": {
+      "flashinfer": "0.6.12",
+      "torch": "2.11.0+cu130",
+      "cudaRuntime": "13.0",
+      "capability": [
+        12,
+        0
+      ]
+    },
+    "syntheticShape": {
+      "seqLen": 1024,
+      "hiddenSize": 4096,
+      "intermediateSize": 2048,
+      "numExperts": 256,
+      "localNumExperts": 128,
+      "topK": 6,
+      "loadsModelWeights": false
+    },
+    "result": {
+      "ok": false,
+      "stage": "synthetic_flashinfer_trtllm_nvfp4_moe_gemm",
+      "site": "flashinfer.fused_moe.trtllm_fp4_block_scale_routed_moe -> trtllm_batched_gemm_runner.cu:286",
+      "type": "RuntimeError",
+      "numBatches": 128,
+      "gemmMNK": "1024 4096 4096",
+      "kernelFamily": "sm100f",
+      "message": "Synthetic tensors reproduce the same FlashInfer TRTLLM NVFP4 MoE GEMM runner error observed after the invalid zero-o_proj full-model bypass."
+    },
+    "blocker": {
+      "stage": "flashinfer_trtllm_nvfp4_moe_kernel_on_sm120",
+      "message": "The MoE GEMM failure is independent of DeepSeek model loading, Hugging Face transfer, vLLM scheduling, prompts, and o_proj.",
+      "nextProbe": "upstream/kernel work for FlashInfer TRTLLM NVFP4 on SM120, custom SGLang/offload kernels, or pivot to known-good H100/H200/B200/GB200/DGX hardware"
+    }
+  },
   "promotionGates": [
     "exact model revision or local artifact digest pinned",
     "engine version and container image digest pinned",
@@ -501,8 +554,8 @@
     "public-safe Hydralisk receipt is emitted"
   ],
   "recommendation": {
-    "nextLane": "stop_stock_vllm_g4_or_isolate_flashinfer_trtllm_nvfp4_sm120_kernel",
-    "why": "Google admitted the two-card G4 lane and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects every tested NVFP4 MoE backend for this two-card G4 configuration. A derived-image SM120 gate patch advances the FlashInfer TRTLLM NVFP4 path into vLLM startup. Cloud NAT fixes private outbound artifact access without restoring a VM external IP, and HF_HUB_DISABLE_XET=1 avoids the prior transfer wedge. Forcing --linear-backend triton with the E8M0 upcast patch clears the dense FP8 CUTLASS blocker. The provider-image o_proj patch confirms the valid path is blocked by DeepGEMM scale-factor layout, and an invalid zero-o_proj load-only bypass exposes a second blocker in FlashInfer TRTLLM NVFP4 MoE GEMM on the SM100-family kernel path. The current two-card G4 stock-vLLM path is therefore compatibility research, not near-serving. The next executable step is either a small FlashInfer TRTLLM NVFP4 SM120 kernel repro or a pivot to known-good H100/H200/B200/GB200/DGX hardware or custom SGLang/offload kernels.",
+    "nextLane": "stop_stock_vllm_g4_and_pivot_to_kernel_work_custom_offload_or_known_good_hardware",
+    "why": "Google admitted the two-card G4 lane and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects every tested NVFP4 MoE backend for this two-card G4 configuration. A derived-image SM120 gate patch advances the FlashInfer TRTLLM NVFP4 path into vLLM startup. Cloud NAT fixes private outbound artifact access without restoring a VM external IP, and HF_HUB_DISABLE_XET=1 avoids the prior transfer wedge. Forcing --linear-backend triton with the E8M0 upcast patch clears the dense FP8 CUTLASS blocker. The provider-image o_proj patch confirms the valid path is blocked by DeepGEMM scale-factor layout, and an invalid zero-o_proj load-only bypass exposes a second blocker in FlashInfer TRTLLM NVFP4 MoE GEMM on the SM100-family kernel path. The synthetic FlashInfer repro reproduces that MoE GEMM failure without model weights, Hugging Face transfer, vLLM scheduling, prompts, or o_proj. The current two-card G4 stock-vLLM path is therefore compatibility research, not near-serving. The next executable step is upstream/kernel work for FlashInfer TRTLLM NVFP4 on SM120, a custom SGLang/offload kernel path, or a pivot to known-good H100/H200/B200/GB200/DGX hardware.",
     "publicClaim": "none"
   },
   "publicSafety": {

@@ -391,6 +391,55 @@ def test_nvfp4_g4_probe_refuses_non_probe_targets(tmp_path: Path) -> None:
     assert "fresh hydralisk-deepseek-v4" in rejected.stderr
 
 
+def test_flashinfer_trtllm_nvfp4_moe_probe_is_public_safe_and_target_scoped(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-flashinfer-trtllm-nvfp4-moe-gce.sh"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path),
+            "TARGET_INSTANCE": "hydralisk-deepseek-v4-nvfp4-g4-test",
+            "TARGET_ZONE": "us-central1-b",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "flashinfer-trtllm-nvfp4-moe-probe.md").read_text()
+    script_text = script.read_text()
+
+    assert "Wrote" in result.stdout
+    assert "hydralisk-deepseek-v4-nvfp4-g4-test" in evidence
+    assert "Sequence length: `1024`" in evidence
+    assert "Contains weights: false" in evidence
+    assert "trtllm_fp4_block_scale_routed_moe" in script_text
+    assert "hydralisk.flashinfer.trtllm-nvfp4-moe.synthetic.v1" in script_text
+
+    rejected = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path / "rejected"),
+            "TARGET_INSTANCE": "hydralisk-gptoss20b-l4-prod",
+            "TARGET_ZONE": "us-central1-a",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert rejected.returncode == 2
+    assert "fresh hydralisk-deepseek-v4" in rejected.stderr
+
+
 def test_published_recipe_probe_script_is_public_safe_in_dry_run(
     tmp_path: Path,
 ) -> None:

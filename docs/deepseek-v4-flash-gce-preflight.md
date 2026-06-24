@@ -55,6 +55,9 @@ NVFP4 Triton-linear G4 evidence:
 NVFP4 o_proj G4 evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-nvfp4-oproj-g4.md`](evidence/2026-06-24-deepseek-v4-flash-nvfp4-oproj-g4.md)
 
+FlashInfer TRTLLM NVFP4 MoE G4 evidence:
+[`docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-g4.md`](evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -345,6 +348,13 @@ stock-vLLM G4 path should not be treated as close to serving unless both the
 DeepGEMM `o_proj` scale layout and the FlashInfer TRTLLM NVFP4 MoE kernel are
 made to run on RTX PRO 6000 SM120.
 
+The FlashInfer TRTLLM repro then isolated the second blocker from full-model
+load. With synthetic tensors only, FlashInfer `0.6.12`, Torch `2.11.0+cu130`,
+CUDA runtime `13.0`, and RTX PRO 6000 SM120 reproduced the same
+`trtllm_batched_gemm_runner.cu:286` failure at `numBatches=128` and
+`GemmMNK=1024 4096 4096`. That removes Hugging Face transfer, model weights,
+vLLM scheduling, and `o_proj` as explanations for the MoE GEMM failure.
+
 The first viable lanes are:
 
 1. `g4-standard-96`, 2 x RTX PRO 6000. Google admitted this lane; it clears
@@ -434,7 +444,11 @@ the Xet/vLLM transfer wedge. The active blocker is now vLLM's dense FP8
 is cleared and the lane stops on DeepGEMM `o_proj` layout handling before
 readiness. After an invalid zero-`o_proj` load-only bypass, the lane stops on
 FlashInfer TRTLLM NVFP4 MoE GEMM execution. The current G4 stack therefore has
-at least two SM120 compatibility blockers before valid readiness.
+at least two SM120 compatibility blockers before valid readiness. The synthetic
+FlashInfer repro confirms the MoE blocker independently of full-model loading,
+so the next honest step is upstream/kernel work, a custom SGLang/offload path,
+or known-good H100/H200/B200/GB200/DGX-class hardware rather than more
+stock-vLLM G4 flag trials.
 
 ## Promotion boundary
 
