@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "glm-5.2-fp8-sglang-g4-rtx-pro-6000-8g-preflight-20260624",
-  "status": "admission_only",
+  "status": "load_smoke_blocked",
   "servedModel": "zai-org/GLM-5.2-FP8",
   "publicModelAliases": [],
   "model": {
@@ -64,22 +64,45 @@
       }
     ]
   },
+  "loadSmoke": {
+    "status": "blocked",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/4",
+    "evidenceRef": "docs/evidence/2026-06-24-glm-52-sglang-load-smoke.md",
+    "attemptedAt": "2026-06-24T04:07:54Z",
+    "instance": "hydralisk-glm52-active-smoke-g4-b-20260624040754",
+    "zone": "us-central1-b",
+    "provisioningModel": "SPOT",
+    "machineType": "g4-standard-384",
+    "accelerator": "nvidia-rtx-pro-6000",
+    "gpuCount": 8,
+    "cleanup": "deleted after blocker evidence capture",
+    "outcome": "weights_loaded_but_not_servable_on_g4_with_pinned_sglang",
+    "blockers": [
+      {
+        "code": "memory_pool_insufficient_at_32k_and_8k",
+        "summary": "32K at mem-fraction-static 0.80 and 8K at 0.92 failed SGLang memory-pool initialization after weight load."
+      },
+      {
+        "code": "rtx_pro_6000_dsa_kernel_unsupported_architecture",
+        "summary": "A minimized 4K run loaded GLM-5.2 FP8 weights and allocated KV cache, then failed in SGLang DSA/FlashInfer TRTLLM attention with unsupported architecture on RTX PRO 6000."
+      }
+    ]
+  },
   "runtimePlan": {
-    "mode": "monolithic_sglang_load_smoke_first",
+    "mode": "g4_blocker_reproduction",
     "launchCommand": [
       "docker",
       "run",
-      "--gpus",
-      "all",
+      "--gpus=all",
+      "--cap-add",
+      "SYS_NICE",
       "--ipc=host",
       "--shm-size",
       "64g",
       "-p",
-      "30000:30000",
+      "127.0.0.1:30000:30000",
       "-v",
       "/var/lib/hydralisk/huggingface:/root/.cache/huggingface",
-      "-e",
-      "HF_TOKEN",
       "lmsysorg/sglang:v0.5.13.post1@sha256:74084d80c3b7e5649f4b3433b1169db3da26c9b1e31752a43045a34cc26ba5d5",
       "python3",
       "-m",
@@ -92,22 +115,18 @@
       "0.0.0.0",
       "--port",
       "30000",
-      "--tp",
+      "--tp-size",
       "8",
+      "--context-length",
+      "4096",
+      "--max-total-tokens",
+      "4096",
       "--mem-fraction-static",
-      "0.80",
-      "--reasoning-parser",
-      "glm45",
-      "--tool-call-parser",
-      "glm47",
-      "--speculative-algorithm",
-      "EAGLE",
-      "--speculative-num-steps",
-      "5",
-      "--speculative-eagle-topk",
-      "1",
-      "--speculative-num-draft-tokens",
-      "6"
+      "0.98",
+      "--disable-custom-all-reduce",
+      "--disable-cuda-graph",
+      "--disable-piecewise-cuda-graph",
+      "--disable-radix-cache"
     ]
   },
   "sglang": {
@@ -129,8 +148,8 @@
     },
     "context": {
       "advertisedWindowTokens": 1048576,
-      "admittedSmokeCeilingTokens": 32768,
-      "fullWindowStatus": "not_admitted_on_g4_preflight"
+      "attemptedSmokeCeilingTokens": 4096,
+      "fullWindowStatus": "not_supported_on_g4_with_pinned_sglang_image"
     },
     "parsers": {
       "reasoning": "glm45",
@@ -146,7 +165,7 @@
       "numSteps": 5,
       "topK": 1,
       "draftTokens": 6,
-      "status": "planned_for_first_completion_smoke"
+      "status": "not_reached_on_g4_load_smoke"
     },
     "dynamo": {
       "state": "disabled_preflight",
@@ -155,14 +174,15 @@
     }
   },
   "smoke": {
-    "status": "not_run",
-    "blockerCode": "load_smoke_pending",
-    "reason": "The issue scope admitted and measured the G4 node, then deleted it before model download/load. Next step is a short-lived monolithic SGLang load smoke using this profile.",
+    "status": "blocked",
+    "blockerCode": "rtx_pro_6000_sglang_dsa_kernel_unsupported_architecture",
+    "reason": "GLM-5.2 FP8 weight load completed on 8 x RTX PRO 6000 only under a minimized 4K, mem-fraction-static 0.98 plan, but the pinned SGLang image failed before serving in the DSA attention path with FlashInfer TRTLLM unsupported architecture. Larger 32K and 8K attempts failed memory-pool initialization.",
+    "evidenceRef": "docs/evidence/2026-06-24-glm-52-sglang-load-smoke.md",
     "publicSafePromptPolicy": "tiny synthetic prompts only; no private source, customer data, hidden reasoning traces, or raw prompt/response storage"
   },
   "recommendation": {
-    "nextLane": "monolithic_sglang_load_smoke_on_g4_then_supported_h200_or_b200_benchmark",
-    "why": "G4/RTX PRO 6000 admitted and has 783096 MiB aggregate HBM, but SGLang's GLM-5.2 verified matrix names H200/B200/B300/GB300. Treat G4 as a quick load-risk probe, not a production routing lane.",
+    "nextLane": "h200_or_b200_monolithic_sglang_load_smoke",
+    "why": "G4/RTX PRO 6000 admitted and can materialize GLM-5.2 FP8 weights, but it has too little useful KV headroom and the pinned SGLang GLM-5.2 DSA kernel path reports unsupported architecture. Repeat on H200 or B200, which are inside SGLang's documented GLM-5.2 target matrix.",
     "publicClaim": "no_public_khala_or_model_selector_claim_until_load_generation_eval_and_capacity_receipts_pass"
   },
   "publicSafety": {

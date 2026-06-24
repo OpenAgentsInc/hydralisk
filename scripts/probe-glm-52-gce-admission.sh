@@ -119,8 +119,8 @@ printf "NCCL_LIBRARY\t"
 }
 
 attempt 1 b200 us-central1-b a4-highgpu-8g nvidia-b200 8 || \
-attempt 2 rtx-pro-6000 us-central1-b g4-standard-384 nvidia-rtx-pro-6000 8 || \
-attempt 3 h200 us-central1-b a3-ultragpu-8g nvidia-h200-141gb 8 || \
+attempt 2 h200 us-central1-b a3-ultragpu-8g nvidia-h200-141gb 8 || \
+attempt 3 rtx-pro-6000 us-central1-b g4-standard-384 nvidia-rtx-pro-6000 8 || \
 attempt 4 h100 us-central1-a a3-highgpu-8g nvidia-h100-80gb 8 || true
 
 if [[ -n "$ADMITTED_INSTANCE" ]]; then

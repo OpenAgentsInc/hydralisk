@@ -7,6 +7,7 @@ Profile:
 
 Evidence:
 [`docs/evidence/2026-06-24-glm-52-gce-admission-preflight.md`](evidence/2026-06-24-glm-52-gce-admission-preflight.md)
+[`docs/evidence/2026-06-24-glm-52-sglang-load-smoke.md`](evidence/2026-06-24-glm-52-sglang-load-smoke.md)
 
 ## Boundary
 
@@ -39,8 +40,8 @@ https://lmsysorg.mintlify.app/cookbook/autoregressive/GLM/GLM-5.2
 The helper script attempts capacity in this order:
 
 1. B200: `a4-highgpu-8g` in `us-central1-b`
-2. RTX PRO 6000 Blackwell: `g4-standard-384` in `us-central1-b`
-3. H200: `a3-ultragpu-8g` in `us-central1-b`
+2. H200: `a3-ultragpu-8g` in `us-central1-b`
+3. RTX PRO 6000 Blackwell: `g4-standard-384` in `us-central1-b`
 4. H100: `a3-highgpu-8g` in `us-central1-a`
 
 Run:
@@ -55,6 +56,13 @@ by default. Set `KEEP_INSTANCE=1` only when you are ready to immediately run
 the model-load smoke and have an operator-visible cleanup plan.
 
 ## Load-only smoke
+
+Status update, 2026-06-24: G4 / RTX PRO 6000 is blocked for this pinned GLM-5.2
+SGLang profile. The node can admit, the container can see all GPUs, and GLM-5.2
+FP8 weights can load only under a minimized 4K memory plan. The server still
+fails before a ready endpoint because the SGLang DSA attention path reports
+unsupported architecture on RTX PRO 6000. Prefer H200 or B200 for the next
+load smoke.
 
 Use the admitted instance only after the hardware packet is captured. The first
 load smoke should be monolithic SGLang, no Dynamo, no public ingress, and no
@@ -73,6 +81,7 @@ Container launch:
 
 ```bash
 docker run --rm --gpus all \
+  --cap-add SYS_NICE \
   --ipc=host \
   --shm-size 64g \
   -p 127.0.0.1:30000:30000 \
@@ -84,7 +93,8 @@ docker run --rm --gpus all \
     --revision 70311cfa0158cce7dd2cf5d2e04f68e3fdc3efc1 \
     --host 0.0.0.0 \
     --port 30000 \
-    --tp 8 \
+    --tp-size 8 \
+    --context-length 32768 \
     --mem-fraction-static 0.80 \
     --reasoning-parser glm45 \
     --tool-call-parser glm47 \
@@ -97,6 +107,37 @@ docker run --rm --gpus all \
 For the first smoke, do not enable HiCache or Dynamo. Record whether SGLang
 starts, whether CUDA/NCCL is visible inside the container, peak GPU memory, and
 any OOM/parser/runtime blocker.
+
+If you are reproducing the blocked G4 lane instead of running H200/B200, the
+minimal failing command that got farthest was:
+
+```bash
+docker run --rm --gpus all \
+  --cap-add SYS_NICE \
+  --ipc=host \
+  --shm-size 64g \
+  -p 127.0.0.1:30000:30000 \
+  -v /var/lib/hydralisk/huggingface:/root/.cache/huggingface \
+  lmsysorg/sglang:v0.5.13.post1@sha256:74084d80c3b7e5649f4b3433b1169db3da26c9b1e31752a43045a34cc26ba5d5 \
+  python3 -m sglang.launch_server \
+    --model-path zai-org/GLM-5.2-FP8 \
+    --revision 70311cfa0158cce7dd2cf5d2e04f68e3fdc3efc1 \
+    --host 0.0.0.0 \
+    --port 30000 \
+    --tp-size 8 \
+    --context-length 4096 \
+    --max-total-tokens 4096 \
+    --mem-fraction-static 0.98 \
+    --disable-custom-all-reduce \
+    --disable-cuda-graph \
+    --disable-piecewise-cuda-graph \
+    --disable-radix-cache
+```
+
+That command loaded all 141 FP8 shards and allocated a 4096-token KV cache, but
+failed before readiness with FlashInfer TRTLLM DSA unsupported architecture on
+RTX PRO 6000. Do not spend more G4 time on GLM-5.2 unless the SGLang/FlashInfer
+kernel support story changes.
 
 Tiny public-safe completion smoke:
 
@@ -133,16 +174,16 @@ HYDRALISK_QUANTIZATION_WEIGHTS=FP8
 HYDRALISK_MODEL_PROFILE_REF=profiles/glm-5.2-fp8-sglang.json
 HYDRALISK_CONTAINER_IMAGE=lmsysorg/sglang:v0.5.13.post1@sha256:74084d80c3b7e5649f4b3433b1169db3da26c9b1e31752a43045a34cc26ba5d5
 HYDRALISK_CONTEXT_WINDOW_TOKENS=1048576
-HYDRALISK_ADMITTED_CONTEXT_TOKENS=32768
+HYDRALISK_ADMITTED_CONTEXT_TOKENS=4096
 HYDRALISK_TENSOR_PARALLEL_SIZE=8
 HYDRALISK_REASONING_PARSER=glm45
 HYDRALISK_TOOL_CALL_PARSER=glm47
-HYDRALISK_CACHE_POLICY='prefix-cache-enabled; hicache-planned'
+HYDRALISK_CACHE_POLICY='g4-blocked; prefix-cache-disabled-in-minimal-repro; hicache-planned-after-supported-gpu'
 HYDRALISK_KV_CACHE_DTYPE=auto
 HYDRALISK_DYNAMO_MODE=disabled_preflight
 HYDRALISK_SPECULATIVE_DECODING=EAGLE_MTP_planned
 HYDRALISK_ADMISSION_REF=admission.hydralisk.glm52.g4.rtxpro6000.20260624T034345Z
-HYDRALISK_EVIDENCE_REF=docs/evidence/2026-06-24-glm-52-gce-admission-preflight.md
+HYDRALISK_EVIDENCE_REF=docs/evidence/2026-06-24-glm-52-sglang-load-smoke.md
 ```
 
 Keep `HYDRALISK_PUBLIC_MODEL_ALIASES` empty for raw GLM preflight. Any later
@@ -151,10 +192,10 @@ Khala consumption must happen behind the product-level `khala` /
 
 ## Promotion ladder
 
-1. G4 monolithic load-only smoke at 8K to 32K context.
+1. H200 or B200 monolithic load-only smoke at 8K to 32K context.
 2. Tiny public-safe completion smoke with usage and latency.
-3. Repeat on H200 or B200 because those are in the SGLang GLM-5.2 target
-   matrix.
+3. Repeat at larger context on H200 or B200 because those are in the SGLang
+   GLM-5.2 target matrix.
 4. Add 8K-in / 1K-out, then 32K/128K prefill tests.
 5. Add HiCache only after baseline memory and TTFT are understood.
 6. Add Dynamo KV-aware routing after multiple replicas exist.

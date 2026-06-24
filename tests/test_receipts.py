@@ -59,16 +59,19 @@ def test_glm_profile_evidence_is_public_safe_and_additive() -> None:
             "@sha256:74084d80c3b7e5649f4b3433b1169db3da26c9b1e31752a43045a34cc26ba5d5"
         ),
         context_window_tokens=1_048_576,
-        admitted_context_tokens=32_768,
+        admitted_context_tokens=4_096,
         tensor_parallel_size=8,
         reasoning_parser="glm45",
         tool_call_parser="glm47",
-        cache_policy="prefix-cache-enabled; hicache-planned",
+        cache_policy=(
+            "g4-blocked; prefix-cache-disabled-in-minimal-repro; "
+            "hicache-planned-after-supported-gpu"
+        ),
         kv_cache_dtype="auto",
         dynamo_mode="disabled_preflight",
         speculative_decoding="EAGLE_MTP_planned",
         admission_ref="admission.hydralisk.glm52.g4.rtxpro6000.20260624T034345Z",
-        evidence_ref="docs/evidence/2026-06-24-glm-52-gce-admission-preflight.md",
+        evidence_ref="docs/evidence/2026-06-24-glm-52-sglang-load-smoke.md",
     )
 
     capabilities = build_capabilities(settings)
@@ -80,8 +83,8 @@ def test_glm_profile_evidence_is_public_safe_and_additive() -> None:
         config=settings,
         blockers=[
             {
-                "code": "load_smoke_not_run",
-                "message": "Admission-only profile evidence; model load smoke is pending.",
+                "code": "rtx_pro_6000_sglang_dsa_kernel_unsupported_architecture",
+                "message": "G4 load smoke is blocked before serving.",
             }
         ],
     )
@@ -96,7 +99,10 @@ def test_glm_profile_evidence_is_public_safe_and_additive() -> None:
     assert receipt["profile"]["evidence"]["admissionRef"].startswith(
         "admission.hydralisk.glm52."
     )
-    assert receipt["blockers"][0]["code"] == "load_smoke_not_run"
+    assert (
+        receipt["blockers"][0]["code"]
+        == "rtx_pro_6000_sglang_dsa_kernel_unsupported_architecture"
+    )
     assert "messages" not in str(receipt).lower()
     assert "hf_token" not in str(receipt).lower()
     assert "bearer" not in str(receipt).lower()
