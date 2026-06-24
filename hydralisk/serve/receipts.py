@@ -79,6 +79,7 @@ def build_receipt(
         "runRef": run_ref,
         "createdAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "model": config.served_model,
+        "servedModel": config.served_model,
         "servedAlias": served_alias,
         "engine": config.engine,
         "engineVersion": config.engine_version,

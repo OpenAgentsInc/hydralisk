@@ -121,6 +121,10 @@ do not commit it. Set `HYDRALISK_ENGINE_VERSION` to the output of
 `vllm --version`; the helper installer does this automatically for new env
 files.
 
+Install `ninja-build` before starting vLLM. FlashInfer may JIT sampling
+kernels during engine profiling and expects the `ninja` executable on the
+service path.
+
 ```bash
 sudo install -m 0644 deploy/systemd/vllm-gpt-oss-20b.service /etc/systemd/system/
 sudo install -m 0644 deploy/systemd/hydralisk-proxy.service /etc/systemd/system/

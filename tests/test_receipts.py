@@ -30,6 +30,8 @@ def test_receipt_store_round_trips_public_safe_receipt(tmp_path) -> None:
 
     assert stored == receipt
     assert stored["schema"] == "hydralisk.serve.run_receipt.v1"
+    assert stored["model"] == "openai/gpt-oss-20b"
+    assert stored["servedModel"] == "openai/gpt-oss-20b"
     assert stored["publicSafe"] is True
     assert stored["usage"]["totalTokens"] == 5
     assert "messages" not in str(stored).lower()
