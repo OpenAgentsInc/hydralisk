@@ -136,6 +136,9 @@ DeepSeek V4 sparse MLA full 8 x G4 smoke evidence:
 DeepSeek V4 issue #60 8 x G4 MVP smoke evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md`](evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md)
 
+DeepSeek V4 issue #61 vector-gather G4 timing evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md`](evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -1107,6 +1110,19 @@ request against `nvidia/DeepSeek-V4-Flash-NVFP4` on 8 x RTX PRO 6000. This is
 an MVP execution proof only: `max_model_len=2048`, one sequence, no quality or
 throughput eval, and `HYDRALISK_DEEPSEEK_INDEXER_SWA_ONLY=1` disables the
 compressed sparse top-k indexer path.
+
+Issue #61 then removed the worst performance footgun in the fallback by
+replacing the sparse MLA helper's Python loop over heads and candidates with a
+vectorized gather plus batched softmax path. On the same 8 x G4 host, the
+derived v3 image
+`hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:20260624v3vector2`
+(`sha256:a43653081fe01ab53901ecdff7415d2d8c40a6ea76b5c923aaff1b0e0e661451`)
+kept the public-safe completion smoke passing and improved warmed 32-token
+streaming from 13.115 s TTFT / 0.885 tok/s decode to 0.317 s TTFT /
+11.229 tok/s decode. This is now worth a Khala readiness gate, but not yet a
+Khala serving claim: startup is still roughly 116 s, first warmup is roughly
+30 s, `max_model_len=2048`, `max_num_seqs=1`, and no repeated-run stability,
+quality, concurrency, or long-context gate has passed.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable

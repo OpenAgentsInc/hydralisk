@@ -10,7 +10,7 @@ from typing import Any
 
 TARGET_RELATIVE_PATH = Path("vllm/models/deepseek_v4/nvidia/flashinfer_sparse.py")
 PATCH_SENTINEL = "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"
-PATCH_VERSION_SENTINEL = "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK_CACHE_LAYOUT_V2"
+PATCH_VERSION_SENTINEL = "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK_VECTOR_GATHER_V3"
 
 
 @dataclass(frozen=True)
@@ -28,7 +28,7 @@ HELPER_BLOCK = r'''
 
 _HYDRALISK_SPARSE_MLA_FALLBACK_ENV = "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"
 _HYDRALISK_SPARSE_MLA_FALLBACK_VERSION = (
-    "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK_CACHE_LAYOUT_V2"
+    "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK_VECTOR_GATHER_V3"
 )
 
 
@@ -74,18 +74,67 @@ def _hydralisk_sparse_mla_cache_layout(
     )
 
 
-def _hydralisk_sparse_mla_cache_row(
+def _hydralisk_sparse_mla_gather_cache(
     cache: torch.Tensor,
     *,
-    slot_id: int,
-    kv_head: int,
+    slot_ids: torch.Tensor,
+    num_heads: int,
     page_size: int,
 ) -> torch.Tensor:
-    page = slot_id // page_size
-    offset = slot_id % page_size
+    pages = torch.div(slot_ids, page_size, rounding_mode="floor").to(dtype=torch.long)
+    offsets = torch.remainder(slot_ids, page_size).to(dtype=torch.long)
     if cache.dim() == 4:
-        return cache[page, kv_head, offset]
-    return cache[page, offset]
+        gathered = cache[pages, :, offsets, :]
+        if gathered.shape[1] == 1:
+            return gathered[:, 0, :].unsqueeze(0).expand(num_heads, -1, -1)
+        return gathered.permute(1, 0, 2)
+    gathered = cache[pages, offsets, :]
+    return gathered.unsqueeze(0).expand(num_heads, -1, -1)
+
+
+def _hydralisk_sparse_mla_filter_slots(
+    slot_ids: torch.Tensor,
+    *,
+    total_slots: int,
+) -> torch.Tensor:
+    if slot_ids.numel() == 0:
+        return slot_ids.to(dtype=torch.long)
+    slot_ids = slot_ids.to(dtype=torch.long)
+    return slot_ids[(slot_ids >= 0) & (slot_ids < total_slots)]
+
+
+def _hydralisk_sparse_mla_candidate_keys(
+    *,
+    swa_kv_cache: torch.Tensor,
+    compressed_kv_cache: torch.Tensor,
+    swa_slot_ids: torch.Tensor,
+    compressed_slot_ids: torch.Tensor,
+    num_heads: int,
+    swa_page_size: int,
+    compressed_page_size: int,
+) -> torch.Tensor | None:
+    key_blocks = []
+    if swa_slot_ids.numel() > 0:
+        key_blocks.append(
+            _hydralisk_sparse_mla_gather_cache(
+                swa_kv_cache,
+                slot_ids=swa_slot_ids,
+                num_heads=num_heads,
+                page_size=swa_page_size,
+            )
+        )
+    if compressed_slot_ids.numel() > 0:
+        key_blocks.append(
+            _hydralisk_sparse_mla_gather_cache(
+                compressed_kv_cache,
+                slot_ids=compressed_slot_ids,
+                num_heads=num_heads,
+                page_size=compressed_page_size,
+            )
+        )
+    if not key_blocks:
+        return None
+    return torch.cat(key_blocks, dim=1).to(dtype=torch.float32)
 
 
 def _hydralisk_sparse_mla_fallback(
@@ -164,46 +213,39 @@ def _hydralisk_sparse_mla_fallback(
             max(0, int(sparse_topk_lens[token_idx].item())),
             sparse_indices.shape[1],
         )
-        candidates: list[tuple[torch.Tensor, int, int]] = []
-
-        for raw_slot in sparse_indices[token_idx, : min(window_columns, row_limit)]:
-            slot_id = int(raw_slot.item())
-            if 0 <= slot_id < swa_total_slots:
-                candidates.append((swa_kv_cache, swa_page_size, slot_id))
-
-        for raw_slot in sparse_indices[token_idx, window_columns:row_limit]:
-            slot_id = int(raw_slot.item())
-            if 0 <= slot_id < compressed_total_slots:
-                candidates.append((compressed_kv_cache, compressed_page_size, slot_id))
-
-        if not candidates:
+        if row_limit == 0:
             continue
 
-        for head_idx in range(num_heads):
-            keys = []
-            for cache, candidate_page_size, slot_id in candidates:
-                _, candidate_kv_heads, _, _ = _hydralisk_sparse_mla_cache_layout(
-                    cache,
-                    name="candidate",
-                )
-                kv_head = 0 if candidate_kv_heads == 1 else head_idx
-                keys.append(
-                    _hydralisk_sparse_mla_cache_row(
-                        cache,
-                        slot_id=slot_id,
-                        kv_head=kv_head,
-                        page_size=candidate_page_size,
-                    ).to(
-                        dtype=torch.float32,
-                    )
-                )
-            key_tensor = torch.stack(keys, dim=0)
-            query_vec = query[token_idx, head_idx].to(dtype=torch.float32)
-            weights = torch.softmax(torch.matmul(key_tensor, query_vec) * scale, dim=0)
-            out[token_idx, head_idx] = torch.sum(
-                weights[:, None] * key_tensor,
-                dim=0,
-            ).to(dtype=out.dtype)
+        row = sparse_indices[token_idx, :row_limit]
+        swa_limit = min(window_columns, row_limit)
+        swa_slot_ids = _hydralisk_sparse_mla_filter_slots(
+            row[:swa_limit],
+            total_slots=swa_total_slots,
+        )
+        compressed_slot_ids = _hydralisk_sparse_mla_filter_slots(
+            row[window_columns:row_limit],
+            total_slots=compressed_total_slots,
+        )
+        key_tensor = _hydralisk_sparse_mla_candidate_keys(
+            swa_kv_cache=swa_kv_cache,
+            compressed_kv_cache=compressed_kv_cache,
+            swa_slot_ids=swa_slot_ids,
+            compressed_slot_ids=compressed_slot_ids,
+            num_heads=num_heads,
+            swa_page_size=swa_page_size,
+            compressed_page_size=compressed_page_size,
+        )
+        if key_tensor is None:
+            continue
+
+        query_tensor = query[token_idx, :num_heads].to(dtype=torch.float32)
+        scores = torch.einsum("hcd,hd->hc", key_tensor, query_tensor) * scale
+        weights = torch.softmax(scores, dim=-1)
+        out[token_idx, :num_heads] = torch.einsum(
+            "hc,hcd->hd",
+            weights,
+            key_tensor,
+        ).to(dtype=out.dtype)
 '''
 
 

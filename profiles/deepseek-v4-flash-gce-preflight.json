@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "deepseek_v4_nvfp4_8x_g4_public_safe_completion_smoke_passed_mvp_swa_only_indexer",
+  "status": "deepseek_v4_nvfp4_8x_g4_vector_gather_warm_timing_gate_candidate",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -118,7 +118,7 @@
     "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-flash-gce-preflight.md"
   },
   "loadSmoke": {
-    "status": "passed_public_safe_completion_smoke_mvp_swa_only_indexer",
+    "status": "passed_warm_timing_candidate_mvp_swa_only_indexer",
     "issues": [
       "https://github.com/OpenAgentsInc/hydralisk/issues/6",
       "https://github.com/OpenAgentsInc/hydralisk/issues/7",
@@ -174,7 +174,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/57",
       "https://github.com/OpenAgentsInc/hydralisk/issues/58",
       "https://github.com/OpenAgentsInc/hydralisk/issues/59",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/60"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/60",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/61"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -231,7 +232,8 @@
       "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-fallback-smoke.md",
       "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-g4-live-smoke.md",
       "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md",
-      "docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md"
+      "docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md",
+      "docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -2787,6 +2789,79 @@
       "publicServingClaim": false,
       "why": "This proves an MVP OpenAI-compatible completion on 8 x G4 only. The sparse indexer is SWA-only, max_model_len is 2048, and no quality, throughput, or long-context eval has passed.",
       "nextProbe": "replace or validate the SWA-only sparse indexer fallback on SM120, then run repeated warm and cold chat completions plus a small quality/latency gate"
+    },
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekV4Issue61VectorGatherG4Timing": {
+    "status": "passed_warm_single_request_timing_candidate_not_khala_ready",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/61",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md",
+    "script": "scripts/probe-deepseek-v4-flashinfer-dsv4-g4-gce.sh",
+    "generatedReport": ".hydralisk/deepseek-v4-issue61-vector-v3-20260624-rerun/deepseek-v4-b12x-g4-probe.md",
+    "providerReport": ".hydralisk/deepseek-v4-issue61-vector-v3-20260624-rerun/provider-stack/provider-stack-probe.md",
+    "timingLogDir": "/var/log/hydralisk/deepseek-issue61-v3-timing-20260624173131",
+    "target": {
+      "instance": "hydralisk-deepseek-v4-b12x-g4-8g-b-20260624155352",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-384",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 8,
+      "provisioningModel": "SPOT",
+      "externalIp": null
+    },
+    "container": {
+      "baseImage": "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-metadata:20260624170016",
+      "baseImageDigest": "sha256:ace20aadf862812912b4b63ff9bd19f8b04d335680f2983a1200ebf6eaf47418",
+      "derivedImage": "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:20260624v3vector2",
+      "derivedImageDigest": "sha256:a43653081fe01ab53901ecdff7415d2d8c40a6ea76b5c923aaff1b0e0e661451",
+      "localPatches": [
+        "inherited_b12x_clamp",
+        "inherited_oproj_bf16_einsum_fallback",
+        "sparse_mla_vector_gather_v3_fallback",
+        "swa_only_sparse_indexer_topk_bypass",
+        "swa_only_mla_indexer_metadata_bypass"
+      ]
+    },
+    "timing": {
+      "serverStartToReadyWallSeconds": 116,
+      "warmupNonstream8": {
+        "elapsedSeconds": 30.383387,
+        "promptTokens": 28,
+        "completionTokens": 8,
+        "outputTokensPerSecondFullElapsed": 0.263302
+      },
+      "timedStream32": {
+        "elapsedSeconds": 3.078189,
+        "timeToFirstSseSeconds": 0.317321,
+        "timeToFirstDeltaSeconds": 0.317342,
+        "decodeWindowSeconds": 2.760798,
+        "promptTokens": 28,
+        "completionTokens": 32,
+        "outputTokensPerSecondAfterFirstDelta": 11.228637,
+        "outputTokensPerSecondFullElapsed": 10.395723
+      },
+      "timedNonstream32": {
+        "elapsedSeconds": 3.053477,
+        "promptTokens": 28,
+        "completionTokens": 32,
+        "outputTokensPerSecondFullElapsed": 10.479856
+      },
+      "previousIssue60TimedStream32": {
+        "timeToFirstDeltaSeconds": 13.115089,
+        "outputTokensPerSecondAfterFirstDelta": 0.885175,
+        "outputTokensPerSecondFullElapsed": 0.664776
+      }
+    },
+    "servingBoundary": {
+      "khalaReady": false,
+      "why": "Warm single-request latency is now plausible, but startup, first warmup, repeated-run stability, quality, concurrency, long context, and the SWA-only sparse-indexer bypass remain ungated.",
+      "nextProbe": "run a resident-server readiness harness with warmup, repeated streaming requests, p50/p95 TTFT and decode throughput, and a small public-safe quality gate without committing raw prompts or responses"
     },
     "publicSafety": {
       "containsSecrets": false,

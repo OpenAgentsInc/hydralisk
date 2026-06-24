@@ -224,6 +224,12 @@ Initial targets:
   same 8 x RTX PRO 6000 host. This is an MVP execution proof, not a production
   serving claim: it is capped at `max_model_len=2048`, one sequence, and
   SWA-only sparse attention without quality or throughput gates.
+  Issue #61 vectorized the sparse MLA fallback's cache gather and attention
+  math. The same G4 lane now reaches warmed 32-token streaming with about
+  `0.317s` TTFT and `11.2 tok/s` decode, up from roughly `13.1s` TTFT and
+  `0.89 tok/s`. That makes it worth a Khala readiness gate, but not a Khala
+  serving promise: startup, first warmup, concurrency, long context, and quality
+  still need to pass.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -283,6 +289,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-b12x-eager-mla-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-eager-mla-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md`](docs/evidence/2026-06-24-deepseek-v4-sparse-mla-full-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-issue60-g4-mvp-smoke.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md`](docs/evidence/2026-06-24-deepseek-v4-vector-gather-g4-timing.md)
 - [`docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md`](docs/evidence/2026-06-24-deepseek-flashmla-sparse-audit.md)
 - [`docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md`](docs/evidence/2026-06-24-deepseek-g4-gcloud-auth-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md`](docs/evidence/2026-06-24-deepseek-flashinfer-dsv4-g4-wrapper.md)

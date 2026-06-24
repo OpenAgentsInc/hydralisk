@@ -30,6 +30,10 @@ def test_vllm_sparse_mla_patcher_inserts_fail_closed_fallback_branch() -> None:
     assert "unsupported KV cache dtypes" in patched
     assert "convertible to fp32" in patched
     assert "_hydralisk_sparse_mla_cache_layout" in patched
+    assert "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK_VECTOR_GATHER_V3" in patched
+    assert "_hydralisk_sparse_mla_candidate_keys" in patched
+    assert 'torch.einsum("hcd,hd->hc"' in patched
+    assert 'torch.einsum(\n            "hc,hcd->hd"' in patched
     assert "[pages, page, dim] or [pages, kv_heads, page, dim]" in patched
     assert "one-token decode" in patched
     assert patched.count("flashinfer_trtllm_batch_decode_sparse_mla_dsv4(") == 2

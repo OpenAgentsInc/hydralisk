@@ -367,7 +367,9 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'record["indexerSwaOnlyEnv"]' in script
     assert "unsupported query dtype" in script
     assert "_hydralisk_sparse_mla_floatable_dtype" in script
-    assert "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK_CACHE_LAYOUT_V2" in script
+    assert "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK_VECTOR_GATHER_V3" in script
+    assert "_hydralisk_sparse_mla_candidate_keys" in script
+    assert 'torch.einsum("hcd,hd->hc"' in script
     assert "upgraded {path} for Hydralisk sparse MLA fallback" in script
     assert (
         '-e "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=$HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK"'
