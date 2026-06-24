@@ -97,6 +97,9 @@ B12x masked local-dispatch evidence:
 B12x clamp patch-point evidence:
 [`docs/evidence/2026-06-24-deepseek-b12x-clamp-patch-points.md`](evidence/2026-06-24-deepseek-b12x-clamp-patch-points.md)
 
+B12x clamp overlay evidence:
+[`docs/evidence/2026-06-24-deepseek-b12x-clamp-overlay.md`](evidence/2026-06-24-deepseek-b12x-clamp-overlay.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -757,6 +760,17 @@ gate clamp, symmetric up clamp, then `silu(gate) * up`, wired from
 `gemm1_clamp_limit`. The next issue should therefore patch B12x clamp
 semantics and validate a tiny nonzero local-shard fixture before another
 full-model G4 retry.
+
+Hydralisk now has the first repeatable source overlay for that patch. The
+`hydralisk-deepseek-v4-b12x-clamp-patch` tool accepts a FlashInfer checkout or
+site-packages tree, adds `swiglu_limit` to the B12x top-level API and wrapper,
+forwards it into `launch_sm120_moe`, and marks the static, micro, dynamic, and
+W4A16 gated activation sites with the exact vLLM clamp contract. A dry-run
+against the local FlashInfer reference checkout found all anchors and validated
+the in-memory patched tree. This still is not a serving claim: the next G4
+step must turn those markers into real CuTe/CUTLASS clamp operations, compile
+on RTX PRO 6000, and compare a tiny nonzero local-shard output against the
+Hydralisk reference fixture.
 
 ## Promotion boundary
 

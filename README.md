@@ -146,8 +146,11 @@ Initial targets:
   input on RTX PRO 6000 (`maskedRouteCount=1536`, `outShape=[512,4096]`). The
   source audit now maps that remaining blocker to exact FlashInfer B12x SM120
   patch points: API surface, `launch_sm120_moe`, and the fused gated-SiLU
-  activation path. The remaining B12x work is clamp-capable GPU integration or
-  a kernel-side clamp patch.
+  activation path. Hydralisk now also has a repeatable FlashInfer B12x clamp
+  overlay that dry-runs against the local reference checkout and source-marks
+  the static, micro, dynamic, and W4A16 activation sites for the next G4
+  compile/runtime fixture. The remaining B12x work is clamp-capable GPU
+  integration or a kernel-side clamp patch.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -200,6 +203,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-b12x-local-dispatcher-shim.md`](docs/evidence/2026-06-24-deepseek-b12x-local-dispatcher-shim.md)
 - [`docs/evidence/2026-06-24-flashinfer-b12x-masked-dispatch-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-masked-dispatch-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-clamp-patch-points.md`](docs/evidence/2026-06-24-deepseek-b12x-clamp-patch-points.md)
+- [`docs/evidence/2026-06-24-deepseek-b12x-clamp-overlay.md`](docs/evidence/2026-06-24-deepseek-b12x-clamp-overlay.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

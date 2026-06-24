@@ -22,6 +22,7 @@ hydralisk-proxy = "hydralisk.serve.proxy:main"
 hydralisk-smoke = "hydralisk.serve.smoke:main"
 hydralisk-deepseek-v4-preflight = "hydralisk.admission.deepseek_v4_flash:main"
 hydralisk-deepseek-v4-b12x-clamp-audit = "hydralisk.admission.deepseek_v4_b12x_clamp_audit:main"
+hydralisk-deepseek-v4-b12x-clamp-patch = "hydralisk.admission.deepseek_v4_b12x_clamp_patch:main"
 
 [build-system]
 requires = ["hatchling"]
