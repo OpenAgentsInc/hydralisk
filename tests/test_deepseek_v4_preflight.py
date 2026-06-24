@@ -267,6 +267,7 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"' in script
     assert 'VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"' in script
     assert 'VLLM_ENABLE_EXPERT_PARALLEL="${VLLM_ENABLE_EXPERT_PARALLEL:-1}"' in script
+    assert 'VLLM_ENFORCE_EAGER="${VLLM_ENFORCE_EAGER:-0}"' in script
     assert 'VLLM_E8M0_TRITON_UPCAST="${VLLM_E8M0_TRITON_UPCAST:-0}"' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH="${HYDRALISK_DEEPSEEK_O_PROJ_PATCH:-0}"' in script
     assert (
@@ -319,6 +320,9 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'HF_XET_NUM_CONCURRENT_RANGE_GETS\\t%s' in script
     assert 'VLLM_LINEAR_BACKEND\\t%s' in script
     assert 'VLLM_ENABLE_EXPERT_PARALLEL\\t%s' in script
+    assert 'VLLM_ENFORCE_EAGER\\t%s' in script
+    assert 'COMPLETION_TIMEOUT_SECONDS\\t%s' in script
+    assert 'CONTAINER_START_TIMEOUT_SECONDS\\t%s' in script
     assert 'VLLM_E8M0_TRITON_UPCAST\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\\t%s' in script
@@ -326,9 +330,16 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert '"${hf_env_args[@]}"' in script
     assert 'linear_backend_args+=(--linear-backend "$VLLM_LINEAR_BACKEND")' in script
     assert 'expert_parallel_flags+=(--enable-expert-parallel)' in script
+    assert 'eager_args+=(--enforce-eager)' in script
+    assert "sudo docker inspect -f '{{.State.Status}}'" in script
+    assert "container_start_deadline" in script
+    assert "container_seen=0" in script
+    assert '--max-time "$COMPLETION_TIMEOUT_SECONDS"' in script
+    assert "completion_failed_or_timed_out" in script
     assert "--kv-cache-dtype fp8" in script
     assert "--block-size 256" in script
     assert '"${expert_parallel_flags[@]}"' in script
+    assert '"${eager_args[@]}"' in script
     assert "--tensor-parallel-size \"$gpu_count\"" in script
 
 
@@ -409,8 +420,14 @@ def test_b12x_g4_probe_script_is_public_safe_in_dry_run(
     assert "g4-standard-192" in plan
     assert "flashinfer_b12x" in evidence
     assert "vLLM expert parallel: `0`" in evidence
+    assert "vLLM enforce eager: `0`" in evidence
+    assert "Completion timeout seconds: `180`" in evidence
+    assert "Container start timeout seconds: `180`" in evidence
     assert "Contains weights: false" in evidence
     assert "VLLM_ENABLE_EXPERT_PARALLEL=\"$VLLM_ENABLE_EXPERT_PARALLEL\"" in script_text
+    assert "VLLM_ENFORCE_EAGER=\"$VLLM_ENFORCE_EAGER\"" in script_text
+    assert "COMPLETION_TIMEOUT_SECONDS=\"$COMPLETION_TIMEOUT_SECONDS\"" in script_text
+    assert "CONTAINER_START_TIMEOUT_SECONDS=\"$CONTAINER_START_TIMEOUT_SECONDS\"" in script_text
     assert "hydralisk-gptoss" not in plan
     assert "khala" not in plan.lower()
 

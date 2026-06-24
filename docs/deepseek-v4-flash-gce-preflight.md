@@ -857,6 +857,32 @@ So the remaining full-model G4 blocker is no longer B12x clamp plumbing. The
 next issue should find or add an SM120-safe MLA metadata/backend fallback before
 another `/v1/models` readiness retry.
 
+Issue #39 added a default-off eager-mode launch option to the provider-stack
+smoke harness and retried the same pinned model, image, and 8 x G4 host with
+`VLLM_ENFORCE_EAGER=1`. That moved vLLM past the cudagraph memory-profile path
+where `get_paged_mqa_logits_metadata` rejects SM120. The server completed
+engine initialization, exposed `/v1/models`, and advertised
+`nvidia/DeepSeek-V4-Flash-NVFP4` with `max_model_len=2048`.
+
+That is load/readiness progress, not generation readiness. A tiny public-safe
+chat-completion probe then failed in DeepSeek V4's NVIDIA FlashMLA sparse
+prefill path:
+
+```text
+vllm/models/deepseek_v4/attention.py attention_impl
+vllm/models/deepseek_v4/nvidia/flashmla.py _forward_prefill
+vllm/third_party/flashmla/flash_mla_interface.py flash_mla_sparse_fwd
+RuntimeError: Sparse Attention Forward Kernel is only supported on SM90a and SM100f architectures.
+```
+
+The provider inventory pasted during the run confirms the same upstream target
+shape Hydralisk is adapting: vLLM `0.20.0+`, DeepGEMM, FP8 KV cache, block size
+`256`, DeepSeek V4 parser flags, and TP matching visible GPU count. It also
+confirms the published happy path is H200/B200/GB-class hardware. The useful
+G4 next step is therefore not another blind full-model smoke; it is to inspect
+DeepSeek V4's FlashMLA integration and find, patch, or implement an SM120-safe
+sparse-prefill fallback before retrying generation.
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this

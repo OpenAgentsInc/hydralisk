@@ -12,6 +12,7 @@ ALLOW_NVFP4_SM120="${ALLOW_NVFP4_SM120:-0}"
 DOCKER_BUILD_PULL="${DOCKER_BUILD_PULL:-1}"
 VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"
 VLLM_ENABLE_EXPERT_PARALLEL="${VLLM_ENABLE_EXPERT_PARALLEL:-1}"
+VLLM_ENFORCE_EAGER="${VLLM_ENFORCE_EAGER:-0}"
 VLLM_E8M0_TRITON_UPCAST="${VLLM_E8M0_TRITON_UPCAST:-0}"
 HYDRALISK_DEEPSEEK_O_PROJ_PATCH="${HYDRALISK_DEEPSEEK_O_PROJ_PATCH:-0}"
 HYDRALISK_DEEPSEEK_O_PROJ_RECIPE="${HYDRALISK_DEEPSEEK_O_PROJ_RECIPE:-auto}"
@@ -29,6 +30,8 @@ BASE_IMAGE="${BASE_IMAGE:-vllm/vllm-openai:latest}"
 INSTALL_DEEPGEMM="${INSTALL_DEEPGEMM:-1}"
 DERIVED_IMAGE="${DERIVED_IMAGE:-hydralisk-deepseek-v4-provider-vllm}"
 READY_TIMEOUT_SECONDS="${READY_TIMEOUT_SECONDS:-2400}"
+COMPLETION_TIMEOUT_SECONDS="${COMPLETION_TIMEOUT_SECONDS:-180}"
+CONTAINER_START_TIMEOUT_SECONDS="${CONTAINER_START_TIMEOUT_SECONDS:-180}"
 STACK_BUILD_TIMEOUT_SECONDS="${STACK_BUILD_TIMEOUT_SECONDS:-1800}"
 DOCKER_SETUP_TIMEOUT_SECONDS="${DOCKER_SETUP_TIMEOUT_SECONDS:-180}"
 RUN_MODEL_SMOKE="${RUN_MODEL_SMOKE:-1}"
@@ -71,6 +74,7 @@ render_markdown() {
     echo "- Docker build pull: \`$DOCKER_BUILD_PULL\`"
     echo "- vLLM linear backend: \`$VLLM_LINEAR_BACKEND\`"
     echo "- vLLM expert parallel: \`$VLLM_ENABLE_EXPERT_PARALLEL\`"
+    echo "- vLLM enforce eager: \`$VLLM_ENFORCE_EAGER\`"
     echo "- vLLM E8M0 Triton upcast patch: \`$VLLM_E8M0_TRITON_UPCAST\`"
     echo "- DeepSeek o_proj provider patch: \`$HYDRALISK_DEEPSEEK_O_PROJ_PATCH\`"
     echo "- DeepSeek o_proj recipe: \`$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE\`"
@@ -88,6 +92,8 @@ render_markdown() {
     echo "- Derived image: \`$DERIVED_IMAGE\`"
     echo "- Install DeepGEMM helper: \`$INSTALL_DEEPGEMM\`"
     echo "- Run model smoke: \`$RUN_MODEL_SMOKE\`"
+    echo "- Completion timeout seconds: \`$COMPLETION_TIMEOUT_SECONDS\`"
+    echo "- Container start timeout seconds: \`$CONTAINER_START_TIMEOUT_SECONDS\`"
     echo
     if [[ "$DRY_RUN" = "1" ]]; then
       echo "DRY_RUN=1"
@@ -181,7 +187,8 @@ if [[ "$DRY_RUN" = "1" ]]; then
   exit 0
 fi
 
-remote_script="$(
+remote_script_file="$OUTPUT_DIR/provider-stack-remote-script.sh"
+{
   printf 'MODEL_ID=%q\n' "$MODEL_ID"
   printf 'MODEL_REVISION=%q\n' "$MODEL_REVISION"
   printf 'MOE_BACKEND=%q\n' "$MOE_BACKEND"
@@ -189,6 +196,7 @@ remote_script="$(
   printf 'DOCKER_BUILD_PULL=%q\n' "$DOCKER_BUILD_PULL"
   printf 'VLLM_LINEAR_BACKEND=%q\n' "$VLLM_LINEAR_BACKEND"
   printf 'VLLM_ENABLE_EXPERT_PARALLEL=%q\n' "$VLLM_ENABLE_EXPERT_PARALLEL"
+  printf 'VLLM_ENFORCE_EAGER=%q\n' "$VLLM_ENFORCE_EAGER"
   printf 'VLLM_E8M0_TRITON_UPCAST=%q\n' "$VLLM_E8M0_TRITON_UPCAST"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE"
@@ -206,6 +214,8 @@ remote_script="$(
   printf 'INSTALL_DEEPGEMM=%q\n' "$INSTALL_DEEPGEMM"
   printf 'DERIVED_IMAGE=%q\n' "$DERIVED_IMAGE:$TS"
   printf 'READY_TIMEOUT_SECONDS=%q\n' "$READY_TIMEOUT_SECONDS"
+  printf 'COMPLETION_TIMEOUT_SECONDS=%q\n' "$COMPLETION_TIMEOUT_SECONDS"
+  printf 'CONTAINER_START_TIMEOUT_SECONDS=%q\n' "$CONTAINER_START_TIMEOUT_SECONDS"
   printf 'STACK_BUILD_TIMEOUT_SECONDS=%q\n' "$STACK_BUILD_TIMEOUT_SECONDS"
   printf 'DOCKER_SETUP_TIMEOUT_SECONDS=%q\n' "$DOCKER_SETUP_TIMEOUT_SECONDS"
   printf 'RUN_MODEL_SMOKE=%q\n' "$RUN_MODEL_SMOKE"
@@ -932,6 +942,7 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "ALLOW_NVFP4_SM120\t%s\n" "$ALLOW_NVFP4_SM120"
   printf "VLLM_LINEAR_BACKEND\t%s\n" "$VLLM_LINEAR_BACKEND"
   printf "VLLM_ENABLE_EXPERT_PARALLEL\t%s\n" "$VLLM_ENABLE_EXPERT_PARALLEL"
+  printf "VLLM_ENFORCE_EAGER\t%s\n" "$VLLM_ENFORCE_EAGER"
   printf "VLLM_E8M0_TRITON_UPCAST\t%s\n" "$VLLM_E8M0_TRITON_UPCAST"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_PATCH\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_RECIPE\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_RECIPE"
@@ -952,6 +963,8 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "MAX_NUM_SEQS\t%s\n" "$MAX_NUM_SEQS"
   printf "MAX_NUM_BATCHED_TOKENS\t%s\n" "$MAX_NUM_BATCHED_TOKENS"
   printf "GPU_MEMORY_UTILIZATION\t%s\n" "$GPU_MEMORY_UTILIZATION"
+  printf "COMPLETION_TIMEOUT_SECONDS\t%s\n" "$COMPLETION_TIMEOUT_SECONDS"
+  printf "CONTAINER_START_TIMEOUT_SECONDS\t%s\n" "$CONTAINER_START_TIMEOUT_SECONDS"
   if [[ "$HYDRALISK_B12X_CLAMP_PATCH" = "1" ]]; then
     printf "LOCAL_SITE_PACKAGES_PATCHES\tb12x_clamp\n"
   else
@@ -961,7 +974,11 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   if [[ "$VLLM_ENABLE_EXPERT_PARALLEL" = "1" ]]; then
     expert_parallel_flags+=(--enable-expert-parallel)
   fi
-  printf "PROVIDER_FLAGS\t--kv-cache-dtype fp8 --block-size 256 %s --tensor-parallel-size %s --linear-backend %s\n" "${expert_parallel_flags[*]:-}" "$gpu_count" "$VLLM_LINEAR_BACKEND"
+  eager_flags=()
+  if [[ "$VLLM_ENFORCE_EAGER" = "1" ]]; then
+    eager_flags+=(--enforce-eager)
+  fi
+  printf "PROVIDER_FLAGS\t--kv-cache-dtype fp8 --block-size 256 %s %s --tensor-parallel-size %s --linear-backend %s\n" "${expert_parallel_flags[*]:-}" "${eager_flags[*]:-}" "$gpu_count" "$VLLM_LINEAR_BACKEND"
 } > "$REMOTE_LOG_DIR/provider-stack-engine.txt"
 
 sudo docker rm -f "$container_name" >/dev/null 2>&1 || true
@@ -976,6 +993,10 @@ fi
 linear_backend_args=()
 if [[ "$VLLM_LINEAR_BACKEND" != "auto" ]]; then
   linear_backend_args+=(--linear-backend "$VLLM_LINEAR_BACKEND")
+fi
+eager_args=()
+if [[ "$VLLM_ENFORCE_EAGER" = "1" ]]; then
+  eager_args+=(--enforce-eager)
 fi
 sudo docker run --rm --gpus all --ipc=host --network host \
   --name "$container_name" \
@@ -996,6 +1017,7 @@ sudo docker run --rm --gpus all --ipc=host --network host \
   --block-size 256 \
   --tensor-parallel-size "$gpu_count" \
   "${expert_parallel_flags[@]}" \
+  "${eager_args[@]}" \
   --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \
   --max-model-len "$MAX_MODEL_LEN" \
   --max-num-seqs "$MAX_NUM_SEQS" \
@@ -1009,14 +1031,33 @@ pid="$!"
 
 ready=0
 deadline=$((SECONDS + READY_TIMEOUT_SECONDS))
+container_start_deadline=$((SECONDS + CONTAINER_START_TIMEOUT_SECONDS))
+container_seen=0
 while [ "$SECONDS" -lt "$deadline" ]; do
   if curl -fsS http://127.0.0.1:8000/v1/models > "$REMOTE_LOG_DIR/provider-stack-models.json" 2> "$REMOTE_LOG_DIR/provider-stack-models.stderr"; then
     ready=1
     break
   fi
-  if ! kill -0 "$pid" >/dev/null 2>&1; then
-    break
-  fi
+  container_status="$(sudo docker inspect -f '{{.State.Status}}' "$container_name" 2>/dev/null || true)"
+  case "$container_status" in
+    running)
+      container_seen=1
+      ;;
+    created|restarting|paused)
+      container_seen=1
+      ;;
+    exited|dead)
+      break
+      ;;
+    "")
+      if [[ "$container_seen" = "1" || "$SECONDS" -ge "$container_start_deadline" ]]; then
+        break
+      fi
+      ;;
+    *)
+      break
+      ;;
+  esac
   sleep 10
 done
 
@@ -1033,11 +1074,16 @@ print(json.dumps({
 }))
 PY
 )"
-  curl -fsS http://127.0.0.1:8000/v1/chat/completions \
+  if curl -fsS --max-time "$COMPLETION_TIMEOUT_SECONDS" http://127.0.0.1:8000/v1/chat/completions \
     -H 'content-type: application/json' \
     -d "$completion_payload" \
     | jq '{id: .id, model: .model, usage: .usage, finish_reason: .choices[0].finish_reason}' \
-    > "$REMOTE_LOG_DIR/provider-stack-completion-public.json" || true
+    > "$REMOTE_LOG_DIR/provider-stack-completion-public.json"; then
+    :
+  else
+    printf '{"ready":true,"completion":false,"status":"completion_failed_or_timed_out"}\n' \
+      > "$REMOTE_LOG_DIR/provider-stack-completion-public.json"
+  fi
 else
   printf '{"ready":false,"status":"server_not_ready_or_exited"}\n' > "$REMOTE_LOG_DIR/provider-stack-completion-public.json"
 fi
@@ -1049,7 +1095,8 @@ tail -n 180 "$REMOTE_LOG_DIR/provider-stack-vllm.log" \
   | sed -E 's/(hf_[A-Za-z0-9_\-]+)/<redacted-hf-token>/g' \
   > "$REMOTE_LOG_DIR/provider-stack-vllm-tail-public.txt"
 REMOTE
-)"
+} > "$remote_script_file"
+remote_script="$(cat "$remote_script_file")"
 
 gcloud compute ssh "$TARGET_INSTANCE" \
   --project "$PROJECT_ID" \

@@ -161,10 +161,13 @@ Initial targets:
   fallback enabled, execution moves past the old `o_proj` DeepGEMM blocker and
   stops in DeepSeek MLA attention metadata during vLLM cudagraph memory
   profiling: `get_paged_mqa_logits_metadata` fails with
-  `attention.hpp:219: Unsupported architecture` on SM120. The remaining work
-  is therefore an SM120-safe MLA metadata/backend fallback, exact
-  FP4/reference correctness, and any decode/micro-path clamp coverage needed
-  for generation.
+  `attention.hpp:219: Unsupported architecture` on SM120. Enabling vLLM eager
+  mode avoids that cudagraph profiling path and brings the full model to a live
+  `/v1/models` endpoint on the same 8 x G4 host, but the first public-safe
+  generation smoke fails in `flash_mla_sparse_fwd` because the sparse prefill
+  kernel only admits SM90a and SM100f. The remaining work is therefore an
+  SM120-safe DeepSeek FlashMLA sparse-prefill backend or a correctness-first
+  prefill fallback before any generation or serving claim.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -221,6 +224,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-static-clamp-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-dynamic-clamp-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-b12x-full-model-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-full-model-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-b12x-eager-mla-g4.md`](docs/evidence/2026-06-24-deepseek-b12x-eager-mla-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 
