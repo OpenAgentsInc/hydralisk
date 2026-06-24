@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "glm-5.2-reap-504b-nvfp4-b12x-g4-rtx-pro-6000-4g-20260624",
-  "status": "staged_runtime_profile_pending",
+  "status": "launch_profile_ready_load_smoke_pending",
   "servedModel": "0xSero/GLM-5.2-504B",
   "internalModelAlias": "glm-5.2-reap-504b-g4",
   "publicModelAliases": [],
@@ -74,10 +74,14 @@
   "engine": {
     "name": "vllm",
     "distribution": "b12x SM120 recipe",
-    "status": "image_digest_pending",
+    "status": "prepared",
+    "version": "0.11.2.dev279+black.benediction.b12xpr11.cu132.20260608",
     "containerImageTag": "voipmonitor/vllm:black-benediction-b12xpr11-vllmbb6c5b7-b12xd90d89c-fi3395b41aa8d-dg324aced12c-cu132-20260608",
-    "containerImageDigest": null,
+    "containerImageDigest": "sha256:ce23a9b075bd7138ce3b12ee29609b98606e5050e2def4a29bbb917ad96e5997",
+    "containerImageRef": "voipmonitor/vllm@sha256:ce23a9b075bd7138ce3b12ee29609b98606e5050e2def4a29bbb917ad96e5997",
     "containerPlatform": "linux/amd64",
+    "torchVersion": "2.12.0+cu132",
+    "flashinferPythonVersion": "0.6.12+cu132",
     "quantizationFlag": "modelopt_fp4",
     "kvCacheDtype": "fp8",
     "attentionBackend": "B12X_MLA_SPARSE",
@@ -186,15 +190,21 @@
     }
   },
   "runtimePlan": {
-    "status": "planned",
+    "status": "launch_profile_ready",
     "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/85",
+    "launchScript": "scripts/launch-glm-52-reap-504b-b12x-gce.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-b12x-launch-profile.md",
+    "launchCommandRef": "docs/evidence/2026-06-24-glm-52-reap-504b-b12x-launch-command.json",
     "firstLoad": {
+      "gpuDevices": "0,1,2,3",
       "tensorParallelSize": 4,
       "decodeContextParallelSize": 4,
       "maxModelLenTokens": 32768,
       "maxNumSeqs": 1,
       "maxNumBatchedTokens": 4096,
       "gpuMemoryUtilization": 0.95,
+      "host": "127.0.0.1",
+      "port": 8000,
       "mtp": "disabled until first load passes"
     },
     "targetAfterSmoke": {
