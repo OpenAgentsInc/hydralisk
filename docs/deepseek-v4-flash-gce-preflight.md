@@ -64,6 +64,9 @@ FlashInfer B12x SM12x MoE G4 evidence:
 B12x wide-G4 full-model evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-b12x-wide-g4.md`](evidence/2026-06-24-deepseek-v4-flash-b12x-wide-g4.md)
 
+Clamp-backend wide-G4 evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md`](evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -499,6 +502,29 @@ clamp-capable provider-supported MoE backends on the same private 8 x G4 shape:
 on SM120, the remaining G4 path is custom kernel work: add B12x SwiGLU clamp
 support, add B12x expert parallel/offload support, or build the SGLang-style
 expert repack and prefetch lane.
+
+The clamp-backend wide-G4 probe reused the admitted private 8 x RTX PRO 6000
+host and tested `flashinfer_cutlass` and `flashinfer_trtllm` against the pinned
+`nvidia/DeepSeek-V4-Flash-NVFP4` revision. `flashinfer_cutlass` failed at the
+same SwiGLU clamp gate, despite vLLM listing it in the error hint. That removes
+`flashinfer_cutlass` as an immediate stock backend for this model/image.
+
+`flashinfer_trtllm` is the current live backend lane on G4: vLLM selected
+`FLASHINFER_TRTLLM`, expert parallel was active across eight ranks, and the
+observed expert split was 32 local experts per rank out of 256 global experts.
+It loaded far enough to reach engine startup/profiling, then failed in the
+valid DeepSeek V4 NVIDIA `o_proj` path:
+
+```text
+RuntimeError:
+Assertion error (csrc/apis/layout.hpp:59): Unknown SF transformation
+```
+
+That means the next useful issue is no longer another backend selector trial.
+It is a correctness-first `o_proj` fallback or scale-factor layout fix for
+DeepSeek V4 on RTX PRO 6000, preserving the TRTLLM MoE backend. If that gets
+through memory profiling, the next blocker will either be the real MoE runtime
+or an actual readiness/generation result.
 
 ## Promotion boundary
 

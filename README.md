@@ -100,7 +100,14 @@ Initial targets:
   (`num_local_experts != num_experts`). That makes the two-card G4 lane a
   compatibility research lane, not a near-serving stock-vLLM path, unless we
   use a wider no-EP G4 shape, add B12x expert parallelism, or build the custom
-  offload/prefetch path.
+  offload/prefetch path. The eight-card G4 full-model attempt then proved B12x
+  is rejected for DeepSeek-V4 because it lacks the model's required SwiGLU
+  clamp. A clamp-backend sweep on the same private 8 x G4 host removed
+  `flashinfer_cutlass` for the same reason and advanced `flashinfer_trtllm`
+  into expert-parallel startup with 32 local experts per rank, where it now
+  blocks in DeepGEMM `o_proj` scale-factor layout handling. The next useful
+  G4 issue is therefore a correctness-first DeepSeek V4 `o_proj` fallback or
+  scale-factor layout fix that preserves the TRTLLM MoE path.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -142,6 +149,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-g4.md`](docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-g4.md)
 - [`docs/evidence/2026-06-24-flashinfer-b12x-moe-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-moe-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-b12x-wide-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-b12x-wide-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

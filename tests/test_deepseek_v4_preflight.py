@@ -424,6 +424,60 @@ def test_b12x_g4_probe_script_is_public_safe_in_dry_run(
     assert "fresh hydralisk-deepseek-v4" in rejected.stderr
 
 
+def test_clamp_backends_g4_probe_script_is_public_safe_in_dry_run(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-deepseek-v4-clamp-backends-g4-gce.sh"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path),
+            "TS": "20260624000000",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "deepseek-v4-clamp-backends-g4-probe.md").read_text()
+    host_plan = (tmp_path / "clamp-backends-g4-host-plan.tsv").read_text()
+    backend_plan = (tmp_path / "clamp-backends-g4-backend-plan.tsv").read_text()
+    script_text = script.read_text()
+
+    assert "Wrote" in result.stdout
+    assert "g4-standard-384" in host_plan
+    assert "g4-standard-192" in host_plan
+    assert "flashinfer_cutlass" in backend_plan
+    assert "flashinfer_trtllm" in backend_plan
+    assert "vLLM expert parallel: `1`" in evidence
+    assert "Contains weights: false" in evidence
+    assert "VLLM_ENABLE_EXPERT_PARALLEL=\"$VLLM_ENABLE_EXPERT_PARALLEL\"" in script_text
+    assert "hydralisk-gptoss" not in host_plan
+    assert "khala" not in host_plan.lower()
+
+    rejected = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path / "rejected"),
+            "TARGET_INSTANCE": "hydralisk-gptoss20b-l4-prod",
+            "TARGET_ZONE": "us-central1-a",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert rejected.returncode == 2
+    assert "fresh hydralisk-deepseek-v4" in rejected.stderr
+
+
 def test_nvfp4_g4_probe_refuses_non_probe_targets(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     script = repo_root / "scripts" / "probe-deepseek-v4-nvfp4-g4-gce.sh"
