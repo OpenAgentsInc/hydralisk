@@ -58,6 +58,9 @@ NVFP4 o_proj G4 evidence:
 FlashInfer TRTLLM NVFP4 MoE G4 evidence:
 [`docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-g4.md`](evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-g4.md)
 
+FlashInfer B12x SM12x MoE G4 evidence:
+[`docs/evidence/2026-06-24-flashinfer-b12x-moe-g4.md`](evidence/2026-06-24-flashinfer-b12x-moe-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -355,6 +358,28 @@ CUDA runtime `13.0`, and RTX PRO 6000 SM120 reproduced the same
 `GemmMNK=1024 4096 4096`. That removes Hugging Face transfer, model weights,
 vLLM scheduling, and `o_proj` as explanations for the MoE GEMM failure.
 
+The B12x probe found a better SM120 signal. The same image exposes
+`flashinfer.fused_moe.b12x_fused_moe`,
+`convert_sf_to_mma_layout`, and `Sm120B12xBlockScaledDenseGemmKernel`.
+Synthetic B12x MoE runs succeeded for a small no-EP case and for a
+DeepSeek-shaped no-EP case:
+
+```text
+seq_len 1024, hidden 4096, intermediate 2048,
+num_experts 256, local_experts 256, top_k 6
+```
+
+The DeepSeek-shaped expert-parallel case failed before kernel launch:
+
+```text
+NotImplementedError:
+b12x_fused_moe does not yet support Expert Parallelism
+(num_local_experts=128 != num_experts=256)
+```
+
+That means the RTX PRO 6000 B12x kernel path is real, but the two-card
+expert-parallel vLLM path still cannot serve the full model through B12x today.
+
 The first viable lanes are:
 
 1. `g4-standard-96`, 2 x RTX PRO 6000. Google admitted this lane; it clears
@@ -449,6 +474,12 @@ FlashInfer repro confirms the MoE blocker independently of full-model loading,
 so the next honest step is upstream/kernel work, a custom SGLang/offload path,
 or known-good H100/H200/B200/GB200/DGX-class hardware rather than more
 stock-vLLM G4 flag trials.
+
+The B12x result narrows the next G4 work further. The useful next full-model
+attempt is a B12x/no-EP vLLM run on a wider G4 host, where tensor parallelism
+may reduce per-rank memory enough to avoid expert parallelism. If that cannot
+fit, the remaining G4 path is B12x expert-parallel support or the custom
+expert offload/prefetch design.
 
 ## Promotion boundary
 
