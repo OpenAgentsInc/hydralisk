@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:-openagentsgemini}"
 ISSUE_NUMBER="${ISSUE_NUMBER:-23}"
+GCLOUD_AUTH_PREFLIGHT="${GCLOUD_AUTH_PREFLIGHT:-1}"
 MODEL_ID="${MODEL_ID:-nvidia/DeepSeek-V4-Flash-NVFP4}"
 MODEL_REVISION="${MODEL_REVISION:-e3cd60e7de98e9867116860d522499a728de1cf9}"
 MOE_BACKEND="${MOE_BACKEND:-flashinfer_b12x}"
@@ -77,6 +78,45 @@ refuse_unsafe_target() {
   fi
 }
 
+sanitize_blocker() {
+  tr '\n\t' '  ' | sed 's/  */ /g' | cut -c1-1800
+}
+
+check_gcloud_auth() {
+  local log="$OUTPUT_DIR/gcloud-auth-preflight.log"
+  if [[ "$GCLOUD_AUTH_PREFLIGHT" != "1" ]]; then
+    echo "skipped" > "$OUTPUT_DIR/gcloud-auth-preflight-status.txt"
+    return 0
+  fi
+
+  if gcloud auth print-access-token > /dev/null 2> "$log"; then
+    echo "ok" > "$OUTPUT_DIR/gcloud-auth-preflight-status.txt"
+    return 0
+  fi
+
+  echo "blocked_auth" > "$OUTPUT_DIR/gcloud-auth-preflight-status.txt"
+  return 1
+}
+
+record_auth_blocker_for_plan() {
+  local log="$OUTPUT_DIR/gcloud-auth-preflight.log"
+  local blocker
+  blocker="$(sanitize_blocker < "$log")"
+
+  if [[ -n "$TARGET_INSTANCE" ]]; then
+    printf '0\t%s\t%s\tmanual\tmanual\t0\tblocked_auth\t%s\n' \
+      "$TARGET_INSTANCE" "$TARGET_ZONE" "$blocker" >> "$ATTEMPTS_TSV"
+    return 0
+  fi
+
+  while IFS=$'\t' read -r order label zone machine accelerator count role; do
+    [[ "$order" == "order" ]] && continue
+    printf '%s\t%s\t%s\t%s\t%s\t%s\tblocked_auth\t%s\n' \
+      "$order" "hydralisk-deepseek-v4-b12x-${label}-${TS}" "$zone" "$machine" \
+      "$accelerator" "$count" "$blocker" >> "$ATTEMPTS_TSV"
+  done < "$PLAN_TSV"
+}
+
 attempt_create() {
   local order="$1" label="$2" zone="$3" machine="$4" accelerator="$5" count="$6"
   local instance="hydralisk-deepseek-v4-b12x-${label}-${TS}"
@@ -114,7 +154,7 @@ attempt_create() {
   fi
 
   local blocker
-  blocker="$(tail -n 60 "$log" | tr '\n\t' '  ' | sed 's/  */ /g' | cut -c1-1800)"
+  blocker="$(tail -n 60 "$log" | sanitize_blocker)"
   printf '%s\t%s\t%s\t%s\t%s\t%s\tblocked\t%s\n' \
     "$order" "$instance" "$zone" "$machine" "$accelerator" "$count" "$blocker" >> "$ATTEMPTS_TSV"
   return 1
@@ -187,6 +227,7 @@ render_markdown() {
     echo
     echo "- Issue: https://github.com/OpenAgentsInc/hydralisk/issues/$ISSUE_NUMBER"
     echo "- Project: \`$PROJECT_ID\`"
+    echo "- gcloud auth preflight: \`$GCLOUD_AUTH_PREFLIGHT\`"
     echo "- Model: \`$MODEL_ID\`"
     echo "- Model revision: \`$MODEL_REVISION\`"
     echo "- MoE backend: \`$MOE_BACKEND\`"
@@ -224,6 +265,22 @@ render_markdown() {
     cat "$ATTEMPTS_TSV"
     echo '```'
     echo
+    if [[ -f "$OUTPUT_DIR/gcloud-auth-preflight-status.txt" ]]; then
+      echo "## gcloud Auth Preflight"
+      echo
+      echo "Status: \`$(cat "$OUTPUT_DIR/gcloud-auth-preflight-status.txt")\`"
+      if [[ "$(cat "$OUTPUT_DIR/gcloud-auth-preflight-status.txt")" == "blocked_auth" ]]; then
+        echo
+        echo "No GCE instance creation was attempted because local gcloud credentials"
+        echo "require interactive reauthentication. Next operator action:"
+        echo
+        echo '```bash'
+        echo "gcloud auth login"
+        echo "gcloud auth application-default login"
+        echo '```'
+      fi
+      echo
+    fi
     if [[ -f "$PROVIDER_OUTPUT_DIR/provider-stack-probe.md" ]]; then
       echo "## Provider Stack Summary"
       echo
@@ -273,6 +330,13 @@ if [[ "$DRY_RUN" = "1" ]]; then
     [[ "$order" == "order" ]] && continue
     attempt_create "$order" "$label" "$zone" "$machine" "$accelerator" "$count" || true
   done < "$PLAN_TSV"
+  render_markdown
+  echo "OUTPUT_DIR=$OUTPUT_DIR"
+  exit 0
+fi
+
+if ! check_gcloud_auth; then
+  record_auth_blocker_for_plan
   render_markdown
   echo "OUTPUT_DIR=$OUTPUT_DIR"
   exit 0

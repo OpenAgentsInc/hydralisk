@@ -912,6 +912,41 @@ backend before writing any new sparse-prefill kernel. If the FlashInfer path
 still fails, capture its exact blocker and only then decide whether to patch
 FlashMLA's SM120 architecture guard or build a correctness-first fallback.
 
+Issue #42 added a gcloud auth preflight to the B12x G4 wrapper after the first
+issue #41 attempt was blocked before GCE admission. The wrapper now checks
+`gcloud auth print-access-token` before any `gcloud compute instances create`
+call and records `blocked_auth` if local credentials require interactive
+reauthentication. A retry with the issue #41 launch shape stopped before
+creating either planned G4 host:
+
+```text
+g4-standard-384 / 8 x nvidia-rtx-pro-6000 / us-central1-b -> blocked_auth
+g4-standard-192 / 4 x nvidia-rtx-pro-6000 / us-central1-b -> blocked_auth
+```
+
+That is an auth result, not a GPU capacity result and not a DeepSeek runtime
+result. The next operator action is:
+
+```bash
+gcloud auth login
+gcloud auth application-default login
+```
+
+Then rerun issue #41 with:
+
+```bash
+ISSUE_NUMBER=41 \
+VLLM_ATTENTION_BACKEND=FLASHINFER_MLA_SPARSE_DSV4 \
+VLLM_ENFORCE_EAGER=1 \
+HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum \
+HYDRALISK_B12X_CLAMP_PATCH=1 \
+HYDRALISK_B12X_CLAMP_LIMIT=10.0 \
+MAX_MODEL_LEN=2048 \
+MAX_NUM_BATCHED_TOKENS=512 \
+GPU_MEMORY_UTILIZATION=0.95 \
+bash scripts/probe-deepseek-v4-b12x-g4-gce.sh
+```
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this

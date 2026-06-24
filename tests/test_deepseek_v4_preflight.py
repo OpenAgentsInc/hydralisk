@@ -426,9 +426,13 @@ def test_b12x_g4_probe_script_is_public_safe_in_dry_run(
     assert "vLLM expert parallel: `0`" in evidence
     assert "vLLM enforce eager: `0`" in evidence
     assert "vLLM attention backend: `auto`" in evidence
+    assert "gcloud auth preflight: `1`" in evidence
     assert "Completion timeout seconds: `180`" in evidence
     assert "Container start timeout seconds: `180`" in evidence
     assert "Contains weights: false" in evidence
+    assert 'GCLOUD_AUTH_PREFLIGHT="${GCLOUD_AUTH_PREFLIGHT:-1}"' in script_text
+    assert "gcloud auth print-access-token > /dev/null" in script_text
+    assert "blocked_auth" in script_text
     assert "VLLM_ENABLE_EXPERT_PARALLEL=\"$VLLM_ENABLE_EXPERT_PARALLEL\"" in script_text
     assert "VLLM_ENFORCE_EAGER=\"$VLLM_ENFORCE_EAGER\"" in script_text
     assert "VLLM_ATTENTION_BACKEND=\"$VLLM_ATTENTION_BACKEND\"" in script_text
@@ -453,6 +457,64 @@ def test_b12x_g4_probe_script_is_public_safe_in_dry_run(
     )
     assert rejected.returncode == 2
     assert "fresh hydralisk-deepseek-v4" in rejected.stderr
+
+
+def test_b12x_g4_probe_blocks_before_create_when_gcloud_auth_fails(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-deepseek-v4-b12x-g4-gce.sh"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compute_called = tmp_path / "compute-called"
+    gcloud = fake_bin / "gcloud"
+    gcloud.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1 $2" == "auth print-access-token" ]]; then
+  echo "ERROR: reauth required" >&2
+  exit 1
+fi
+if [[ "$1 $2 $3" == "compute instances create" ]]; then
+  echo called > {compute_called}
+  exit 0
+fi
+echo "unexpected gcloud command: $*" >&2
+exit 99
+""",
+    )
+    gcloud.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+            "OUTPUT_DIR": str(tmp_path / "out"),
+            "TS": "20260624000000",
+            "ISSUE_NUMBER": "42",
+            "VLLM_ATTENTION_BACKEND": "FLASHINFER_MLA_SPARSE_DSV4",
+            "VLLM_ENFORCE_EAGER": "1",
+            "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK": "bf16_einsum",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "out" / "deepseek-v4-b12x-g4-probe.md").read_text()
+    attempts = (tmp_path / "out" / "b12x-g4-attempts.tsv").read_text()
+
+    assert "Wrote" in result.stdout
+    assert not compute_called.exists()
+    assert "Issue: https://github.com/OpenAgentsInc/hydralisk/issues/42" in evidence
+    assert "gcloud Auth Preflight" in evidence
+    assert "Status: `blocked_auth`" in evidence
+    assert "gcloud auth login" in evidence
+    assert "FLASHINFER_MLA_SPARSE_DSV4" in evidence
+    assert "bf16_einsum" in evidence
+    assert "blocked_auth" in attempts
+    assert "reauth required" in attempts
 
 
 def test_clamp_backends_g4_probe_script_is_public_safe_in_dry_run(
