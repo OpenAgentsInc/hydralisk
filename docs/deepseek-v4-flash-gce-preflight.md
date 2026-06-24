@@ -967,6 +967,25 @@ the service-account route is therefore IAM, not GPU capacity and not DeepSeek:
 grant a compute-capable role to one of those accounts or refresh the user
 account interactively, then rerun the dedicated wrapper.
 
+Issue #46 moved that IAM check ahead of instance creation. The B12x G4 wrapper
+now calls Cloud Resource Manager `projects.testIamPermissions` with the
+selected account token, records only returned permission names, and stops with
+`blocked_iam` before any create attempt if the account lacks the core G4 probe
+permissions:
+
+```text
+compute.instances.create
+compute.instances.get
+compute.instances.setLabels
+compute.instances.setMetadata
+compute.instances.setTags
+compute.disks.create
+compute.subnetworks.use
+```
+
+The `oa-vertex-inference` retry passed auth preflight and failed IAM preflight
+with all of those permissions missing. This is still before GCE admission.
+
 ## Promotion boundary
 
 DeepSeek-V4-Flash should not become a public OpenAgents model name from this

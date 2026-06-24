@@ -5,6 +5,7 @@ PROJECT_ID="${PROJECT_ID:-openagentsgemini}"
 ISSUE_NUMBER="${ISSUE_NUMBER:-23}"
 GCLOUD_ACCOUNT="${GCLOUD_ACCOUNT:-${CLOUDSDK_CORE_ACCOUNT:-}}"
 GCLOUD_AUTH_PREFLIGHT="${GCLOUD_AUTH_PREFLIGHT:-1}"
+GCLOUD_IAM_PREFLIGHT="${GCLOUD_IAM_PREFLIGHT:-1}"
 MODEL_ID="${MODEL_ID:-nvidia/DeepSeek-V4-Flash-NVFP4}"
 MODEL_REVISION="${MODEL_REVISION:-e3cd60e7de98e9867116860d522499a728de1cf9}"
 MOE_BACKEND="${MOE_BACKEND:-flashinfer_b12x}"
@@ -53,6 +54,16 @@ TS="${TS:-$(date -u +%Y%m%d%H%M%S)}"
 OUTPUT_DIR="${OUTPUT_DIR:-$PWD/.hydralisk/deepseek-v4-b12x-g4-$TS}"
 
 mkdir -p "$OUTPUT_DIR"
+
+GCLOUD_REQUIRED_PERMISSIONS=(
+  compute.instances.create
+  compute.instances.get
+  compute.instances.setLabels
+  compute.instances.setMetadata
+  compute.instances.setTags
+  compute.disks.create
+  compute.subnetworks.use
+)
 
 PLAN_TSV="$OUTPUT_DIR/b12x-g4-plan.tsv"
 ATTEMPTS_TSV="$OUTPUT_DIR/b12x-g4-attempts.tsv"
@@ -107,6 +118,62 @@ check_gcloud_auth() {
   return 1
 }
 
+check_gcloud_iam() {
+  local status_file="$OUTPUT_DIR/gcloud-iam-preflight-status.txt"
+  local response_file="$OUTPUT_DIR/gcloud-iam-preflight.json"
+  local missing_file="$OUTPUT_DIR/gcloud-iam-missing-permissions.txt"
+  local log="$OUTPUT_DIR/gcloud-iam-preflight.log"
+
+  if [[ "$GCLOUD_IAM_PREFLIGHT" != "1" ]]; then
+    echo "skipped" > "$status_file"
+    return 0
+  fi
+
+  local token
+  if ! token="$(run_gcloud auth print-access-token 2> "$log")"; then
+    echo "blocked_auth" > "$status_file"
+    return 1
+  fi
+
+  local permissions_json
+  permissions_json="$(
+    printf '%s\n' "${GCLOUD_REQUIRED_PERMISSIONS[@]}" \
+      | python3 -c 'import json, sys; print(json.dumps({"permissions":[line.strip() for line in sys.stdin if line.strip()]}))'
+  )"
+
+  if ! curl -fsS -X POST \
+    "https://cloudresourcemanager.googleapis.com/v1/projects/$PROJECT_ID:testIamPermissions" \
+    -H "Authorization: Bearer $token" \
+    -H 'Content-Type: application/json' \
+    -d "$permissions_json" \
+    > "$response_file" 2> "$log"; then
+    echo "blocked_iam_check" > "$status_file"
+    unset token
+    return 1
+  fi
+  unset token
+
+  python3 - "$response_file" "$missing_file" "${GCLOUD_REQUIRED_PERMISSIONS[@]}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+response = json.loads(Path(sys.argv[1]).read_text() or "{}")
+required = sys.argv[3:]
+present = set(response.get("permissions") or [])
+missing = [permission for permission in required if permission not in present]
+Path(sys.argv[2]).write_text("\n".join(missing) + ("\n" if missing else ""))
+PY
+
+  if [[ -s "$missing_file" ]]; then
+    echo "blocked_iam" > "$status_file"
+    return 1
+  fi
+
+  echo "ok" > "$status_file"
+  return 0
+}
+
 record_auth_blocker_for_plan() {
   local log="$OUTPUT_DIR/gcloud-auth-preflight.log"
   local blocker
@@ -123,6 +190,38 @@ record_auth_blocker_for_plan() {
     printf '%s\t%s\t%s\t%s\t%s\t%s\tblocked_auth\t%s\n' \
       "$order" "hydralisk-deepseek-v4-b12x-${label}-${TS}" "$zone" "$machine" \
       "$accelerator" "$count" "$blocker" >> "$ATTEMPTS_TSV"
+  done < "$PLAN_TSV"
+}
+
+record_iam_blocker_for_plan() {
+  local missing_file="$OUTPUT_DIR/gcloud-iam-missing-permissions.txt"
+  local log="$OUTPUT_DIR/gcloud-iam-preflight.log"
+  local status
+  status="$(cat "$OUTPUT_DIR/gcloud-iam-preflight-status.txt" 2>/dev/null || echo blocked_iam)"
+  local missing
+  if [[ -s "$missing_file" ]]; then
+    missing="$(paste -sd, "$missing_file" | cut -c1-1400)"
+  else
+    missing=""
+  fi
+  local blocker
+  if [[ -n "$missing" ]]; then
+    blocker="missing permissions: $missing"
+  else
+    blocker="$(sanitize_blocker < "$log")"
+  fi
+
+  if [[ -n "$TARGET_INSTANCE" ]]; then
+    printf '0\t%s\t%s\tmanual\tmanual\t0\t%s\t%s\n' \
+      "$TARGET_INSTANCE" "$TARGET_ZONE" "$status" "$blocker" >> "$ATTEMPTS_TSV"
+    return 0
+  fi
+
+  while IFS=$'\t' read -r order label zone machine accelerator count role; do
+    [[ "$order" == "order" ]] && continue
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$order" "hydralisk-deepseek-v4-b12x-${label}-${TS}" "$zone" "$machine" \
+      "$accelerator" "$count" "$status" "$blocker" >> "$ATTEMPTS_TSV"
   done < "$PLAN_TSV"
 }
 
@@ -239,6 +338,7 @@ render_markdown() {
     echo "- Project: \`$PROJECT_ID\`"
     echo "- gcloud account override: \`${GCLOUD_ACCOUNT:-default}\`"
     echo "- gcloud auth preflight: \`$GCLOUD_AUTH_PREFLIGHT\`"
+    echo "- gcloud IAM preflight: \`$GCLOUD_IAM_PREFLIGHT\`"
     echo "- Model: \`$MODEL_ID\`"
     echo "- Model revision: \`$MODEL_REVISION\`"
     echo "- MoE backend: \`$MOE_BACKEND\`"
@@ -288,6 +388,26 @@ render_markdown() {
         echo '```bash'
         echo "gcloud auth login"
         echo "gcloud auth application-default login"
+        echo '```'
+      fi
+      echo
+    fi
+    if [[ -f "$OUTPUT_DIR/gcloud-iam-preflight-status.txt" ]]; then
+      echo "## gcloud IAM Preflight"
+      echo
+      echo "Status: \`$(cat "$OUTPUT_DIR/gcloud-iam-preflight-status.txt")\`"
+      echo
+      echo "Required permissions:"
+      echo
+      echo '```text'
+      printf '%s\n' "${GCLOUD_REQUIRED_PERMISSIONS[@]}"
+      echo '```'
+      if [[ -s "$OUTPUT_DIR/gcloud-iam-missing-permissions.txt" ]]; then
+        echo
+        echo "Missing permissions:"
+        echo
+        echo '```text'
+        cat "$OUTPUT_DIR/gcloud-iam-missing-permissions.txt"
         echo '```'
       fi
       echo
@@ -348,6 +468,13 @@ fi
 
 if ! check_gcloud_auth; then
   record_auth_blocker_for_plan
+  render_markdown
+  echo "OUTPUT_DIR=$OUTPUT_DIR"
+  exit 0
+fi
+
+if ! check_gcloud_iam; then
+  record_iam_blocker_for_plan
   render_markdown
   echo "OUTPUT_DIR=$OUTPUT_DIR"
   exit 0
