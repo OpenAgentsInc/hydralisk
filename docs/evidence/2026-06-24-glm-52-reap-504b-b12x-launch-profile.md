@@ -79,6 +79,12 @@ The 8x host may later be used with `GPU_DEVICES=0,1,2,3,4,5,6,7` and
 `TP_SIZE=8` only as an explicit fallback. That must be documented separately
 so it does not overwrite the 4x accessibility claim.
 
+Issue #88 tuning update: after the first load and private endpoint passed, the
+launcher defaults were promoted to the production-candidate envelope:
+`MAX_MODEL_LEN=250000`, `MAX_NUM_SEQS=2`, `MAX_NUM_BATCHED_TOKENS=4096`, and
+`MTP=0`. Use explicit environment overrides to reproduce the original 32K
+first-load smoke.
+
 ## Required launch flags
 
 The launcher preserves the upstream GLM REAP/SM120 requirements:

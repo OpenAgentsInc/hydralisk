@@ -1,0 +1,155 @@
+{
+  "batchTokenGate": {
+    "failed": {
+      "maxModelLenTokens": 250000,
+      "maxNumBatchedTokens": 32768,
+      "maxNumSeqs": 1,
+      "runId": "20260624234000",
+      "status": "failed_kv_cache_admission",
+      "summary": "vLLM required 3.58 GiB KV cache for one 250K request but only had 1.26 GiB available; estimated maximum model length was 87808."
+    },
+    "recommended": {
+      "maxNumBatchedTokens": 4096,
+      "reason": "This preserves enough KV memory for the 250K context gate."
+    }
+  },
+  "contextRamp": [
+    {
+      "completionTokens": 8,
+      "freeMiBPerSelectedGpu": 4152,
+      "kvCacheTokens": 442368,
+      "maxModelLenTokens": 65536,
+      "maxNumBatchedTokens": 8192,
+      "maxNumSeqs": 1,
+      "promptTokens": 60012,
+      "reportedMaxConcurrency": 6.75,
+      "runId": "20260624232000",
+      "status": "passed",
+      "visibleCompletionChars": 23,
+      "wallSeconds": 23.46732407699983
+    },
+    {
+      "completionTokens": 6,
+      "freeMiBPerSelectedGpu": 4636,
+      "kvCacheTokens": 324352,
+      "maxModelLenTokens": 131072,
+      "maxNumBatchedTokens": 16384,
+      "maxNumSeqs": 1,
+      "promptTokens": 120012,
+      "reportedMaxConcurrency": 2.47,
+      "runId": "20260624233000",
+      "status": "passed",
+      "visibleCompletionChars": 11,
+      "wallSeconds": 152.33479176999936
+    },
+    {
+      "completionTokens": 8,
+      "freeMiBPerSelectedGpu": 3908,
+      "kvCacheTokens": 485158,
+      "maxModelLenTokens": 250000,
+      "maxNumBatchedTokens": 4096,
+      "maxNumSeqs": 1,
+      "promptTokens": 240012,
+      "reportedMaxConcurrency": 1.94,
+      "runId": "20260624235000",
+      "status": "passed",
+      "visibleCompletionChars": 15,
+      "wallSeconds": 281.21922828599963
+    }
+  ],
+  "concurrencyGate": {
+    "freeMiBPerSelectedGpu": 3854,
+    "kvCacheTokens": 485158,
+    "maxModelLenTokens": 250000,
+    "maxNumBatchedTokens": 4096,
+    "maxNumSeqs": 2,
+    "reportedMaxFullContextConcurrency": 1.94,
+    "runId": "20260624240000",
+    "shortRequestConcurrency": {
+      "concurrency": 2,
+      "perRequestWallSecondsP50": 25.86052672599999,
+      "perRequestWallSecondsP95": 25.860860081000283,
+      "status": "passed",
+      "wallSeconds": 25.862106261000008
+    },
+    "status": "passed_short_concurrency_only"
+  },
+  "mtpGate": {
+    "completionTokens": 9,
+    "freeMiBPerSelectedGpu": 3974,
+    "kvCacheTokens": 378112,
+    "maxModelLenTokens": 32768,
+    "maxNumBatchedTokens": 4096,
+    "maxNumSeqs": 1,
+    "numSpeculativeTokens": 3,
+    "promptTokens": 22,
+    "runId": "20260624241000",
+    "status": "passed_but_not_recommended_default",
+    "summary": "MTP loaded and completed a tiny smoke, but vLLM warned max_num_scheduled_tokens was capped by speculative settings and the tiny smoke took 5.31s.",
+    "wallSeconds": 5.305912406000061
+  },
+  "publicSafety": {
+    "containsHiddenReasoning": false,
+    "containsPrompts": false,
+    "containsResponses": false,
+    "containsSecrets": false,
+    "containsWeights": false
+  },
+  "recommendedLaunch": {
+    "attentionBackend": "B12X_MLA_SPARSE",
+    "decodeContextParallelSize": 4,
+    "gpuDevices": "0,1,2,3",
+    "kvCacheDtype": "fp8",
+    "maxModelLenTokens": 250000,
+    "maxNumBatchedTokens": 4096,
+    "maxNumSeqs": 2,
+    "mtp": false,
+    "quantization": "modelopt_fp4",
+    "tensorParallelSize": 4
+  },
+  "proxyRefresh": {
+    "admittedContextTokens": 250000,
+    "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-tuning.md",
+    "maxInflightRequests": 1,
+    "privateBind": "127.0.0.1:8080",
+    "proxyRunRef": "hydralisk-run-049109202d794cf5b633922e2ff1b7b1",
+    "runId": "20260624243000",
+    "smoke": {
+      "completionTokens": 9,
+      "httpStatus": 200,
+      "promptSha256": "5f8103cbebaac77e42161be89a636352dafbb3ceda5efef0aa6484d67233dfe2",
+      "status": "passed",
+      "totalTokens": 31,
+      "visibleCompletionChars": 18,
+      "visibleCompletionSha256": "deb72954879f318cd0fcb41355e82f54fbed51947d68e71b465fd31aba03f166",
+      "wallSeconds": 0.5046445400002995
+    }
+  },
+  "runIds": [
+    "20260624232000",
+    "20260624233000",
+    "20260624234000",
+    "20260624235000",
+    "20260624240000",
+    "20260624241000",
+    "20260624242000"
+  ],
+  "samplerGate": {
+    "minP": 0.05,
+    "recommendedRepetitionPenalty": 1.05,
+    "results": [
+      {
+        "completionTokens": 22,
+        "repetitionPenalty": 1.05,
+        "status": "passed_warm",
+        "wallSeconds": 0.834224988000642
+      },
+      {
+        "completionTokens": 23,
+        "repetitionPenalty": 1.1,
+        "status": "passed",
+        "wallSeconds": 0.8801669080003194
+      }
+    ]
+  }
+}

@@ -84,6 +84,11 @@ Target after smoke:
 - Max sequences: 2 or higher only after measured memory/concurrency gates
 - MTP: enabled only as a separate tuning gate
 
+Issue #88 update: the context ladder passed at 250K on four selected G4 RTX PRO
+6000 GPUs with `max_num_seqs=2` and `max_num_batched_tokens=4096`. MTP loaded
+and smoked at 32K but is not the default production-candidate path. See
+[`2026-06-24-glm-52-reap-504b-tuning.md`](2026-06-24-glm-52-reap-504b-tuning.md).
+
 ## Sampler guardrail
 
 The 0xSero report says loop risk is the dominant behavioral regression after

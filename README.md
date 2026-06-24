@@ -69,8 +69,11 @@ Initial targets:
   As of 2026-06-24, that REAP lane has a private Hydralisk proxy bound to
   `127.0.0.1:8080` on the admitted G4 fallback host, with raw vLLM still bound
   to localhost, bearer auth required, fail-closed profile evidence checks, and
-  GLM sampler defaults injected by the proxy. See
-  [docs/evidence/2026-06-24-glm-52-reap-504b-private-endpoint.md](docs/evidence/2026-06-24-glm-52-reap-504b-private-endpoint.md).
+  GLM sampler defaults injected by the proxy. The tuned production-candidate
+  envelope is 250K context, `max_num_seqs=2`, `max_num_batched_tokens=4096`,
+  and MTP disabled by default; two concurrent full-250K requests are not
+  admitted. See
+  [docs/evidence/2026-06-24-glm-52-reap-504b-tuning.md](docs/evidence/2026-06-24-glm-52-reap-504b-tuning.md).
 - DeepSeek-V4-Flash as a Google GPU admission experiment: G4 capacity was
   admitted on 2026-06-24 with 2 x RTX PRO 6000. The current blocker is now
   past the original vLLM `0.23.0` Blackwell FP8 scaled-mm failure: direct

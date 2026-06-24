@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "glm-5.2-reap-504b-nvfp4-b12x-g4-rtx-pro-6000-4g-20260624",
-    "status": "private_endpoint_ready",
+    "status": "tuned_private_endpoint_ready",
   "servedModel": "0xSero/GLM-5.2-504B",
     "internalModelAlias": "glm-5.2-reap-504b-g4",
     "publicModelAliases": [],
@@ -194,7 +194,7 @@
     }
   },
   "runtimePlan": {
-        "status": "load_smoke_passed",
+        "status": "tuned_production_candidate",
     "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/85",
     "launchScript": "scripts/launch-glm-52-reap-504b-b12x-gce.sh",
     "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-b12x-launch-profile.md",
@@ -211,10 +211,32 @@
       "port": 8000,
       "mtp": "disabled until first load passes"
     },
-    "targetAfterSmoke": {
+    "recommendedLaunch": {
+      "gpuDevices": "0,1,2,3",
+      "tensorParallelSize": 4,
+      "decodeContextParallelSize": 4,
       "maxModelLenTokens": 250000,
       "maxNumSeqs": 2,
-      "mtp": "enabled with num_speculative_tokens=3 if quality and stability gates pass"
+      "maxNumBatchedTokens": 4096,
+      "gpuMemoryUtilization": 0.95,
+      "host": "127.0.0.1",
+      "port": 8000,
+      "mtp": "disabled by default; MTP loaded but is not the production-candidate default",
+      "samplerDefaults": {
+        "minP": 0.05,
+        "repetitionPenalty": 1.05,
+        "maxTokens": 1024,
+        "chatTemplateKwargs": {
+          "enableThinking": false
+        }
+      }
+    },
+    "targetAfterSmoke": {
+      "status": "completed",
+      "maxModelLenTokens": 250000,
+      "maxNumSeqs": 2,
+      "maxNumBatchedTokens": 4096,
+      "mtp": "tested separately; keep disabled unless an MTP-specific latency/quality gate passes"
     }
   },
     "smoke": {
@@ -349,6 +371,72 @@
             "completionTokens": 9,
             "totalTokens": 31,
             "wallSeconds": 0.4926423070000965
+        },
+        "latestRefresh": {
+            "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/88",
+            "runId": "20260624243000",
+            "status": "passed",
+            "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-tuning.md",
+            "admittedContextTokens": 250000,
+            "proxyRunRef": "hydralisk-run-049109202d794cf5b633922e2ff1b7b1",
+            "wallSeconds": 0.5046445400002995
+        }
+    },
+    "tuning": {
+        "status": "passed",
+        "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/88",
+        "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-tuning.md",
+        "receiptRef": "docs/evidence/2026-06-24-glm-52-reap-504b-tuning-receipt.json",
+        "completedAt": "2026-06-24T23:26:31Z",
+        "recommendedLaunch": {
+            "gpuDevices": "0,1,2,3",
+            "tensorParallelSize": 4,
+            "decodeContextParallelSize": 4,
+            "maxModelLenTokens": 250000,
+            "maxNumSeqs": 2,
+            "maxNumBatchedTokens": 4096,
+            "gpuMemoryUtilization": 0.95,
+            "mtp": false,
+            "kvCacheDtype": "fp8",
+            "attentionBackend": "B12X_MLA_SPARSE",
+            "moeBackend": "b12x",
+            "quantization": "modelopt_fp4"
+        },
+        "context": {
+            "stableMaxTestedTokens": 250000,
+            "largestPassedPromptTokens": 240012,
+            "reportedFullContextConcurrencyAt250k": 1.94,
+            "status": "250K passed with max_num_batched_tokens=4096"
+        },
+        "concurrency": {
+            "maxNumSeqs": 2,
+            "shortRequestConcurrencyStatus": "passed",
+            "fullContextConcurrencyStatus": "do not admit two concurrent 250K requests; vLLM reported 1.94x at the full context ceiling"
+        },
+        "batchTokenTuning": {
+            "recommendedMaxNumBatchedTokens": 4096,
+            "failedAt250k": {
+                "maxNumBatchedTokens": 32768,
+                "summary": "KV cache admission failed; vLLM estimated a maximum model length of 87,808 tokens."
+            }
+        },
+        "mtp": {
+            "status": "loaded_and_smoked_but_not_default",
+            "numSpeculativeTokens": 3,
+            "reason": "MTP loaded at 32K and completed a tiny smoke, but latency and vLLM scheduling warning make it an opt-in experiment."
+        },
+        "samplerGuardrails": {
+            "minP": 0.05,
+            "recommendedRepetitionPenalty": 1.05,
+            "loopAbatementRepetitionPenalty": 1.1
+        },
+        "proxyRefresh": {
+            "runId": "20260624243000",
+            "status": "passed",
+            "admittedContextTokens": 250000,
+            "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-tuning.md",
+            "maxInflightRequests": 1,
+            "proxyRunRef": "hydralisk-run-049109202d794cf5b633922e2ff1b7b1"
         }
     },
     "evals": {
@@ -368,7 +456,7 @@
     "redactionPolicy": "Do not commit model weights, checkpoints, compiled engines, generated benchmark dumps, GPU profiler dumps, raw prompts, raw responses, hidden reasoning traces, private source, model-provider credentials, bearer tokens, or cloud credentials."
   },
   "claimBoundary": {
-        "currentClaim": "private 4-GPU load and completion smoke passed on the admitted 8x G4 fallback host using GPUs 0-3; primary 4x G4 machine admission remains capacity-blocked",
+        "currentClaim": "private 4-GPU 250K-context production-candidate profile passed on the admitted 8x G4 fallback host using GPUs 0-3; primary 4x G4 machine admission remains capacity-blocked and two concurrent full-250K requests are not admitted",
     "publicClaimRequirement": "A public claim must name exact model revision, runtime image digest, GCE shape, GPU count, context/concurrency ceiling, sampler settings, and eval denominator."
   }
 }
