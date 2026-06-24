@@ -7,7 +7,9 @@ runbooks, model profiles, smoke tests, and public-safe receipts.
 Current Khala lane:
 
 - served model: `openai/gpt-oss-20b`
-- public aliases: `openagents/khala-oss-20b`, `gpt-oss-20b`
+- internal alias: `khala`
+- public alias: `openagents/khala`
+- compatibility aliases: `openagents/khala-oss-20b`, `gpt-oss-20b`
 - engine: vLLM
 - first host class: one NVIDIA L4
 - proxy port: `127.0.0.1:8012`

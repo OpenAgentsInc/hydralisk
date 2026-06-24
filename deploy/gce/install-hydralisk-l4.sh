@@ -45,7 +45,7 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   install -o root -g hydralisk -m 0640 /dev/null "${ENV_FILE}"
   cat >"${ENV_FILE}" <<ENV
 HYDRALISK_SERVED_MODEL=openai/gpt-oss-20b
-HYDRALISK_PUBLIC_MODEL_ALIASES=openagents/khala-oss-20b,gpt-oss-20b
+HYDRALISK_PUBLIC_MODEL_ALIASES=khala,openagents/khala,openagents/khala-oss-20b,gpt-oss-20b
 HYDRALISK_VLLM_BASE_URL=http://127.0.0.1:8000
 HYDRALISK_RECEIPT_DIR=/var/lib/hydralisk/receipts
 HYDRALISK_ENGINE_VERSION=${engine_version}

@@ -40,6 +40,8 @@ def _env_int(name: str, default: int | None = None) -> int | None:
 class HydraliskSettings:
     served_model: str = "openai/gpt-oss-20b"
     public_model_aliases: tuple[str, ...] = (
+        "khala",
+        "openagents/khala",
         "openagents/khala-oss-20b",
         "gpt-oss-20b",
     )
@@ -94,7 +96,12 @@ def load_settings() -> HydraliskSettings:
         or "openai/gpt-oss-20b",
         public_model_aliases=_env_csv(
             "HYDRALISK_PUBLIC_MODEL_ALIASES",
-            ("openagents/khala-oss-20b", "gpt-oss-20b"),
+            (
+                "khala",
+                "openagents/khala",
+                "openagents/khala-oss-20b",
+                "gpt-oss-20b",
+            ),
         ),
         upstream_base_url=_env("HYDRALISK_VLLM_BASE_URL", "http://127.0.0.1:8000")
         or "http://127.0.0.1:8000",

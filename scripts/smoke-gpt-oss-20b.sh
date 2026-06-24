@@ -58,7 +58,7 @@ curl -fsS "${origin}/v1/chat/completions" \
   -H "authorization: Bearer ${token}" \
   -H "content-type: application/json" \
   -d '{
-    "model": "openagents/khala-oss-20b",
+    "model": "openagents/khala",
     "messages": [
       { "role": "user", "content": "Say READY in one word." }
     ],
@@ -79,7 +79,7 @@ curl -fsS -N "${origin}/v1/chat/completions" \
   -H "authorization: Bearer ${token}" \
   -H "content-type: application/json" \
   -d '{
-    "model": "openagents/khala-oss-20b",
+    "model": "openagents/khala",
     "stream": true,
     "messages": [
       { "role": "user", "content": "Write a two sentence service status report." }
