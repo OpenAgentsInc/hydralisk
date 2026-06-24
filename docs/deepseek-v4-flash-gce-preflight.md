@@ -28,6 +28,9 @@ o_proj evidence:
 Grouped o_proj RHS evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md`](evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md)
 
+Grouped o_proj RHS scale-mode evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md`](evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -128,9 +131,19 @@ t.dim() == N
 
 The grouped `o_proj` RHS patch moved the failure from `layout.hpp:39:
 t.dim() == N` to `layout.hpp:59: Unknown SF transformation`. DeepGEMM now sees
-`rhs_weight` as `[4,1024,4096]` and `rhs_scale` as `[4,8,32]`, but the grouped
-scale is still `float8_e8m0fnu`. The next issue should test grouped RHS scale
-modes: raw E8M0, fp32 upcast, and DeepGEMM's transform helper if exposed.
+`rhs_weight` as `[4,1024,4096]` and `rhs_scale` as `[4,8,32]`.
+
+The grouped RHS scale-mode probe then tested raw E8M0, fp32-upcasted scales,
+DeepGEMM's transform helper on E8M0, and the same helper after fp32 upcast. None
+reached `/v1/models`. `deepgemm_transform` fails on DeepGEMM's dtype assertion,
+while `fp32` and `deepgemm_transform_fp32` still fail with
+`layout.hpp:59: Unknown SF transformation`.
+
+The next issue should pin or build the known-good DeepSeek-V4 vLLM/DeepGEMM
+stack described by provider guidance: vLLM `0.20.0+`, DeepGEMM installed from
+the vLLM helper, FP8 KV, tensor parallel size equal to the GPU count, expert
+parallel enabled, and H200-class published-recipe parity before returning to
+G4-specific patches.
 
 The first viable lanes are:
 
@@ -188,6 +201,7 @@ REUSE_PYTHON_VENV=1
 HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=blackwell
 HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE=1
 HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS=1
+HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE=fp32
 ```
 
 Use `TARGET_INSTANCE`, `TARGET_ZONE`, and `TARGET_GPU_COUNT` only for a fresh
@@ -207,10 +221,9 @@ Stop and record a blocker if:
 
 The 2026-06-24 G4 smoke is currently stopped on the CUDA/kernel support
 condition above. More random flag trials on the same host are not the next
-useful step; the useful split is either the grouped `o_proj` scale-factor
-format probe, a known-good DeepSeek vLLM image/build pin, an 8-GPU
-H100/H200/B200 allocation that matches the published recipe, or a custom
-expert-prefetch/offload route.
+useful step; the useful split is now a known-good DeepSeek vLLM/DeepGEMM
+image/build pin, an 8-GPU H100/H200/B200 allocation that matches the published
+recipe, or a custom expert-prefetch/offload route.
 
 ## Promotion boundary
 

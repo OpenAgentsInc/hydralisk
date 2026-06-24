@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "load_smoke_blocked_deepgemm_o_proj_rhs_scale_transform",
+  "status": "load_smoke_blocked_known_good_deepgemm_build_needed",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -125,7 +125,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/8",
       "https://github.com/OpenAgentsInc/hydralisk/issues/9",
       "https://github.com/OpenAgentsInc/hydralisk/issues/10",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/11"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/11",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/12"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -133,7 +134,8 @@
       "docs/evidence/2026-06-24-deepseek-v4-flash-scaled-mm-g4-probe.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-e8m0-upcast-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-g4.md",
-      "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md"
+      "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-group-rhs-g4.md",
+      "docs/evidence/2026-06-24-deepseek-v4-flash-o-proj-rhs-scale-g4.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -160,9 +162,9 @@
     "blocker": {
       "stage": "engine_startup_determine_available_memory",
       "site": "vllm/models/deepseek_v4/nvidia/ops/o_proj.py deep_gemm_fp8_o_proj",
-      "message": "The grouped RHS patch moves DeepGEMM past layout.hpp:39 t.dim() == N. Full startup now fails with layout.hpp:59 Unknown SF transformation after rhs_weight is [4,1024,4096] and rhs_scale is [4,8,32] float8_e8m0fnu.",
+      "message": "The grouped RHS scale-mode probe tested raw E8M0, fp32 upcast, DeepGEMM transform on E8M0, and DeepGEMM transform after fp32 upcast. None reached /v1/models: the transform-on-E8M0 path fails DeepGEMM's dtype assertion and the fp32 variants still fail layout.hpp:59 Unknown SF transformation.",
       "defaultAndFallbacksAffected": true,
-      "nextProbe": "test grouped o_proj RHS scale modes: raw E8M0, fp32 upcast, and DeepGEMM transform helper if available"
+      "nextProbe": "pin or build a clean known-good DeepSeek-V4 vLLM/DeepGEMM stack from provider guidance before more G4-specific hotpatches"
     }
   },
   "promotionGates": [
@@ -175,8 +177,8 @@
     "public-safe Hydralisk receipt is emitted"
   ],
   "recommendation": {
-    "nextLane": "test_grouped_o_proj_rhs_scale_transform_for_deepgemm_on_rtx_pro_6000",
-    "why": "Google admitted the two-card G4 lane, the host has enough memory and disk for a low-context smoke, and vLLM reached model selection/kernel compile. The grouped RHS patch moved DeepGEMM from a tensor-rank assertion to a scale-factor transformation assertion, so the next hard failure is the grouped RHS scale format.",
+    "nextLane": "pin_known_good_deepseek_v4_vllm_deepgemm_build",
+    "why": "Google admitted the two-card G4 lane, the host has enough memory and disk for a low-context smoke, and vLLM reached model selection/kernel compile. The local CUTLASS, Triton E8M0, o_proj RHS rank, and o_proj RHS scale probes have exhausted the useful ad hoc patch path. Provider guidance points to vLLM 0.20.0+, DeepGEMM installed from the vLLM helper, FP8 KV, expert parallel, and TP equal to the GPU count on H200-class published-recipe hardware.",
     "publicClaim": "none"
   },
   "publicSafety": {
