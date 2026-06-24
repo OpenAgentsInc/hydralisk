@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "deepseek_v4_nvfp4_8x_g4_quality_smoke_passed_long_context_concurrency_pending",
+  "status": "deepseek_v4_nvfp4_8x_g4_long_context_gate_passed_concurrency_sparse_indexer_pending",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -3060,6 +3060,133 @@
       "containsPrompts": false,
       "containsResponses": false,
       "containsExpectationText": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekV4Issue64LongContextGate": {
+    "status": "passed_resident_streaming_prewarmed_long_context_gate",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/64",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-long-context-g4-gate.md",
+    "script": "scripts/probe-deepseek-v4-khala-readiness-gce.sh",
+    "target": {
+      "instance": "hydralisk-deepseek-v4-b12x-g4-8g-b-20260624155352",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-384",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 8,
+      "provisioningModel": "SPOT",
+      "externalIp": null
+    },
+    "container": {
+      "derivedImage": "hydralisk-deepseek-v4-b12x-g4-vllm-issue60-vector-v3:20260624v3vector2",
+      "derivedImageDigest": "sha256:a43653081fe01ab53901ecdff7415d2d8c40a6ea76b5c923aaff1b0e0e661451"
+    },
+    "promptEvidence": {
+      "promptBytes": 8783,
+      "promptSha256": "482c9b6fd81f55c369cde381bd6672e78edc0f1d810687de24f94f05d6e265a7",
+      "promptTextTracked": false,
+      "responseTextTracked": false
+    },
+    "thresholds": {
+      "maxReadySeconds": 180.0,
+      "maxWarmupSeconds": 45.0,
+      "maxTtftP95Seconds": 5.0,
+      "minDecodeTokensPerSecondP50": 8.0,
+      "minEndToEndTokensPerSecondP50": 6.0,
+      "minPromptTokens": 700,
+      "minStreamCompletionTokens": 96,
+      "minSuccessfulRequests": 2
+    },
+    "failedRuns": [
+      {
+        "runId": "20260624issue64long1",
+        "reason": "no_streaming_long_shape_prewarm",
+        "khalaReadinessGatePassed": false,
+        "serverStartToReadyWallSeconds": 116,
+        "warmupMaxSeconds": 22.548928,
+        "streamPromptTokensMin": 1796,
+        "streamCompletionTokensMin": 160,
+        "ttftP95Seconds": 10.2654011,
+        "decodeTokensPerSecondP50": 8.7088625,
+        "endToEndTokensPerSecondP50": 7.7264235
+      },
+      {
+        "runId": "20260624issue64long2",
+        "reason": "full_nonstream_warmup_did_not_warm_streaming_path",
+        "khalaReadinessGatePassed": false,
+        "serverStartToReadyWallSeconds": 116,
+        "warmupMaxSeconds": 36.074819,
+        "streamPromptTokensMin": 1796,
+        "streamCompletionTokensMin": 152,
+        "ttftP95Seconds": 10.23064365,
+        "decodeTokensPerSecondP50": 8.76525,
+        "endToEndTokensPerSecondP50": 7.7373355
+      }
+    ],
+    "passingRun": {
+      "runId": "20260624issue64long3",
+      "generatedReport": ".hydralisk/deepseek-v4-long-context-20260624issue64long3/readiness-report.md",
+      "generatedJson": ".hydralisk/deepseek-v4-long-context-20260624issue64long3/readiness-public.json",
+      "remoteLogDir": "/var/log/hydralisk/deepseek-khala-readiness-20260624issue64long3",
+      "khalaReadinessGatePassed": true,
+      "serverStartToReadyWallSeconds": 116,
+      "warmupMaxSeconds": 27.994585,
+      "streamWarmupRequests": 1,
+      "streamWarmup": {
+        "timeToFirstDeltaSeconds": 10.840387,
+        "completionTokens": 77,
+        "elapsedSeconds": 27.994585,
+        "outputTokensPerSecondAfterFirstDelta": 4.453844
+      },
+      "summary": {
+        "successfulRequests": 2,
+        "streamPromptTokensMin": 1796,
+        "streamCompletionTokensMin": 160,
+        "ttftP50Seconds": 0.1698925,
+        "ttftP95Seconds": 0.20696485,
+        "decodeTokensPerSecondP50": 11.1068105,
+        "decodeTokensPerSecondP95": 11.14811285,
+        "endToEndTokensPerSecondP50": 11.04586,
+        "endToEndTokensPerSecondP95": 11.1147208
+      },
+      "measuredStreams": [
+        {
+          "index": 0,
+          "promptTokens": 1796,
+          "completionTokens": 160,
+          "timeToFirstDeltaSeconds": 0.211084,
+          "outputTokensPerSecondAfterFirstDelta": 11.060919,
+          "outputTokensPerSecondFullElapsed": 10.969348,
+          "finishReason": "length"
+        },
+        {
+          "index": 1,
+          "promptTokens": 1796,
+          "completionTokens": 160,
+          "timeToFirstDeltaSeconds": 0.128701,
+          "outputTokensPerSecondAfterFirstDelta": 11.152702,
+          "outputTokensPerSecondFullElapsed": 11.122372,
+          "finishReason": "length"
+        }
+      ]
+    },
+    "remainingGatesBeforeKhalaServingClaim": [
+      "concurrency greater than max_num_seqs=1",
+      "restore or explicitly qualify the SWA-only sparse-indexer bypass",
+      "broader public-safe quality eval",
+      "investigate tiny nonstream quality latency spikes",
+      "context above current max_model_len=2048"
+    ],
+    "servingBoundary": {
+      "khalaIntegrationCandidate": true,
+      "khalaReadyToServe": false,
+      "why": "Long prompt and long streamed output now pass on the resident G4 path only after an explicit long streaming prewarm. Concurrency, sparse-indexer correctness, broader quality, and context beyond 2048 remain ungated."
+    },
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
       "containsWeights": false,
       "containsHiddenReasoning": false
     }

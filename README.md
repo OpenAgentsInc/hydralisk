@@ -240,6 +240,11 @@ Initial targets:
   the same resident timing gate still passed. This clears the first quality
   smoke only: two tiny nonstream quality completions still took roughly `10s`
   and `18s`, and longer output/context plus concurrency remain unproven.
+  Issue #64 added minimum prompt/completion token thresholds plus uncounted
+  streaming warmups. A 1,796-token prompt with two measured 160-token streamed
+  outputs passes after one long streaming prewarm: TTFT p95 `0.207s`, decode
+  p50 `11.1 tok/s`, and end-to-end p50 `11.0 tok/s`. Without that streaming
+  prewarm, the first long stream still pays roughly `10.8s` TTFT.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,

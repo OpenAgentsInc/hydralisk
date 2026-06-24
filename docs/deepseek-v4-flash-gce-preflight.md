@@ -1146,6 +1146,19 @@ the first quality smoke, not a Khala serving claim: two tiny nonstream quality
 cases still took roughly 10 s and 18 s, and longer output/context, concurrency,
 and the SWA-only sparse-indexer bypass remain open gates.
 
+Issue #64 added explicit minimum prompt-token and streamed-completion-token
+thresholds so a long-output/context run cannot pass on an accidental short
+answer. The first two live long runs proved a 1,796-token prompt and 160-token
+streamed output can execute, but failed the gate because the first measured
+long stream paid roughly 10.8 s TTFT. A full-length nonstream warmup did not
+remove that penalty. Adding one uncounted long streaming warmup did: the
+passing run served two measured 160-token streams from the same 1,796-token
+prompt with TTFT p95 0.207 s, decode p50 11.107 tok/s, and end-to-end p50
+11.046 tok/s. This upgrades the boundary to "resident and streaming-prewarmed
+long-output/context candidate," still not a Khala serving claim because
+concurrency, sparse-indexer correctness, broader quality, and context above
+the current `max_model_len=2048` remain ungated.
+
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable
 alternate executor was reachable noninteractively from this shell: local

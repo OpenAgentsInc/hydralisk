@@ -1740,6 +1740,15 @@ def test_khala_readiness_probe_is_public_safe_and_metric_bearing() -> None:
     assert "containsResponseText" in script
     assert "ttftP95Seconds" in script
     assert "decodeTokensPerSecondP50" in script
+    assert "MIN_STREAM_COMPLETION_TOKENS" in script
+    assert "MIN_PROMPT_TOKENS" in script
+    assert "STREAM_WARMUP_REQUESTS" in script
+    assert "streamWarmups" in script
+    assert "streamWarmupRequests" in script
+    assert "streamCompletionTokensMin" in script
+    assert "streamPromptTokensMin" in script
+    assert "minStreamCompletionTokens" in script
+    assert "minPromptTokens" in script
     assert "khalaReadinessGatePassed" in script
     assert "qualityGatePassed" in script
     assert "Quality cases" in script

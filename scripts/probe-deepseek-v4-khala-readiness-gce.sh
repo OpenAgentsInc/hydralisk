@@ -17,6 +17,7 @@ QUALITY_CASES_FILE="${QUALITY_CASES_FILE:-}"
 QUALITY_CASES_B64="${QUALITY_CASES_B64:-}"
 STREAM_REQUESTS="${STREAM_REQUESTS:-5}"
 WARMUP_REQUESTS="${WARMUP_REQUESTS:-1}"
+STREAM_WARMUP_REQUESTS="${STREAM_WARMUP_REQUESTS:-0}"
 MAX_TOKENS="${MAX_TOKENS:-32}"
 WARMUP_MAX_TOKENS="${WARMUP_MAX_TOKENS:-8}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-2048}"
@@ -31,6 +32,8 @@ MAX_WARMUP_SECONDS="${MAX_WARMUP_SECONDS:-45}"
 MAX_TTFT_P95_SECONDS="${MAX_TTFT_P95_SECONDS:-2.0}"
 MIN_DECODE_TPS_P50="${MIN_DECODE_TPS_P50:-8.0}"
 MIN_E2E_TPS_P50="${MIN_E2E_TPS_P50:-8.0}"
+MIN_STREAM_COMPLETION_TOKENS="${MIN_STREAM_COMPLETION_TOKENS:-1}"
+MIN_PROMPT_TOKENS="${MIN_PROMPT_TOKENS:-1}"
 
 if [[ -z "$TARGET_INSTANCE" || -z "$TARGET_ZONE" ]]; then
   echo "error: TARGET_INSTANCE and TARGET_ZONE are required" >&2
@@ -185,8 +188,11 @@ start_epoch = int(os.environ["start_epoch"])
 ready_epoch = int(os.environ["ready_epoch"])
 stream_requests = int(os.environ["STREAM_REQUESTS"])
 warmup_requests = int(os.environ["WARMUP_REQUESTS"])
+stream_warmup_requests = int(os.environ["STREAM_WARMUP_REQUESTS"])
 max_tokens = int(os.environ["MAX_TOKENS"])
 warmup_max_tokens = int(os.environ["WARMUP_MAX_TOKENS"])
+min_stream_completion_tokens = int(os.environ["MIN_STREAM_COMPLETION_TOKENS"])
+min_prompt_tokens = int(os.environ["MIN_PROMPT_TOKENS"])
 quality_cases_b64 = os.environ.get("QUALITY_CASES_B64", "")
 
 
@@ -328,6 +334,9 @@ def stream_once(index):
 
 
 warmups = [warmup(i) for i in range(warmup_requests)]
+stream_warmups = [
+    stream_once(f"stream-warmup-{i}") for i in range(stream_warmup_requests)
+]
 streams = [stream_once(i) for i in range(stream_requests)]
 successful = [
     run
@@ -335,10 +344,22 @@ successful = [
     if run.get("completionTokens")
     and run.get("timeToFirstDeltaSeconds") is not None
     and run.get("outputTokensPerSecondAfterFirstDelta") is not None
+    and run["completionTokens"] >= min_stream_completion_tokens
+    and (run.get("promptTokens") or 0) >= min_prompt_tokens
 ]
 ttft = [run["timeToFirstDeltaSeconds"] for run in successful]
 decode_tps = [run["outputTokensPerSecondAfterFirstDelta"] for run in successful]
 e2e_tps = [run["outputTokensPerSecondFullElapsed"] for run in successful]
+stream_completion_tokens = [
+    run.get("completionTokens")
+    for run in streams
+    if run.get("completionTokens") is not None
+]
+stream_prompt_tokens = [
+    run.get("promptTokens")
+    for run in streams
+    if run.get("promptTokens") is not None
+]
 
 thresholds = {
     "maxReadySeconds": float(os.environ["MAX_READY_SECONDS"]),
@@ -346,18 +367,31 @@ thresholds = {
     "maxTtftP95Seconds": float(os.environ["MAX_TTFT_P95_SECONDS"]),
     "minDecodeTokensPerSecondP50": float(os.environ["MIN_DECODE_TPS_P50"]),
     "minEndToEndTokensPerSecondP50": float(os.environ["MIN_E2E_TPS_P50"]),
+    "minStreamCompletionTokens": min_stream_completion_tokens,
+    "minPromptTokens": min_prompt_tokens,
     "minSuccessfulRequests": stream_requests,
 }
 summary = {
     "serverStartToReadyWallSeconds": ready_epoch - start_epoch,
     "successfulRequests": len(successful),
+    "streamWarmupRequests": len(stream_warmups),
+    "streamCompletionTokensMin": (
+        min(stream_completion_tokens) if stream_completion_tokens else None
+    ),
+    "streamPromptTokensMin": min(stream_prompt_tokens) if stream_prompt_tokens else None,
     "ttftP50Seconds": percentile(ttft, 0.5),
     "ttftP95Seconds": percentile(ttft, 0.95),
     "decodeTokensPerSecondP50": percentile(decode_tps, 0.5),
     "decodeTokensPerSecondP95": percentile(decode_tps, 0.95),
     "endToEndTokensPerSecondP50": percentile(e2e_tps, 0.5),
     "endToEndTokensPerSecondP95": percentile(e2e_tps, 0.95),
-    "warmupMaxSeconds": max((run["elapsedSeconds"] for run in warmups), default=None),
+    "warmupMaxSeconds": max(
+        (
+            run["elapsedSeconds"]
+            for run in [*warmups, *stream_warmups]
+        ),
+        default=None,
+    ),
 }
 passed = (
     summary["serverStartToReadyWallSeconds"] <= thresholds["maxReadySeconds"]
@@ -370,6 +404,10 @@ passed = (
     and summary["decodeTokensPerSecondP50"] >= thresholds["minDecodeTokensPerSecondP50"]
     and summary["endToEndTokensPerSecondP50"] is not None
     and summary["endToEndTokensPerSecondP50"] >= thresholds["minEndToEndTokensPerSecondP50"]
+    and summary["streamCompletionTokensMin"] is not None
+    and summary["streamCompletionTokensMin"] >= thresholds["minStreamCompletionTokens"]
+    and summary["streamPromptTokensMin"] is not None
+    and summary["streamPromptTokensMin"] >= thresholds["minPromptTokens"]
 )
 
 quality_cases = []
@@ -442,6 +480,7 @@ print(
             "thresholds": thresholds,
             "summary": summary,
             "warmups": warmups,
+            "streamWarmups": stream_warmups,
             "streams": streams,
             "qualityGatePassed": quality_gate_passed,
             "qualityCases": quality_results,
@@ -486,6 +525,7 @@ remote_env=(
   "BENCH_PROMPT_B64=$BENCH_PROMPT_B64"
   "STREAM_REQUESTS=$STREAM_REQUESTS"
   "WARMUP_REQUESTS=$WARMUP_REQUESTS"
+  "STREAM_WARMUP_REQUESTS=$STREAM_WARMUP_REQUESTS"
   "MAX_TOKENS=$MAX_TOKENS"
   "WARMUP_MAX_TOKENS=$WARMUP_MAX_TOKENS"
   "MAX_MODEL_LEN=$MAX_MODEL_LEN"
@@ -500,6 +540,8 @@ remote_env=(
   "MAX_TTFT_P95_SECONDS=$MAX_TTFT_P95_SECONDS"
   "MIN_DECODE_TPS_P50=$MIN_DECODE_TPS_P50"
   "MIN_E2E_TPS_P50=$MIN_E2E_TPS_P50"
+  "MIN_STREAM_COMPLETION_TOKENS=$MIN_STREAM_COMPLETION_TOKENS"
+  "MIN_PROMPT_TOKENS=$MIN_PROMPT_TOKENS"
   "QUALITY_CASES_B64=$QUALITY_CASES_B64"
 )
 remote_prefix=""
@@ -581,6 +623,9 @@ target.write_text(
             "",
             f"- Start to ready seconds: `{value('serverStartToReadyWallSeconds')}`",
             f"- Successful requests: `{value('successfulRequests')}`",
+            f"- Stream warmup requests: `{value('streamWarmupRequests')}`",
+            f"- Minimum stream prompt tokens: `{value('streamPromptTokensMin')}`",
+            f"- Minimum stream completion tokens: `{value('streamCompletionTokensMin')}`",
             f"- Warmup max seconds: `{value('warmupMaxSeconds')}`",
             f"- TTFT p50 seconds: `{value('ttftP50Seconds')}`",
             f"- TTFT p95 seconds: `{value('ttftP95Seconds')}`",
