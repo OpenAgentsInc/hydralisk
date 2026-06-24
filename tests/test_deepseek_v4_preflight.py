@@ -281,6 +281,10 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
         'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS="${HYDRALISK_DEEPSEEK_O_PROJ_BYPASS:-off}"'
         in script
     )
+    assert (
+        'HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK="${HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK:-off}"'
+        in script
+    )
     assert 'HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-0}"' in script
     assert 'HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-0}"' in script
     assert 'HF_XET_NUM_CONCURRENT_RANGE_GETS="${HF_XET_NUM_CONCURRENT_RANGE_GETS:-}"' in script
@@ -305,6 +309,9 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert "HYDRALISK_O_PROJ_SHAPE_TRACE" in script
     assert "HYDRALISK_O_PROJ_RHS_TRACE" in script
     assert "HYDRALISK_O_PROJ_BYPASS_TRACE" in script
+    assert "HYDRALISK_O_PROJ_FALLBACK_TRACE" in script
+    assert 'fallback_mode == "bf16_einsum"' in script
+    assert "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum requires" in script
     assert "provider-stack-network.txt" in script
     assert "cdn-lfs.huggingface.co" in script
     assert "NETWORK_RC" in script
@@ -315,6 +322,7 @@ def test_provider_stack_probe_uses_clean_container_lane() -> None:
     assert 'VLLM_E8M0_TRITON_UPCAST\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_PATCH\\t%s' in script
     assert 'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\\t%s' in script
+    assert 'HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\\t%s' in script
     assert '"${hf_env_args[@]}"' in script
     assert 'linear_backend_args+=(--linear-backend "$VLLM_LINEAR_BACKEND")' in script
     assert 'expert_parallel_flags+=(--enable-expert-parallel)' in script
@@ -457,6 +465,60 @@ def test_clamp_backends_g4_probe_script_is_public_safe_in_dry_run(
     assert "vLLM expert parallel: `1`" in evidence
     assert "Contains weights: false" in evidence
     assert "VLLM_ENABLE_EXPERT_PARALLEL=\"$VLLM_ENABLE_EXPERT_PARALLEL\"" in script_text
+    assert "hydralisk-gptoss" not in host_plan
+    assert "khala" not in host_plan.lower()
+
+    rejected = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path / "rejected"),
+            "TARGET_INSTANCE": "hydralisk-gptoss20b-l4-prod",
+            "TARGET_ZONE": "us-central1-a",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert rejected.returncode == 2
+    assert "fresh hydralisk-deepseek-v4" in rejected.stderr
+
+
+def test_oproj_fallback_g4_probe_script_is_public_safe_in_dry_run(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-deepseek-v4-oproj-fallback-g4-gce.sh"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path),
+            "TS": "20260624000000",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "deepseek-v4-oproj-fallback-g4-probe.md").read_text()
+    host_plan = (tmp_path / "oproj-fallback-g4-host-plan.tsv").read_text()
+    script_text = script.read_text()
+
+    assert "Wrote" in result.stdout
+    assert "g4-standard-384" in host_plan
+    assert "g4-standard-192" in host_plan
+    assert "MoE backend: `flashinfer_trtllm`" in evidence
+    assert "DeepSeek o_proj recipe: `hopper`" in evidence
+    assert "DeepSeek o_proj fallback: `bf16_einsum`" in evidence
+    assert "DeepSeek o_proj bypass: `off`" in evidence
+    assert "Contains weights: false" in evidence
+    assert "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=\"$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\"" in script_text
     assert "hydralisk-gptoss" not in host_plan
     assert "khala" not in host_plan.lower()
 

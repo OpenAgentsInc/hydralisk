@@ -19,6 +19,7 @@ HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE="${HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE:-
 HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS="${HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS:-0}"
 HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE="${HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE:-raw_e8m0}"
 HYDRALISK_DEEPSEEK_O_PROJ_BYPASS="${HYDRALISK_DEEPSEEK_O_PROJ_BYPASS:-off}"
+HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK="${HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK:-off}"
 HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-0}"
 HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-0}"
 HF_XET_NUM_CONCURRENT_RANGE_GETS="${HF_XET_NUM_CONCURRENT_RANGE_GETS:-}"
@@ -75,6 +76,7 @@ render_markdown() {
     echo "- DeepSeek o_proj grouped RHS: \`$HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS\`"
     echo "- DeepSeek o_proj RHS scale mode: \`$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE\`"
     echo "- DeepSeek o_proj bypass: \`$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\`"
+    echo "- DeepSeek o_proj fallback: \`$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\`"
     echo "- HF Hub disable Xet: \`$HF_HUB_DISABLE_XET\`"
     echo "- HF Xet high performance: \`$HF_XET_HIGH_PERFORMANCE\`"
     echo "- HF Xet concurrent range gets: \`${HF_XET_NUM_CONCURRENT_RANGE_GETS:-default}\`"
@@ -190,6 +192,7 @@ remote_script="$(
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE"
   printf 'HYDRALISK_DEEPSEEK_O_PROJ_BYPASS=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS"
+  printf 'HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=%q\n' "$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK"
   printf 'HF_HUB_DISABLE_XET=%q\n' "$HF_HUB_DISABLE_XET"
   printf 'HF_XET_HIGH_PERFORMANCE=%q\n' "$HF_XET_HIGH_PERFORMANCE"
   printf 'HF_XET_NUM_CONCURRENT_RANGE_GETS=%q\n' "$HF_XET_NUM_CONCURRENT_RANGE_GETS"
@@ -432,6 +435,65 @@ new_call = """    rhs_weight = wo_a.weight
                 flush=True,
             )
 
+    fallback_mode = os.environ.get("HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK", "off")
+    if fallback_mode == "bf16_einsum":
+        from vllm.model_executor.layers.quantization.utils.fp8_utils import (
+            _upcast_e8m0_to_fp32,
+        )
+
+        def _scale_to_fp32(value):
+            if value.dtype == torch.float8_e8m0fnu:
+                return _upcast_e8m0_to_fp32(value).contiguous()
+            return value.to(torch.float32).contiguous()
+
+        if o_scale.dtype == torch.int32:
+            raise RuntimeError(
+                "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum requires "
+                "non-TMA activation scales; set "
+                "HYDRALISK_DEEPSEEK_O_PROJ_RECIPE=hopper for this probe"
+            )
+        fallback_rhs_weight = rhs_weight
+        fallback_rhs_scale = rhs_scale
+        if fallback_rhs_weight.ndim == 2:
+            fallback_rhs_weight = fallback_rhs_weight.view(n_groups, o_lora_rank, -1)
+        if fallback_rhs_scale.ndim == 2:
+            fallback_rhs_scale = fallback_rhs_scale.view(n_groups, o_lora_rank // 128, -1)
+        lhs_scale = _scale_to_fp32(o_scale)
+        lhs_scale = lhs_scale.repeat_interleave(128, dim=-1)[..., : o_fp8.shape[-1]]
+        rhs_scale_for_dequant = _scale_to_fp32(fallback_rhs_scale)
+        rhs_scale_for_dequant = rhs_scale_for_dequant.repeat_interleave(128, dim=1)
+        rhs_scale_for_dequant = rhs_scale_for_dequant.repeat_interleave(128, dim=2)
+        rhs_scale_for_dequant = rhs_scale_for_dequant[
+            :, : fallback_rhs_weight.shape[1], : fallback_rhs_weight.shape[2]
+        ]
+        lhs = o_fp8.to(torch.float32) * lhs_scale
+        rhs = fallback_rhs_weight.to(torch.float32) * rhs_scale_for_dequant
+        if os.environ.get("HYDRALISK_DEEPSEEK_O_PROJ_SHAPE_TRACE", "0") == "1":
+            print(
+                "HYDRALISK_O_PROJ_FALLBACK_TRACE\\t"
+                + json.dumps(
+                    {
+                        "fallback": fallback_mode,
+                        "lhs": {
+                            "shape": list(lhs.shape),
+                            "dtype": str(lhs.dtype),
+                            "device": str(lhs.device),
+                        },
+                        "rhs": {
+                            "shape": list(rhs.shape),
+                            "dtype": str(rhs.dtype),
+                            "device": str(rhs.device),
+                        },
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+        z.copy_(torch.einsum("bhr,hdr->bhd", lhs, rhs).to(z.dtype))
+        return wo_b(z.flatten(1))
+    if fallback_mode != "off":
+        raise RuntimeError(f"unsupported o_proj fallback mode: {fallback_mode}")
+
     fp8_einsum(
         "bhr,hdr->bhd",
         (o_fp8, o_scale),
@@ -515,6 +577,7 @@ rm -rf "$build_ctx"
   printf "INSTALL_DEEPGEMM\t%s\n" "$INSTALL_DEEPGEMM"
   printf "VLLM_E8M0_TRITON_UPCAST\t%s\n" "$VLLM_E8M0_TRITON_UPCAST"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_PATCH\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_PATCH"
+  printf "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK"
   printf "DOCKER_BUILD_PULL\t%s\n" "$DOCKER_BUILD_PULL"
   printf "BUILD_RC\t%s\n" "$build_rc"
   printf "BASE_IMAGE_INSPECT_BEGIN\n"
@@ -539,6 +602,7 @@ hf_env_args=(
   -e "HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS=$HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS"
   -e "HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE=$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE"
   -e "HYDRALISK_DEEPSEEK_O_PROJ_BYPASS=$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS"
+  -e "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK"
 )
 if [[ -n "$HF_XET_NUM_CONCURRENT_RANGE_GETS" ]]; then
   hf_env_args+=(-e "HF_XET_NUM_CONCURRENT_RANGE_GETS=$HF_XET_NUM_CONCURRENT_RANGE_GETS")
@@ -640,6 +704,7 @@ container_name="hydralisk-deepseek-v4-provider-stack-$RANDOM"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_GROUP_RHS"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_RHS_SCALE_MODE"
   printf "HYDRALISK_DEEPSEEK_O_PROJ_BYPASS\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_BYPASS"
+  printf "HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK\t%s\n" "$HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK"
   printf "HF_HUB_DISABLE_XET\t%s\n" "$HF_HUB_DISABLE_XET"
   printf "HF_XET_HIGH_PERFORMANCE\t%s\n" "$HF_XET_HIGH_PERFORMANCE"
   printf "HF_XET_NUM_CONCURRENT_RANGE_GETS\t%s\n" "${HF_XET_NUM_CONCURRENT_RANGE_GETS:-default}"

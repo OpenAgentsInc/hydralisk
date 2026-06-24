@@ -107,7 +107,12 @@ Initial targets:
   into expert-parallel startup with 32 local experts per rank, where it now
   blocks in DeepGEMM `o_proj` scale-factor layout handling. The next useful
   G4 issue is therefore a correctness-first DeepSeek V4 `o_proj` fallback or
-  scale-factor layout fix that preserves the TRTLLM MoE path.
+  scale-factor layout fix that preserves the TRTLLM MoE path. That fallback
+  now exists as a default-off `bf16_einsum` probe path and moves the full model
+  past `o_proj` on all eight ranks. The active blocker is now the FlashInfer
+  TRTLLM NVFP4 MoE GEMM itself on RTX PRO 6000:
+  `trtllm_batched_gemm_runner.cu:286`, `numBatches=32`, and
+  `GemmMNK=512 4096 4096`.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
@@ -150,6 +155,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-flashinfer-b12x-moe-g4.md`](docs/evidence/2026-06-24-flashinfer-b12x-moe-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-b12x-wide-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-b12x-wide-g4.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md`](docs/evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

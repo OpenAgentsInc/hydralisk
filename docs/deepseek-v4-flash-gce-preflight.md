@@ -67,6 +67,9 @@ B12x wide-G4 full-model evidence:
 Clamp-backend wide-G4 evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md`](evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md)
 
+o_proj fallback wide-G4 evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md`](evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -525,6 +528,29 @@ It is a correctness-first `o_proj` fallback or scale-factor layout fix for
 DeepSeek V4 on RTX PRO 6000, preserving the TRTLLM MoE backend. If that gets
 through memory profiling, the next blocker will either be the real MoE runtime
 or an actual readiness/generation result.
+
+The `o_proj` fallback probe then added an explicit/default-off
+`HYDRALISK_DEEPSEEK_O_PROJ_FALLBACK=bf16_einsum` path in the derived image. It
+forces non-TMA activation scales, upcasts the E8M0 `wo_a` scales to FP32,
+dequantizes the FP8 operands, computes `wo_a` with `torch.einsum`, and then
+calls `wo_b`. This moved the full-model run past the prior DeepGEMM
+`layout.hpp:59` `o_proj` failure on all eight ranks.
+
+The current blocker is now FlashInfer TRTLLM NVFP4 MoE GEMM execution on
+RTX PRO 6000:
+
+```text
+tvm.error.InternalError:
+trtllm_batched_gemm_runner.cu:286
+numBatches: 32
+GemmMNK: 512 4096 4096
+Kernel: ... clmp_swiGlu_dynB_sm100f
+```
+
+That is the next executable issue. The G4 lane has graduated from admission,
+artifact, dense-linear, backend-selection, and `o_proj` work into the MoE
+kernel itself. Any next G4 probe should isolate or replace that TRTLLM NVFP4
+MoE kernel path rather than changing `o_proj` again.
 
 ## Promotion boundary
 

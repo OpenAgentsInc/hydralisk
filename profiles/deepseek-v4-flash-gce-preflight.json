@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "blocked_deepgemm_oproj_scale_layout_on_wide_g4_trtllm",
+  "status": "blocked_flashinfer_trtllm_nvfp4_moe_gemm_on_wide_g4_sm120",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -138,7 +138,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/21",
       "https://github.com/OpenAgentsInc/hydralisk/issues/22",
       "https://github.com/OpenAgentsInc/hydralisk/issues/23",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/24"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/24",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/25"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -159,7 +160,8 @@
       "docs/evidence/2026-06-24-flashinfer-trtllm-nvfp4-moe-g4.md",
       "docs/evidence/2026-06-24-flashinfer-b12x-moe-g4.md",
       "docs/evidence/2026-06-24-deepseek-v4-flash-b12x-wide-g4.md",
-      "docs/evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md"
+      "docs/evidence/2026-06-24-deepseek-v4-flash-clamp-backends-wide-g4.md",
+      "docs/evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -726,6 +728,70 @@
       "nextProbe": "implement a correctness-first non-DeepGEMM o_proj fallback or correct DeepGEMM scale-factor layout transform for DeepSeek V4 on G4 while preserving flashinfer_trtllm MoE"
     }
   },
+  "oprojFallbackWideG4Probe": {
+    "status": "blocked_flashinfer_trtllm_nvfp4_moe_gemm",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/25",
+    "script": "scripts/probe-deepseek-v4-oproj-fallback-g4-gce.sh",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-flash-oproj-fallback-wide-g4.md",
+    "host": {
+      "instance": "hydralisk-deepseek-v4-b12x-g4-8g-b-20260624092036",
+      "project": "openagentsgemini",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-384",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 8,
+      "gpuName": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "externalIp": null
+    },
+    "model": {
+      "repository": "nvidia/DeepSeek-V4-Flash-NVFP4",
+      "revision": "e3cd60e7de98e9867116860d522499a728de1cf9"
+    },
+    "engine": {
+      "name": "vllm",
+      "version": "0.23.0",
+      "torch": "2.11.0+cu130",
+      "cudaRuntime": "13.0",
+      "baseImageDigest": "sha256:6d8429e38e3747723ca07ee1b17972e09bb9c51c4032b266f24fb1cc3b22ed8f",
+      "derivedImage": "hydralisk-deepseek-v4-oproj-fallback-g4-vllm:20260624095206",
+      "derivedImageDigest": "sha256:f606b8120a907951ba311068d95acc533f3ea1235e02156ecc7b0b2799d47890",
+      "moeBackend": "flashinfer_trtllm",
+      "tensorParallelSize": 8,
+      "expertParallel": true,
+      "linearBackend": "triton",
+      "e8m0TritonUpcast": true,
+      "hfHubDisableXet": true
+    },
+    "oprojFallback": {
+      "mode": "bf16_einsum",
+      "defaultEnabled": false,
+      "recipe": "hopper",
+      "tmaAlignedScales": false,
+      "bypass": "off",
+      "validForServingExperiment": true,
+      "observedOnAllRanks": true,
+      "exampleTrace": {
+        "oFp8": "[512,1,4096] torch.float8_e4m3fn",
+        "oScale": "[512,1,32] torch.float32",
+        "rhsWeight": "[1,1024,4096] torch.float8_e4m3fn",
+        "rhsScale": "[1,8,32] torch.float32",
+        "lhsFallback": "[512,1,4096] torch.float32",
+        "rhsFallback": "[1,1024,4096] torch.float32"
+      }
+    },
+    "result": {
+      "ready": false,
+      "modelsEndpoint": "not_reached",
+      "previousOProjBlockerReached": false,
+      "oprojFallbackExecuted": true
+    },
+    "blocker": {
+      "stage": "determine_available_memory_flashinfer_trtllm_nvfp4_moe",
+      "site": "flashinfer fused_moe trtllm_fp4_block_scale_routed_moe -> trtllm_batched_gemm_runner.cu:286",
+      "message": "The bf16_einsum o_proj fallback moved the full model past DeepGEMM o_proj on all eight G4 ranks. The run now fails in FlashInfer TRTLLM NVFP4 MoE GEMM with numBatches=32 and GemmMNK=512 4096 4096 on the SM100-family clamped SwiGLU kernel path.",
+      "nextProbe": "isolate the full-model TRTLLM NVFP4 MoE shape in a synthetic repro, patch/avoid the SM100-family TRTLLM path for SM120, or pivot to a custom B12x/SGLang/offload MoE kernel lane"
+    }
+  },
   "promotionGates": [
     "exact model revision or local artifact digest pinned",
     "engine version and container image digest pinned",
@@ -736,8 +802,8 @@
     "public-safe Hydralisk receipt is emitted"
   ],
   "recommendation": {
-    "nextLane": "implement_valid_oproj_fallback_for_wide_g4_trtllm",
-    "why": "Google admitted the two-card and eight-card G4 lanes, and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects unsupported MoE backends for this G4 configuration unless the backend implements the model's swiglu_limit=10.0 clamp. A derived-image SM120 gate patch advances the FlashInfer TRTLLM NVFP4 path into vLLM startup. Cloud NAT fixes private outbound artifact access without restoring a VM external IP, and HF_HUB_DISABLE_XET=1 avoids the prior transfer wedge. Forcing --linear-backend triton with the E8M0 upcast patch clears the dense FP8 CUTLASS blocker. The provider-image o_proj patch confirms the valid two-card TRTLLM path is blocked by DeepGEMM scale-factor layout, and an invalid zero-o_proj load-only bypass exposes a second blocker in FlashInfer TRTLLM NVFP4 MoE GEMM on the SM100-family kernel path. The synthetic FlashInfer TRTLLM repro reproduces that MoE GEMM failure without model weights, Hugging Face transfer, vLLM scheduling, prompts, or o_proj. The B12x probe shows a better SM120 synthetic kernel path when all experts are local, but the wide-G4 full-model attempt proved that current vLLM rejects B12x for DeepSeek-V4 because B12x does not apply the required SwiGLU clamp. The clamp-backend wide-G4 probe removes flashinfer_cutlass for the same clamp reason and confirms flashinfer_trtllm is the remaining credible stock-ish backend on RTX PRO 6000: it selects, starts expert parallel across eight ranks, and reaches the valid DeepSeek V4 o_proj path before failing in DeepGEMM scale-factor layout handling. The next executable G4 step is a correctness-first o_proj fallback or scale-factor layout fix that preserves flashinfer_trtllm MoE.",
+    "nextLane": "isolate_or_replace_flashinfer_trtllm_nvfp4_moe_sm120",
+    "why": "Google admitted the two-card and eight-card G4 lanes, and clean provider-guided vLLM/DeepGEMM containers build and import on RTX PRO 6000. The native FP8 model fails on stock vLLM CUTLASS dispatch_scaled_mm. The published-recipe path requires H100/H200/B200/GB200-class capacity, and the GCE probe found catalog visibility but no matching project quota in sampled regions. The NVFP4 Blackwell variant avoids the prior FP8 CUTLASS signature but stock vLLM rejects unsupported MoE backends for this G4 configuration unless the backend implements the model's swiglu_limit=10.0 clamp. A derived-image SM120 gate patch advances the FlashInfer TRTLLM NVFP4 path into vLLM startup. Cloud NAT fixes private outbound artifact access without restoring a VM external IP, and HF_HUB_DISABLE_XET=1 avoids the prior transfer wedge. Forcing --linear-backend triton with the E8M0 upcast patch clears the dense FP8 CUTLASS blocker. The provider-image o_proj patch confirms the valid two-card TRTLLM path is blocked by DeepGEMM scale-factor layout, and an invalid zero-o_proj load-only bypass exposes a second blocker in FlashInfer TRTLLM NVFP4 MoE GEMM on the SM100-family kernel path. The synthetic FlashInfer TRTLLM repro reproduces that MoE GEMM failure without model weights, Hugging Face transfer, vLLM scheduling, prompts, or o_proj. The B12x probe shows a better SM120 synthetic kernel path when all experts are local, but the wide-G4 full-model attempt proved that current vLLM rejects B12x for DeepSeek-V4 because B12x does not apply the required SwiGLU clamp. The clamp-backend wide-G4 probe removes flashinfer_cutlass for the same clamp reason and confirms flashinfer_trtllm is the remaining credible stock-ish backend on RTX PRO 6000. The explicit bf16_einsum o_proj fallback now moves the full model past DeepGEMM o_proj on all eight ranks. The active blocker is FlashInfer TRTLLM NVFP4 MoE GEMM itself on SM120: trtllm_batched_gemm_runner.cu:286, numBatches=32, GemmMNK=512 4096 4096, clamped SwiGLU SM100-family kernel.",
     "publicClaim": "none"
   },
   "publicSafety": {
