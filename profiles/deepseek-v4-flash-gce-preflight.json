@@ -1,7 +1,7 @@
 {
   "$schema": "https://openagents.com/schemas/hydralisk.model-profile.v1.json",
   "profileId": "deepseek-v4-flash-gce-admission-preflight-20260624",
-  "status": "deepseek_v4_sparse_mla_fallback_smoke_ready_g4_target_missing",
+  "status": "deepseek_v4_sparse_mla_vllm_patch_ready_g4_target_needed",
   "servedModel": "deepseek-ai/DeepSeek-V4-Flash",
   "publicModelAliases": [],
   "model": {
@@ -169,7 +169,8 @@
       "https://github.com/OpenAgentsInc/hydralisk/issues/52",
       "https://github.com/OpenAgentsInc/hydralisk/issues/53",
       "https://github.com/OpenAgentsInc/hydralisk/issues/54",
-      "https://github.com/OpenAgentsInc/hydralisk/issues/55"
+      "https://github.com/OpenAgentsInc/hydralisk/issues/55",
+      "https://github.com/OpenAgentsInc/hydralisk/issues/56"
     ],
     "evidenceRefs": [
       "docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md",
@@ -221,7 +222,8 @@
       "docs/evidence/2026-06-24-deepseek-service-account-key-probe.md",
       "docs/evidence/2026-06-24-flashinfer-dsv4-fmha-sm120-source-audit.md",
       "docs/evidence/2026-06-24-deepseek-v4-sm120-sparse-mla-fallback.md",
-      "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-fallback-smoke.md"
+      "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-fallback-smoke.md",
+      "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-patch.md"
     ],
     "admittedHost": {
       "instance": "hydralisk-deepseek-v4-g4-2g-b-20260624053235",
@@ -246,12 +248,12 @@
       "maxModelLen": 4096
     },
     "blocker": {
-      "stage": "generation_attention_vllm_integration",
-      "site": "DeepSeek V4 sparse MLA fallback smoke / vLLM DeepseekV4FlashInferMLAAttention replacement path",
-      "message": "Issue #55 made the issue #54 fallback contract runnable as a public-safe local smoke and GCE/container wrapper. The exact issue #52 shape produced finite nonzero output locally with outputShape=[1,64,512], sparse_route_count=128, and swa_route_count=128. The wrapper can inject Hydralisk into a target Docker image, but the latest run recorded target_missing because no DeepSeek G4 host is currently live.",
+      "stage": "generation_attention_fresh_g4_container_run",
+      "site": "Patched vLLM DeepseekV4FlashInferMLAAttention._forward with HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1",
+      "message": "Issue #56 added a Hydralisk vLLM source patcher that dry-runs cleanly against the real DeepSeek V4 FlashInfer sparse attention source. It inserts a default-off fallback branch before the FlashInfer DSV4 launcher calls. The current blocker is no longer local patch code; it is the lack of a live DeepSeek G4 target to apply the patch inside a derived image and run the container synthetic smoke.",
       "ready": true,
       "completion": false,
-      "nextProbe": "patch vLLM DeepseekV4FlashInferMLAAttention._forward under a fail-closed SM120 fallback flag, then rerun scripts/smoke-deepseek-v4-sparse-mla-fallback-gce.sh on a fresh or explicitly provided G4 host before another full model smoke"
+      "nextProbe": "provision or provide a DeepSeek G4 target, apply scripts/patch-vllm-deepseek-sparse-mla-fallback.sh inside the derived vLLM image, run with HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1, and rerun scripts/smoke-deepseek-v4-sparse-mla-fallback-gce.sh before full model smoke"
     }
   },
   "publishedRecipeAdmission": {
@@ -2529,6 +2531,42 @@
       ]
     },
     "plainEnglishNext": "Patch vLLM to use the fallback under an explicit probe flag, then run the wrapper on a fresh or explicitly supplied G4 host.",
+    "publicSafety": {
+      "containsSecrets": false,
+      "containsPrompts": false,
+      "containsResponses": false,
+      "containsWeights": false,
+      "containsHiddenReasoning": false
+    }
+  },
+  "deepseekV4SparseMlaVllmPatch": {
+    "status": "dry_run_matches_real_vllm_source_g4_target_needed",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/56",
+    "module": "hydralisk/admission/deepseek_v4_sparse_mla_vllm_patch.py",
+    "script": "scripts/patch-vllm-deepseek-sparse-mla-fallback.sh",
+    "entrypoint": "hydralisk-deepseek-v4-sparse-mla-vllm-patch",
+    "evidenceRef": "docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-patch.md",
+    "target": "vllm/models/deepseek_v4/nvidia/flashinfer_sparse.py",
+    "envFlag": "HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK",
+    "defaultEnabled": false,
+    "dryRun": {
+      "command": "DRY_RUN=1 VLLM_ROOT=/Users/christopherdavid/work/projects/repos/vllm bash scripts/patch-vllm-deepseek-sparse-mla-fallback.sh",
+      "patched": true,
+      "insertedImport": true,
+      "insertedHelpers": true,
+      "decodeBranchPatched": true,
+      "prefillBranchPatched": true,
+      "referenceCheckoutCleanAfterDryRun": true
+    },
+    "fallbackContract": {
+      "supportedQueryDtype": "bfloat16",
+      "supportedKvDtype": "bfloat16",
+      "kvLayout": "HND [pages, kv_heads, page_size, dim]",
+      "failClosedForUnsupportedDtypes": true,
+      "failClosedForUnsupportedMetadataShape": true,
+      "supportsOneTokenDecodeOrOneSeqLenPerQuery": true
+    },
+    "plainEnglishNext": "Run this patch inside a derived vLLM image on a fresh/provided G4 host, enable HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1, run the container synthetic smoke, then decide whether a full model smoke is honest.",
     "publicSafety": {
       "containsSecrets": false,
       "containsPrompts": false,

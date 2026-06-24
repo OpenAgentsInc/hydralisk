@@ -121,6 +121,9 @@ DeepSeek V4 SM120 sparse MLA fallback evidence:
 DeepSeek V4 sparse MLA fallback smoke evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-fallback-smoke.md`](evidence/2026-06-24-deepseek-v4-sparse-mla-fallback-smoke.md)
 
+DeepSeek V4 sparse MLA vLLM patch evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-patch.md`](evidence/2026-06-24-deepseek-v4-sparse-mla-vllm-patch.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -1033,6 +1036,18 @@ GPT-OSS 120B host are running, and neither should be disturbed for this probe.
 The next implementation issue should patch vLLM's
 `DeepseekV4FlashInferMLAAttention._forward` path under a fail-closed probe flag
 and run the synthetic container smoke on a fresh or explicitly provided G4 host.
+
+Issue #56 added that vLLM source patcher. It targets
+`vllm/models/deepseek_v4/nvidia/flashinfer_sparse.py` and inserts a
+default-off `HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1` branch before both
+`flashinfer_trtllm_batch_decode_sparse_mla_dsv4` calls. The fallback path is
+intentionally narrow: BF16 query and KV caches, HND `[page, kv_head,
+page_token, dim]` cache shape, one sequence length or one per query token, and
+shape-compatible output. A dry run against the local read-only vLLM checkout
+patched the import, helper, decode branch, and prefill branch cleanly without
+modifying the checkout. The next live action is to apply this patch inside a
+derived vLLM image on a fresh/provided G4 target, enable the env flag, run the
+container synthetic smoke, and only then retry the full model.
 
 Issue #44 checked whether the workspace Tailnet could route around this Mac's
 gcloud auth blocker. The Tailnet runbook supports that strategy, but no usable

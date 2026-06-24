@@ -196,7 +196,13 @@ Initial targets:
   `hydralisk-deepseek-v4-sparse-mla-smoke` entry point now runs the exact
   issue #52-sized fallback shape locally with finite nonzero output, and the
   GCE wrapper can inject that smoke into a target Docker image; the latest run
-  recorded `target_missing` because there is no live DeepSeek G4 host.
+  recorded `target_missing` because there is no live DeepSeek G4 host. The
+  vLLM patcher now dry-runs cleanly against the real
+  `DeepseekV4FlashInferMLAAttention._forward` source and adds a default-off
+  `HYDRALISK_DEEPSEEK_SPARSE_MLA_FALLBACK=1` branch before the missing
+  FlashInfer DSV4 FMHA calls. The live requirement is now a fresh or explicitly
+  provided G4 target to apply the patch in a derived image and run the container
+  synthetic smoke.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
 OpenAgents to consume. It should not own pricing, credits, payout, referral,
