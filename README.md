@@ -64,8 +64,10 @@ Initial targets:
 - GLM-5.2 first as a hosted baseline, then as a high-memory SGLang/Dynamo
   self-hosting campaign.
 - DeepSeek-V4-Flash as a Google GPU admission experiment: G4 capacity was
-  admitted on 2026-06-24 with 2 x RTX PRO 6000, and the current blocker is
-  vLLM `0.23.0` failing in the Blackwell FP8 `cutlass_scaled_mm` path before
+  admitted on 2026-06-24 with 2 x RTX PRO 6000. The current blocker is now
+  narrowed to vLLM `0.23.0` Blackwell FP8 scaled-mm support: direct CUTLASS
+  FP8 cases fail, Triton block FP8 works with float32 scales, and the
+  remaining Triton failure is DeepSeek's `float8_e8m0fnu` scale dtype before
   `/v1/models`.
 
 Hydralisk should produce public-safe capability and run receipts for Khala and
@@ -92,6 +94,7 @@ First execution roadmap:
 - [`docs/deepseek-v4-flash-gce-preflight.md`](docs/deepseek-v4-flash-gce-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md`](docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md)
+- [`docs/evidence/2026-06-24-deepseek-v4-flash-scaled-mm-g4-probe.md`](docs/evidence/2026-06-24-deepseek-v4-flash-scaled-mm-g4-probe.md)
 - [`profiles/glm-5.2-fp8-sglang.json`](profiles/glm-5.2-fp8-sglang.json)
 - [`profiles/deepseek-v4-flash-gce-preflight.json`](profiles/deepseek-v4-flash-gce-preflight.json)
 

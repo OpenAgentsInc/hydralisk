@@ -16,6 +16,9 @@ Load-smoke evidence:
 Backend-matrix evidence:
 [`docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md`](evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md)
 
+Scaled-mm probe evidence:
+[`docs/evidence/2026-06-24-deepseek-v4-flash-scaled-mm-g4-probe.md`](evidence/2026-06-24-deepseek-v4-flash-scaled-mm-g4-probe.md)
+
 ## Decision
 
 Start in Hydralisk, not Psionic.
@@ -83,7 +86,7 @@ loaded enough of `deepseek-ai/DeepSeek-V4-Flash` to resolve
 149 GB of model data, and compile TileLang kernels after pinning CUDA 12.9.
 It did not reach `/v1/models`.
 
-The current blocker is:
+The first blocking signature was:
 
 ```text
 RuntimeError: dispatch_scaled_mm,
@@ -92,6 +95,17 @@ RuntimeError: dispatch_scaled_mm,
 
 Disabling DeepGEMM, UE8M0, TMA-aligned scales, and block-scale FP8 FlashInfer
 did not avoid the same `cutlass_scaled_mm` failure in vLLM `0.23.0`.
+The scaled-mm microprobe narrowed that failure:
+
+- vLLM reports CUTLASS FP8 support for SM120, but direct CUTLASS FP8
+  `cutlass_scaled_mm` fails even for tiny matrices.
+- The Triton block-scaled FP8 path passes with ordinary float32 scales.
+- The Triton path fails on `float8_e8m0fnu` scale tensors, matching the
+  full-model `--linear-backend triton` error.
+
+The next implementation step is to test an E8M0 scale upcast patch or wrapper
+for vLLM's CUDA Triton block-scaled FP8 path, then retry the full model with
+Triton linear kernels and expert parallel enabled.
 
 The first viable lanes are:
 
@@ -142,6 +156,8 @@ VLLM_USE_DEEP_GEMM=0
 VLLM_USE_DEEP_GEMM_E8M0=0
 VLLM_USE_DEEP_GEMM_TMA_ALIGNED_SCALES=0
 VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER=0
+VLLM_LINEAR_BACKEND=triton
+VLLM_ENABLE_EXPERT_PARALLEL=1
 ```
 
 Use `TARGET_INSTANCE`, `TARGET_ZONE`, and `TARGET_GPU_COUNT` only for a fresh
@@ -160,7 +176,10 @@ Stop and record a blocker if:
   receipts.
 
 The 2026-06-24 G4 smoke is currently stopped on the CUDA/kernel support
-condition above.
+condition above. More random flag trials on the same host are not the next
+useful step; the useful split is either the E8M0/Triton patch, a known-good
+DeepSeek vLLM image/build pin, an 8-GPU H100/H200/B200 allocation that matches
+the published recipe, or a custom expert-prefetch/offload route.
 
 ## Promotion boundary
 

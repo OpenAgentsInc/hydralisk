@@ -118,8 +118,57 @@ def test_gce_smoke_script_exposes_backend_and_issue_knobs() -> None:
         'VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER="${VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER:-1}"'
         in script
     )
+    assert 'VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"' in script
+    assert 'VLLM_ENABLE_EXPERT_PARALLEL="${VLLM_ENABLE_EXPERT_PARALLEL:-0}"' in script
     assert 'printf "VLLM_USE_DEEP_GEMM\\t%s\\n"' in script
+    assert 'printf "VLLM_LINEAR_BACKEND\\t%s\\n"' in script
+    assert 'printf "VLLM_ENABLE_EXPERT_PARALLEL\\t%s\\n"' in script
+    assert '--linear-backend "$VLLM_LINEAR_BACKEND"' in script
+    assert "expert_parallel_args+=(--enable-expert-parallel)" in script
     assert 'issue="$ISSUE_NUMBER"' in script
+
+
+def test_scaled_mm_probe_script_is_public_safe_and_target_scoped(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "probe-deepseek-v4-scaled-mm-gce.sh"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path),
+            "TARGET_INSTANCE": "hydralisk-deepseek-v4-g4-2g-b-test",
+            "TARGET_ZONE": "us-central1-b",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    evidence = (tmp_path / "scaled-mm-probe.md").read_text()
+
+    assert "Wrote" in result.stdout
+    assert "hydralisk-deepseek-v4-g4-2g-b-test" in evidence
+    assert "Contains weights: false" in evidence
+
+    rejected = subprocess.run(
+        ["bash", str(script)],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "DRY_RUN": "1",
+            "OUTPUT_DIR": str(tmp_path / "rejected"),
+            "TARGET_INSTANCE": "hydralisk-gptoss20b-l4-prod",
+            "TARGET_ZONE": "us-central1-a",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert rejected.returncode == 2
+    assert "fresh hydralisk-deepseek-v4" in rejected.stderr
 
 
 def _write_tiny_gguf(path: Path) -> None:

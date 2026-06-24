@@ -21,6 +21,8 @@ VLLM_USE_DEEP_GEMM="${VLLM_USE_DEEP_GEMM:-1}"
 VLLM_USE_DEEP_GEMM_E8M0="${VLLM_USE_DEEP_GEMM_E8M0:-1}"
 VLLM_USE_DEEP_GEMM_TMA_ALIGNED_SCALES="${VLLM_USE_DEEP_GEMM_TMA_ALIGNED_SCALES:-1}"
 VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER="${VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER:-1}"
+VLLM_LINEAR_BACKEND="${VLLM_LINEAR_BACKEND:-auto}"
+VLLM_ENABLE_EXPERT_PARALLEL="${VLLM_ENABLE_EXPERT_PARALLEL:-0}"
 SYSTEM_CUDA_HOME="${SYSTEM_CUDA_HOME:-/usr/local/cuda-12.9}"
 TARGET_INSTANCE="${TARGET_INSTANCE:-}"
 TARGET_ZONE="${TARGET_ZONE:-}"
@@ -250,8 +252,14 @@ if command -v docker >/dev/null 2>&1; then
     printf "VLLM_USE_DEEP_GEMM_E8M0\t%s\n" "$VLLM_USE_DEEP_GEMM_E8M0"
     printf "VLLM_USE_DEEP_GEMM_TMA_ALIGNED_SCALES\t%s\n" "$VLLM_USE_DEEP_GEMM_TMA_ALIGNED_SCALES"
     printf "VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER\t%s\n" "$VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER"
+    printf "VLLM_LINEAR_BACKEND\t%s\n" "$VLLM_LINEAR_BACKEND"
+    printf "VLLM_ENABLE_EXPERT_PARALLEL\t%s\n" "$VLLM_ENABLE_EXPERT_PARALLEL"
   } | sudo tee -a /var/log/hydralisk/deepseek-engine-evidence.txt >/dev/null
   container_name="hydralisk-deepseek-v4-smoke"
+  expert_parallel_args=()
+  if [[ "$VLLM_ENABLE_EXPERT_PARALLEL" = "1" ]]; then
+    expert_parallel_args+=(--enable-expert-parallel)
+  fi
   sudo docker rm -f "\$container_name" >/dev/null 2>&1 || true
   sudo docker run --rm --gpus all --ipc=host --network host \\
     --name "\$container_name" \\
@@ -278,6 +286,8 @@ if command -v docker >/dev/null 2>&1; then
     --tokenizer-mode deepseek_v4 \\
     --reasoning-parser deepseek_v4 \\
     --tool-call-parser deepseek_v4 \\
+    --linear-backend "$VLLM_LINEAR_BACKEND" \\
+    "\${expert_parallel_args[@]}" \\
     --enable-auto-tool-choice \\
     > /var/log/hydralisk/deepseek-vllm.log 2>&1 &
 else
@@ -326,7 +336,13 @@ PY
     printf "VLLM_USE_DEEP_GEMM_E8M0\t%s\n" "$VLLM_USE_DEEP_GEMM_E8M0"
     printf "VLLM_USE_DEEP_GEMM_TMA_ALIGNED_SCALES\t%s\n" "$VLLM_USE_DEEP_GEMM_TMA_ALIGNED_SCALES"
     printf "VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER\t%s\n" "$VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER"
+    printf "VLLM_LINEAR_BACKEND\t%s\n" "$VLLM_LINEAR_BACKEND"
+    printf "VLLM_ENABLE_EXPERT_PARALLEL\t%s\n" "$VLLM_ENABLE_EXPERT_PARALLEL"
   } | sudo tee -a /var/log/hydralisk/deepseek-engine-evidence.txt >/dev/null
+  expert_parallel_args=()
+  if [[ "$VLLM_ENABLE_EXPERT_PARALLEL" = "1" ]]; then
+    expert_parallel_args+=(--enable-expert-parallel)
+  fi
   HF_HOME=/var/lib/hydralisk/huggingface \\
   VLLM_ENGINE_READY_TIMEOUT_S=3600 \\
   VLLM_RPC_TIMEOUT=600000 \\
@@ -349,6 +365,8 @@ PY
     --tokenizer-mode deepseek_v4 \\
     --reasoning-parser deepseek_v4 \\
     --tool-call-parser deepseek_v4 \\
+    --linear-backend "$VLLM_LINEAR_BACKEND" \\
+    "\${expert_parallel_args[@]}" \\
     --enable-auto-tool-choice \\
     > /var/log/hydralisk/deepseek-vllm.log 2>&1 &
 fi
