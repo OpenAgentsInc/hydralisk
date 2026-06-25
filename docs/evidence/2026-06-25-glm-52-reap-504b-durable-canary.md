@@ -87,6 +87,26 @@ Checked after setup and after the #6253 coordination note:
 - Watchdog Cloud Run job: configured
 - Watchdog Cloud Scheduler job: configured
 
+Follow-up status at `2026-06-25T19:02Z`, using
+`ACTION=status scripts/install-glm-52-reap-504b-durable-canary-gce.sh` without
+calling the model lane:
+
+- Instance status remained `RUNNING`.
+- Health stayed `ready` for `glm-5.2-reap-504b-g4`.
+- Machine, lifecycle, and disk shape were unchanged:
+  `g4-standard-384`, `SPOT`, `STOP`, no `maxRunDuration`, boot disk
+  auto-delete false.
+- Docker, Caddy, and the Hydralisk private proxy stayed enabled and active.
+- The keep-warm timer stayed disabled and inactive because the public Gym
+  projection still showed the official GLM baseline Terminal-Bench run in
+  progress (`19/89` completed at that check). This preserves the singleflight
+  benchmark lane instead of adding warm-probe contention.
+- The watchdog Cloud Run job and Cloud Scheduler job remained configured on
+  the five-minute cadence.
+- The latest host-local keep-warm record was `busy`/HTTP `429`, which is the
+  expected fail-closed response when a singleflight benchmark request owns the
+  lane; it did not reveal prompts, responses, endpoints, or tokens.
+
 Earlier keep-warm probes showed both the useful and honest behavior:
 
 - A busy/error warm attempt can fail without taking the timer down.

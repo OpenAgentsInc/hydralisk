@@ -477,6 +477,7 @@ write_status() {
 import json
 import pathlib
 import sys
+from datetime import datetime, timezone
 
 (
     out,
@@ -514,6 +515,7 @@ host_lines = dict(
 doc = {
     "schema": "hydralisk.glm52_reap.durable_canary_status.v1",
     "publicSafe": True,
+    "checkedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     "targetInstance": target_instance,
     "targetZone": target_zone,
     "region": region,
