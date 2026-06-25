@@ -92,6 +92,17 @@ class HydraliskSettings:
     speculative_decoding: str | None = None
     admission_ref: str | None = None
     evidence_ref: str | None = None
+    replica_ref: str | None = None
+    replica_profile_ref: str | None = None
+    replica_draining: bool = False
+    replica_reserved: bool = False
+    replica_reservation_ref: str | None = None
+    provisioning_class: str | None = None
+    max_run_duration_present: bool | None = None
+    watchdog_ref: str | None = None
+    watchdog_status: str | None = None
+    watchdog_checked_at: str | None = None
+    keepwarm_status_path: Path | None = None
     model_policy: str = "standard"
     adapter_revision: str | None = None
     authorized_security_scope_ids: tuple[str, ...] = ()
@@ -166,6 +177,23 @@ def load_settings() -> HydraliskSettings:
         speculative_decoding=_env("HYDRALISK_SPECULATIVE_DECODING"),
         admission_ref=_env("HYDRALISK_ADMISSION_REF"),
         evidence_ref=_env("HYDRALISK_EVIDENCE_REF"),
+        replica_ref=_env("HYDRALISK_REPLICA_REF"),
+        replica_profile_ref=_env("HYDRALISK_REPLICA_PROFILE_REF"),
+        replica_draining=_env_flag("HYDRALISK_REPLICA_DRAINING"),
+        replica_reserved=_env_flag("HYDRALISK_REPLICA_RESERVED"),
+        replica_reservation_ref=_env("HYDRALISK_REPLICA_RESERVATION_REF"),
+        provisioning_class=_env("HYDRALISK_PROVISIONING_CLASS"),
+        max_run_duration_present=_env_optional_flag(
+            "HYDRALISK_MAX_RUN_DURATION_PRESENT"
+        ),
+        watchdog_ref=_env("HYDRALISK_WATCHDOG_REF"),
+        watchdog_status=_env("HYDRALISK_WATCHDOG_STATUS"),
+        watchdog_checked_at=_env("HYDRALISK_WATCHDOG_CHECKED_AT"),
+        keepwarm_status_path=(
+            Path(path)
+            if (path := _env("HYDRALISK_KEEPWARM_STATUS_PATH")) is not None
+            else None
+        ),
         model_policy=_env("HYDRALISK_MODEL_POLICY", "standard") or "standard",
         adapter_revision=_env("HYDRALISK_ADAPTER_REVISION"),
         authorized_security_scope_ids=_env_csv(

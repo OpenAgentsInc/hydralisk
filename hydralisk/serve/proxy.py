@@ -17,6 +17,7 @@ from hydralisk.serve.config import HydraliskSettings, load_settings
 from hydralisk.serve.receipts import (
     ReceiptStore,
     build_capabilities,
+    build_replica_capabilities,
     build_receipt,
     normalize_usage,
 )
@@ -45,6 +46,8 @@ class _InflightGate:
         self.queue_timeout_seconds = max(queue_timeout_seconds, 0.0)
         self._semaphore = asyncio.Semaphore(limit) if limit else None
         self.current = 0
+        self.busy_rejections_total = 0
+        self.last_busy_at: datetime | None = None
 
     async def acquire(self) -> _InflightLease:
         if self._semaphore is None:
@@ -71,6 +74,8 @@ class _InflightGate:
             self._semaphore.release()
 
     def _raise_saturated(self) -> None:
+        self.busy_rejections_total += 1
+        self.last_busy_at = datetime.now(timezone.utc)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
@@ -173,7 +178,9 @@ class _ProxyMetrics:
                     "limit": inflight_gate.limit,
                     "queueTimeoutSeconds": inflight_gate.queue_timeout_seconds,
                     "singleFlight": inflight_gate.limit == 1,
+                    "backpressure": _backpressure_snapshot(inflight_gate),
                 },
+                "replica": _replica_metrics_snapshot(config, inflight_gate),
                 "requests": {
                     "total": self.requests_total,
                     "responses": self.responses_total,
@@ -189,6 +196,99 @@ class _ProxyMetrics:
                     "max": self.latency_max_ms,
                 },
             }
+
+
+def _backpressure_snapshot(inflight_gate: _InflightGate) -> dict[str, Any]:
+    saturated = (
+        inflight_gate.limit is not None and inflight_gate.current >= inflight_gate.limit
+    )
+    return {
+        "busy": saturated,
+        "busyRejectsTotal": inflight_gate.busy_rejections_total,
+        "lastBusyAt": (
+            inflight_gate.last_busy_at.isoformat()
+            if inflight_gate.last_busy_at is not None
+            else None
+        ),
+        "lastBusyStatus": (
+            status.HTTP_429_TOO_MANY_REQUESTS
+            if inflight_gate.last_busy_at is not None
+            else None
+        ),
+    }
+
+
+def _replica_metrics_snapshot(
+    config: HydraliskSettings,
+    inflight_gate: _InflightGate,
+) -> dict[str, Any]:
+    replica = build_replica_capabilities(config)
+    replica["capacity"] = {
+        "inflight": inflight_gate.current,
+        "maxInflight": inflight_gate.limit,
+        "queueTimeoutSeconds": inflight_gate.queue_timeout_seconds,
+        "singleFlight": inflight_gate.limit == 1,
+        "backpressure": _backpressure_snapshot(inflight_gate),
+    }
+    replica["warmState"] = _keepwarm_state_snapshot(config)
+    return replica
+
+
+def _keepwarm_state_snapshot(config: HydraliskSettings) -> dict[str, Any]:
+    path = config.keepwarm_status_path
+    if path is None:
+        return {
+            "configured": False,
+            "lastKeepWarmAt": None,
+            "lastKeepWarmStatus": None,
+            "lastKeepWarmHttpStatus": None,
+            "lastKeepWarmWallSeconds": None,
+            "lastKeepWarmTokens": None,
+        }
+    if not path.exists():
+        return {
+            "configured": True,
+            "statusPathRef": "host-local-public-json",
+            "lastKeepWarmAt": None,
+            "lastKeepWarmStatus": "missing",
+            "lastKeepWarmHttpStatus": None,
+            "lastKeepWarmWallSeconds": None,
+            "lastKeepWarmTokens": None,
+        }
+    try:
+        payload = json.loads(path.read_text())
+    except Exception:
+        return {
+            "configured": True,
+            "statusPathRef": "host-local-public-json",
+            "lastKeepWarmAt": None,
+            "lastKeepWarmStatus": "unreadable",
+            "lastKeepWarmHttpStatus": None,
+            "lastKeepWarmWallSeconds": None,
+            "lastKeepWarmTokens": None,
+        }
+    if not isinstance(payload, dict):
+        return {
+            "configured": True,
+            "statusPathRef": "host-local-public-json",
+            "lastKeepWarmAt": None,
+            "lastKeepWarmStatus": "unreadable",
+            "lastKeepWarmHttpStatus": None,
+            "lastKeepWarmWallSeconds": None,
+            "lastKeepWarmTokens": None,
+        }
+
+    usage = normalize_usage(payload.get("usage"))
+    timing = payload.get("timing") if isinstance(payload.get("timing"), dict) else {}
+    return {
+        "configured": True,
+        "statusPathRef": "host-local-public-json",
+        "lastKeepWarmAt": payload.get("checkedAt"),
+        "lastKeepWarmStatus": payload.get("status"),
+        "lastKeepWarmHttpStatus": payload.get("httpStatus"),
+        "lastKeepWarmWallSeconds": timing.get("wallSeconds"),
+        "lastKeepWarmTokens": usage,
+    }
 
 
 def create_app(settings: HydraliskSettings | None = None) -> FastAPI:

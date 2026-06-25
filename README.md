@@ -91,6 +91,12 @@ Initial targets:
   completion tok/s including TTFT for 160-token streamed outputs; same-endpoint
   concurrency still admits one request and rejects the other with 429. See
   [docs/evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md](docs/evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md).
+  The proxy now exposes public-safe replica routing metadata for Khala pool
+  selection: stable `replicaRef`/`profileRef`, inflight and 429/backpressure
+  counters, keep-warm summary status, lifecycle/provisioning class, and
+  reserved/draining flags without endpoint URLs, IPs, bearer tokens, prompts,
+  responses, weights, or raw logs:
+  [docs/evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md](docs/evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md).
   The private lane is now operator-hardened with a raw vLLM Docker restart
   policy, a systemd-managed private proxy, public-safe metrics, durable model
   and cache paths, and a stop/start recovery runbook in
@@ -327,6 +333,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-tracking-closure.md`](docs/evidence/2026-06-24-glm-52-reap-504b-tracking-closure.md)
 - [`docs/evidence/2026-06-25-glm-52-reap-504b-khala-canary-status.md`](docs/evidence/2026-06-25-glm-52-reap-504b-khala-canary-status.md)
 - [`docs/evidence/2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md`](docs/evidence/2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md)
+- [`docs/evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md`](docs/evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md)
 - [`docs/deepseek-v4-flash-gce-preflight.md`](docs/deepseek-v4-flash-gce-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md`](docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md)

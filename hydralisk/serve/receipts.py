@@ -57,6 +57,7 @@ def build_capabilities(config: HydraliskSettings) -> dict[str, Any]:
         "chatCompletions": True,
         "responses": True,
         "admission": _admission_policy(config),
+        "replica": build_replica_capabilities(config),
         "policy": _policy_capabilities(config),
         "requestDefaults": _request_defaults(config),
         "toolCalls": "disabled_for_gateway_day_zero",
@@ -223,6 +224,39 @@ def _admission_policy(config: HydraliskSettings) -> dict[str, Any]:
         "queueTimeoutSeconds": config.inflight_queue_timeout_seconds,
         "singleFlight": config.max_inflight_requests == 1,
     }
+
+
+def build_replica_capabilities(config: HydraliskSettings) -> dict[str, Any]:
+    profile_ref = config.replica_profile_ref or config.model_profile_ref
+    watchdog = _compact(
+        {
+            "watchdogRef": config.watchdog_ref,
+            "status": config.watchdog_status,
+            "checkedAt": config.watchdog_checked_at,
+        }
+    )
+    lifecycle = _compact(
+        {
+            "provisioningClass": config.provisioning_class,
+            "maxRunDurationPresent": config.max_run_duration_present,
+            "watchdog": watchdog or None,
+        }
+    )
+    routing = _compact(
+        {
+            "draining": config.replica_draining,
+            "reserved": config.replica_reserved,
+            "reservationRef": config.replica_reservation_ref,
+        }
+    )
+    return _compact(
+        {
+            "replicaRef": config.replica_ref,
+            "profileRef": profile_ref,
+            "routing": routing,
+            "lifecycle": lifecycle or None,
+        }
+    )
 
 
 def _request_defaults(config: HydraliskSettings) -> dict[str, Any]:

@@ -259,6 +259,18 @@ When the public HTTPS front runs on the same VM and forwards to the private
 proxy, bind the proxy to the VM's private interface rather than loopback. Keep
 the private address out of tracked docs.
 
+The capabilities and metrics endpoints also expose the public-safe replica
+routing shape used by Khala pool selection. Set `REPLICA_REF` and
+`REPLICA_PROFILE_REF` when installing the proxy; the GLM installer defaults the
+primary host to `glm52-reap-primary-g4-tp4` and
+`glm-reap-504b-g4-tp4-mtp2-rp105`. The dynamic metrics include inflight count,
+singleflight/backpressure, last 429/busy accounting, host-local keep-warm
+summary, provisioning class, `maxRunDuration` presence, watchdog status, and
+reserved/draining flags. They intentionally do not expose endpoint URLs, public
+or private IPs, bearer tokens, raw prompts, raw responses, weights, or raw
+logs. See:
+[`docs/evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md`](evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md)
+
 7. Check and smoke the private proxy.
 
 ```bash

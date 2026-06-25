@@ -7,6 +7,7 @@ import pytest
 from hydralisk.serve.config import HydraliskSettings
 import hydralisk.serve.proxy as proxy_module
 from hydralisk.serve.proxy import _InflightGate
+from hydralisk.serve.proxy import _ProxyMetrics
 from hydralisk.serve.proxy import create_app
 
 
@@ -72,6 +73,7 @@ def test_capabilities_are_public_safe() -> None:
         "queueTimeoutSeconds": 0.0,
         "singleFlight": False,
     }
+    assert body["replica"] == {"routing": {"draining": False, "reserved": False}}
     assert "token" not in str(body).lower()
     assert "127.0.0.1" not in str(body)
 
@@ -160,8 +162,119 @@ def test_metrics_are_public_safe_and_count_proxy_requests(
     assert body["requests"]["byStatus"] == {"200": 1}
     assert body["latencyMs"]["count"] == 1
     assert body["inflight"]["current"] == 0
-    assert "token" not in str(body).lower()
+    assert body["replica"]["capacity"]["maxInflight"] == 1
+    assert body["replica"]["capacity"]["singleFlight"] is True
+    assert body["replica"]["capacity"]["backpressure"]["busyRejectsTotal"] == 0
+    assert body["replica"]["warmState"] == {
+        "configured": False,
+        "lastKeepWarmAt": None,
+        "lastKeepWarmStatus": None,
+        "lastKeepWarmHttpStatus": None,
+        "lastKeepWarmWallSeconds": None,
+        "lastKeepWarmTokens": None,
+    }
+    assert "bearer" not in str(body).lower()
+    assert "secret" not in str(body).lower()
     assert "127.0.0.1" not in str(body)
+
+
+def test_capabilities_include_public_safe_replica_identity() -> None:
+    client = TestClient(
+        create_app(
+            HydraliskSettings(
+                replica_ref="glm52-reap-replica-a",
+                replica_profile_ref="glm-reap-504b-g4-tp4-mtp2-rp105",
+                replica_reserved=True,
+                replica_reservation_ref="terminal-bench-6253",
+                provisioning_class="spot",
+                max_run_duration_present=False,
+                watchdog_ref="hydralisk-glm52-reap-watchdog-5m",
+                watchdog_status="configured",
+            )
+        )
+    )
+
+    response = client.get("/hydralisk/v1/capabilities")
+
+    assert response.status_code == 200
+    replica = response.json()["replica"]
+    assert replica == {
+        "replicaRef": "glm52-reap-replica-a",
+        "profileRef": "glm-reap-504b-g4-tp4-mtp2-rp105",
+        "routing": {
+            "draining": False,
+            "reserved": True,
+            "reservationRef": "terminal-bench-6253",
+        },
+        "lifecycle": {
+            "provisioningClass": "spot",
+            "maxRunDurationPresent": False,
+            "watchdog": {
+                "watchdogRef": "hydralisk-glm52-reap-watchdog-5m",
+                "status": "configured",
+            },
+        },
+    }
+    assert "127.0.0.1" not in str(replica)
+    assert "bearer" not in str(replica).lower()
+
+
+@pytest.mark.asyncio
+async def test_replica_metrics_include_busy_and_keepwarm_state(tmp_path) -> None:
+    keepwarm_path = tmp_path / "latest-public.json"
+    keepwarm_path.write_text(
+        """
+{
+  "schema": "hydralisk.keepwarm.v1",
+  "status": "passed",
+  "checkedAt": "2026-06-25T18:00:00Z",
+  "httpStatus": 200,
+  "timing": {"wallSeconds": 0.428},
+  "usage": {"prompt_tokens": 21, "completion_tokens": 4, "total_tokens": 25},
+  "promptSha256": "not-exported-by-metrics",
+  "visibleCompletionSha256": "not-exported-by-metrics"
+}
+""".strip()
+    )
+    gate = _InflightGate(limit=1, queue_timeout_seconds=0)
+    lease = await gate.acquire()
+    try:
+        with pytest.raises(HTTPException):
+            await gate.acquire()
+        metrics = await _ProxyMetrics().snapshot(
+            config=HydraliskSettings(
+                replica_ref="glm52-reap-replica-a",
+                replica_profile_ref="glm-reap-504b-g4-tp4-mtp2-rp105",
+                keepwarm_status_path=keepwarm_path,
+                max_inflight_requests=1,
+            ),
+            inflight_gate=gate,
+        )
+    finally:
+        lease.release()
+
+    assert metrics["inflight"]["backpressure"]["busy"] is True
+    assert metrics["inflight"]["backpressure"]["busyRejectsTotal"] == 1
+    assert metrics["inflight"]["backpressure"]["lastBusyStatus"] == 429
+    assert metrics["replica"]["replicaRef"] == "glm52-reap-replica-a"
+    assert metrics["replica"]["capacity"]["inflight"] == 1
+    assert metrics["replica"]["capacity"]["maxInflight"] == 1
+    assert metrics["replica"]["capacity"]["backpressure"]["busyRejectsTotal"] == 1
+    assert metrics["replica"]["warmState"] == {
+        "configured": True,
+        "statusPathRef": "host-local-public-json",
+        "lastKeepWarmAt": "2026-06-25T18:00:00Z",
+        "lastKeepWarmStatus": "passed",
+        "lastKeepWarmHttpStatus": 200,
+        "lastKeepWarmWallSeconds": 0.428,
+        "lastKeepWarmTokens": {
+            "promptTokens": 21,
+            "completionTokens": 4,
+            "totalTokens": 25,
+        },
+    }
+    assert "not-exported-by-metrics" not in str(metrics)
+    assert "127.0.0.1" not in str(metrics)
 
 
 def test_private_models_endpoint_requires_bearer_and_reports_defaults() -> None:
