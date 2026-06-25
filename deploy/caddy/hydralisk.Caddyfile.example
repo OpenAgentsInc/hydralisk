@@ -8,7 +8,7 @@ hydralisk-gpt-oss-20b.openagents.com {
 
   reverse_proxy 127.0.0.1:8080 {
     transport http {
-      versions h1 h2c
+      versions 1.1
     }
   }
 }

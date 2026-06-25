@@ -98,8 +98,8 @@ Current admitted fallback:
 - Machine: `g4-standard-384`
 - Accelerator: 8 x `nvidia-rtx-pro-6000`
 - Active GPUs for this lane: `0,1,2,3`
-- Public IP: none
-- Network IP: `10.128.0.38`
+- Public HTTPS origin: reserved static address, value not tracked
+- Network IP: private VPC address, value not tracked
 - Provisioning: Spot
 - Termination action: Stop
 - Boot disk: 1500 GB Hyperdisk Balanced
@@ -223,8 +223,8 @@ ACTION=install-systemd RUN_ID=<run-id> \
   scripts/expose-glm-52-reap-504b-private-proxy-gce.sh
 ```
 
-The proxy binds to `127.0.0.1:8080`, requires a bearer token for `/v1/models`
-and generation routes, and exposes public-safe `/health`,
+The proxy should bind to a private listener on the host, requires a bearer
+token for `/v1/models` and generation routes, and exposes public-safe `/health`,
 `/hydralisk/v1/capabilities`, `/hydralisk/v1/metrics`, and receipt lookup.
 
 7. Check and smoke the private proxy.
@@ -237,7 +237,28 @@ ACTION=smoke RUN_ID=<run-id> \
   scripts/expose-glm-52-reap-504b-private-proxy-gce.sh
 ```
 
-8. Run Terminal-Bench only through the private proxy and public-safe summary
+8. If Khala needs to reach the lane from Cloudflare Workers, expose only the
+bearer-gated proxy through HTTPS.
+
+```bash
+ACTION=setup RUN_ID=<run-id> \
+  scripts/expose-glm-52-reap-504b-public-https-gce.sh
+
+ACTION=smoke RUN_ID=<run-id> \
+  scripts/expose-glm-52-reap-504b-public-https-gce.sh
+```
+
+The public HTTPS script reserves or reuses a regional static address, attaches
+it to the GLM host, adds a tag-targeted `80/443` firewall rule, installs Caddy,
+and fronts only `/health`, `/v1/*`, and `/hydralisk/*`. Raw vLLM remains
+host-local. The actual origin URL and bearer token belong only in secret
+stores; tracked docs and issue comments should use the shape
+`https://<operator-secret-hostname>`.
+
+Public HTTPS evidence:
+[`docs/evidence/2026-06-25-glm-52-reap-504b-public-https-origin.md`](evidence/2026-06-25-glm-52-reap-504b-public-https-origin.md)
+
+9. Run Terminal-Bench only through the private proxy and public-safe summary
 reducer.
 
 ```bash
@@ -310,6 +331,18 @@ Private proxy:
 - Smoke run ref: `hydralisk-run-91b8c576959c4e6d8633626c7adf9d36`
 - Metrics after smoke: 1 request, 1 response, 0 errors
 
+Public HTTPS origin:
+
+- Status: pass
+- Public origin shape: `https://<operator-secret-hostname>`
+- Front: Caddy `v2.11.4`
+- Caddy upstream: HTTP/1.1 to the bearer-gated Hydralisk proxy
+- Health/models: ready
+- Authenticated completion HTTP status: 200
+- Completion wall time: 0.988 seconds
+- Total tokens: 13
+- Endpoint value and bearer token: not tracked
+
 Terminal-Bench 2.0 pilot:
 
 - Total tasks: 89
@@ -324,7 +357,7 @@ Terminal-Bench 2.0 pilot:
 ## What Is Not Promised
 
 - Public production SLA
-- Public endpoint
+- Ungated public endpoint
 - Billing, credits, customer routing, settlement, or payout
 - OpenAgents product-surface claim outside Hydralisk evidence
 - Standalone 4x G4 capacity availability
@@ -343,7 +376,9 @@ After a Spot stop, planned VM stop, or host refresh:
 5. Run proxy `ACTION=install-systemd` or `ACTION=restart-systemd`.
 6. Run proxy `ACTION=status`.
 7. Run proxy `ACTION=smoke`.
-8. Commit or comment only the public-safe summary artifacts.
+8. If using the public HTTPS origin, run the public HTTPS smoke and verify the
+   redacted summary before arming product secrets.
+9. Commit or comment only the public-safe summary artifacts.
 
 Do not force a full Spot stop/start solely for a doc refresh. Spot capacity
 re-admission is an external cloud-capacity risk, not a model-serving property.
