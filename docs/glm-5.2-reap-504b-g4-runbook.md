@@ -251,6 +251,33 @@ scripts/run-glm-52-reap-terminal-bench-preflight.sh
 Use IAP/SSH tunneling for local operator access. Keep `n-concurrent=1` until a
 separate Hydralisk concurrency receipt admits more.
 
+Run Harbor with raw job output outside the repository, then reduce the job
+directory with Hydralisk's public-safe reducer. The reducer reads only
+job/trial `result.json` and `config.json` files; it does not read agent
+trajectories, terminal panes, recordings, raw logs, verifier artifacts, or
+environment files.
+
+```bash
+harbor run \
+  --dataset terminal-bench@2.0 \
+  --agent terminus-2 \
+  --model openai/glm-5.2-reap-504b-g4 \
+  --n-concurrent 1 \
+  --jobs-dir /tmp/hydralisk-terminal-bench \
+  --job-name glm52-reap-mtp2-full-$(date -u +%Y%m%d%H%M%S) \
+  --env-file <local env file with private proxy URL + token, never committed> \
+  --yes \
+  --quiet
+
+uv run hydralisk-terminal-bench-summary \
+  --harbor-job-dir /tmp/hydralisk-terminal-bench/<job-name> \
+  --output-dir docs/evidence \
+  --json-name <public-safe-receipt>.json \
+  --markdown-name <public-safe-report>.md \
+  --runner-version 0.15.0 \
+  --claim-status decision_grade_candidate
+```
+
 ## Evidence Summary
 
 Load smoke:

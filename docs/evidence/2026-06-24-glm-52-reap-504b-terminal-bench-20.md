@@ -77,13 +77,15 @@ Keep `n-concurrent=1` for the first full run because issue #88 admits one full
 250K request at a time. Increase concurrency only after a separate Hydralisk
 concurrency receipt says the serving lane can absorb it.
 
-After the run, reduce Harbor output to a public-safe JSON summary containing
-task IDs, statuses, attempts, timing buckets, and sanitized error classes only.
-Then build the committed receipt:
+After the run, reduce the Harbor job directory directly through Hydralisk's
+public-safe reducer. The reducer reads only job/trial `result.json` and
+`config.json`; it does not read agent trajectories, terminal panes, recordings,
+raw logs, verifier artifacts, or environment files. Then build the committed
+receipt:
 
 ```bash
 uv run hydralisk-terminal-bench-summary \
-  --input <public-safe-terminal-bench-summary.json> \
+  --harbor-job-dir <raw-harbor-jobs-dir>/<job-name> \
   --output-dir docs/evidence \
   --json-name 2026-06-24-glm-52-reap-504b-terminal-bench-20-receipt.json \
   --markdown-name 2026-06-24-glm-52-reap-504b-terminal-bench-20.md \
