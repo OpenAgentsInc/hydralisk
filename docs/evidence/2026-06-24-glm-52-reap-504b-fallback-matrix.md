@@ -71,8 +71,8 @@ Required gates:
 - Launch: use the b12x/vLLM recipe with TP=4, DCP=4, `modelopt_fp4`,
   `kv-cache-dtype=fp8`, `B12X_MLA_SPARSE`, `b12x`, and GLM parser flags.
 - Smoke: `/v1/models` ready and a public-safe completion receipt.
-- Tuning: 250K context, `max_num_seqs=2`, `max_num_batched_tokens=4096`, MTP
-  disabled by default unless a separate MTP receipt passes.
+- Tuning: 250K context, `max_num_seqs=2`, `max_num_batched_tokens=4096`, and
+  MTP-2/no-`min_p` admitted by the 2026-06-25 speed gate.
 - Eval: Terminal-Bench receipt with task statuses, denominator definitions,
   and sanitized error classes only.
 

@@ -38,7 +38,7 @@ envelope for the private Hydralisk lane:
 - Attention backend: `B12X_MLA_SPARSE`
 - MoE backend: `b12x`
 - Quantization: `modelopt_fp4`
-- MTP: disabled by default
+- MTP: MTP-2 enabled by default after the 2026-06-25 speed gate
 
 This was tested on four selected RTX PRO 6000 GPUs inside the admitted 8x
 fallback host. Standalone 4x `g4-standard-192` admission is still
@@ -93,7 +93,9 @@ concurrent requests and scheduler headroom.
 
 ## MTP gate
 
-MTP loaded and completed a tiny smoke, but it is not the default:
+Historical note: MTP loaded and completed a tiny smoke during the original
+tuning pass, but it was not made the default until the 2026-06-25 MTP-2 speed
+gate:
 
 - Run ID: `20260624241000`
 - Max context: 32,768 tokens
@@ -126,19 +128,23 @@ for workloads that show repetition.
 
 ## Operator defaults
 
-The raw launcher defaults now match the tuned envelope:
+The raw launcher defaults now match the tuned speed envelope:
 
 ```bash
 MAX_MODEL_LEN=250000
 MAX_NUM_SEQS=2
 MAX_NUM_BATCHED_TOKENS=4096
-MTP=0
+MTP=1
+NUM_SPECULATIVE_TOKENS=2
 ```
 
 The private proxy advertises `ADMITTED_CONTEXT_TOKENS=250000`, injects the GLM
-sampler defaults, keeps `enable_thinking=false` unless a client opts in, and
-keeps `MAX_INFLIGHT_REQUESTS=1` at the proxy layer so full-context traffic stays
-single-flight until a public concurrency policy is introduced.
+sampler defaults, omits default `min_p` for MTP compatibility, keeps
+`enable_thinking=false` unless a client opts in, and keeps
+`MAX_INFLIGHT_REQUESTS=1` at the proxy layer so full-context traffic stays
+single-flight until a public concurrency policy is introduced. The speed-gate
+evidence is:
+[`2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md`](2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md).
 
 Proxy refresh smoke:
 
@@ -166,8 +172,8 @@ The honest claim after this gate is:
 
 ```text
 GLM-5.2 504B REAP/NVFP4 passes a private 4-GPU G4 production-candidate serving
-profile at 250K context with max_num_seqs=2 and max_num_batched_tokens=4096,
-using four RTX PRO 6000 GPUs on the admitted 8x fallback host. Standalone 4x G4
-admission remains capacity-blocked, MTP is not default, and two concurrent
-full-250K requests are not admitted.
+profile at 250K context with max_num_seqs=2, max_num_batched_tokens=4096, and
+MTP-2/no-min_p speed serving, using four RTX PRO 6000 GPUs on the admitted 8x
+fallback host. Standalone 4x G4 admission remains capacity-blocked, and two
+concurrent full-250K requests are not admitted.
 ```

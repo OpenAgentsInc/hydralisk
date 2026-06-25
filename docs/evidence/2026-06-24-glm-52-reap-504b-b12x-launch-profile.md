@@ -81,9 +81,13 @@ so it does not overwrite the 4x accessibility claim.
 
 Issue #88 tuning update: after the first load and private endpoint passed, the
 launcher defaults were promoted to the production-candidate envelope:
-`MAX_MODEL_LEN=250000`, `MAX_NUM_SEQS=2`, `MAX_NUM_BATCHED_TOKENS=4096`, and
-`MTP=0`. Use explicit environment overrides to reproduce the original 32K
-first-load smoke.
+`MAX_MODEL_LEN=250000`, `MAX_NUM_SEQS=2`, and
+`MAX_NUM_BATCHED_TOKENS=4096`. The 2026-06-25 speed gate then promoted the
+default serving path to `MTP=1` with `NUM_SPECULATIVE_TOKENS=2` and no default
+`min_p`; see
+[`2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md`](2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md).
+Use explicit environment overrides to reproduce the original 32K first-load
+smoke or the non-MTP tuning path.
 
 ## Required launch flags
 

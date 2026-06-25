@@ -43,12 +43,19 @@ Live quota/capacity context checked on 2026-06-25:
 
 ## Current Live Status
 
-Post-benchmark raw vLLM status at `2026-06-25T02:49:47Z`:
+Speed update: after the benchmark matrix below, the private canary was promoted
+to the MTP-2/no-`min_p` speed profile. See:
+[`2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md`](2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md)
+
+Post-speed-gate raw vLLM status at `2026-06-25T03:31:56Z`:
 
 - Container: running
 - Docker restart policy: `unless-stopped`
 - `/v1/models`: ready
 - Raw bind: `127.0.0.1:8000`
+- MTP: enabled
+- Speculative tokens: 2
+- Default `min_p`: omitted for MTP compatibility
 - Model dir: `/opt/hydralisk/models/glm-5.2-504b`
 - HF cache dir: `/var/lib/hydralisk/huggingface`
 - Root disk: `1.5T`, `338G` used, `1.1T` available
@@ -57,16 +64,16 @@ GPU memory:
 
 | GPU | Used MiB | Free MiB |
 | --- | ---: | ---: |
-| 0 | 93579 | 3672 |
-| 1 | 93579 | 3672 |
-| 2 | 93577 | 3674 |
-| 3 | 93579 | 3672 |
+| 0 | 93475 | 3776 |
+| 1 | 93475 | 3776 |
+| 2 | 93475 | 3776 |
+| 3 | 93471 | 3780 |
 | 4 | 0 | 97250 |
 | 5 | 0 | 97250 |
 | 6 | 0 | 97250 |
 | 7 | 0 | 97250 |
 
-Private proxy status at `2026-06-25T02:50:25Z`:
+Private proxy status at `2026-06-25T03:31:56Z`:
 
 - Systemd unit: `hydralisk-glm52-reap-private-proxy.service`
 - State: active
@@ -126,7 +133,8 @@ Launch/readiness observations:
 
 The current live state after the benchmark is back to the routed 4x canary:
 only GPUs 0-3 are resident, the private proxy points at port `8000`, and
-replica B was stopped because it was not yet behind a production router.
+replica B was stopped because it was not yet behind a production router. A
+follow-up speed gate then promoted that 4x canary to MTP-2/no-`min_p`.
 
 ### Single-Request Decode
 

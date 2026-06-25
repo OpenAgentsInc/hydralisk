@@ -241,5 +241,5 @@ To refresh the model revision:
 
 This gate hardens the private operator surface. It does not change the tuned
 serving limits: 250K admitted context, proxy single-flight, `max_num_seqs=2`,
-`max_num_batched_tokens=4096`, MTP disabled by default, and standalone 4x G4
-capacity still blocked at admission time.
+`max_num_batched_tokens=4096`, MTP-2/no-`min_p` enabled by the 2026-06-25
+speed gate, and standalone 4x G4 capacity still blocked at admission time.

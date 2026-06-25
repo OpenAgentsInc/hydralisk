@@ -367,9 +367,9 @@
       "gpuMemoryUtilization": 0.95,
       "host": "127.0.0.1",
       "port": 8000,
-      "mtp": "disabled by default; MTP loaded but is not the production-candidate default",
+      "mtp": "enabled as MTP-2 for the private speed canary after the 2026-06-25 speed gate",
       "samplerDefaults": {
-        "minP": 0.05,
+        "minP": null,
         "repetitionPenalty": 1.05,
         "maxTokens": 1024,
         "chatTemplateKwargs": {
@@ -382,7 +382,7 @@
       "maxModelLenTokens": 250000,
       "maxNumSeqs": 2,
       "maxNumBatchedTokens": 4096,
-      "mtp": "tested separately; keep disabled unless an MTP-specific latency/quality gate passes"
+      "mtp": "MTP-2 admitted by docs/evidence/2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md; omit min_p on MTP requests because vLLM speculative decoding rejects min_p/logit_bias"
     }
   },
     "smoke": {
@@ -542,7 +542,8 @@
             "maxNumSeqs": 2,
             "maxNumBatchedTokens": 4096,
             "gpuMemoryUtilization": 0.95,
-            "mtp": false,
+            "mtp": true,
+            "numSpeculativeTokens": 2,
             "kvCacheDtype": "fp8",
             "attentionBackend": "B12X_MLA_SPARSE",
             "moeBackend": "b12x",
@@ -567,12 +568,15 @@
             }
         },
         "mtp": {
-            "status": "loaded_and_smoked_but_not_default",
-            "numSpeculativeTokens": 3,
-            "reason": "MTP loaded at 32K and completed a tiny smoke, but latency and vLLM scheduling warning make it an opt-in experiment."
+            "status": "admitted_private_speed_canary",
+            "numSpeculativeTokens": 2,
+            "evidenceRef": "docs/evidence/2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md",
+            "reason": "MTP-2 at the full 250K envelope improved per-request decode throughput by roughly one third when min_p was omitted; vLLM rejects min_p/logit_bias with speculative decoding."
         },
         "samplerGuardrails": {
             "minP": 0.05,
+            "mtpMinP": null,
+            "mtpMinPReason": "vLLM speculative decoding rejects min_p/logit_bias; keep min_p only for non-MTP fallback lanes.",
             "recommendedRepetitionPenalty": 1.05,
             "loopAbatementRepetitionPenalty": 1.1
         },
