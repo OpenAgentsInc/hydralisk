@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 from typing import Any
+from uuid import uuid4
 
 
 SCHEMA = "hydralisk.evals.terminal_bench.summary.v1"
@@ -237,6 +238,174 @@ def _counts_from_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
             ],
         },
     }
+
+
+def _task_id_from_harbor_mapping(value: object) -> str | None:
+    if not isinstance(value, Mapping):
+        return None
+
+    path = value.get("path")
+    if path:
+        return _clean_task_id(Path(str(path)).name)
+
+    org = value.get("org")
+    name = value.get("name")
+    if org and name:
+        return _clean_task_id(f"{org}/{name}")
+
+    if name:
+        return _clean_task_id(name)
+
+    return None
+
+
+def _task_id_from_trial_dir_name(value: object) -> str:
+    text = str(value or "unknown").strip()
+    if "__" in text:
+        text = text.split("__", 1)[0]
+    return _clean_task_id(text)
+
+
+def _harbor_trial_task_id(trial_dir: Path, trial: Mapping[str, Any]) -> str:
+    task_id = _task_id_from_harbor_mapping(trial.get("task_id"))
+    if task_id:
+        return task_id
+
+    config = trial.get("config")
+    if isinstance(config, Mapping):
+        task_id = _task_id_from_harbor_mapping(config.get("task"))
+        if task_id:
+            return task_id
+
+    task_name = trial.get("task_name")
+    if task_name:
+        return _clean_task_id(task_name)
+
+    config_path = trial_dir / "config.json"
+    if config_path.exists():
+        try:
+            payload = json.loads(config_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        if isinstance(payload, Mapping):
+            task_id = _task_id_from_harbor_mapping(payload.get("task"))
+            if task_id:
+                return task_id
+
+    return _task_id_from_trial_dir_name(trial.get("trial_name") or trial_dir.name)
+
+
+def _harbor_trial_status(trial: Mapping[str, Any]) -> str:
+    if not trial.get("finished_at"):
+        return "not_started"
+
+    verifier_result = trial.get("verifier_result")
+    rewards = (
+        verifier_result.get("rewards")
+        if isinstance(verifier_result, Mapping)
+        else None
+    )
+    if isinstance(rewards, Mapping):
+        if "reward" in rewards:
+            try:
+                return "solved" if float(rewards["reward"]) > 0 else "failing"
+            except (TypeError, ValueError):
+                return "failing"
+        if len(rewards) == 1:
+            value = next(iter(rewards.values()))
+            try:
+                return "solved" if float(value) > 0 else "failing"
+            except (TypeError, ValueError):
+                return "failing"
+
+    exception_info = trial.get("exception_info")
+    if isinstance(exception_info, Mapping):
+        if exception_info.get("exception_type") == "CancelledError":
+            return "not_started"
+        return "failing"
+
+    return "failing"
+
+
+def _harbor_job_config_value(job_config: Mapping[str, Any], name: str) -> Any:
+    value = job_config.get(name)
+    if value is not None:
+        return value
+    return None
+
+
+def harbor_job_to_summary_payload(job_dir: Path | str) -> dict[str, Any]:
+    """Convert a Harbor job directory into a sanitized Terminal-Bench payload.
+
+    This intentionally reads only Harbor's JSON metadata files:
+    job-level ``result.json``/``config.json`` and child trial ``result.json`` /
+    ``config.json`` files. It does not read agent trajectories, terminal panes,
+    recordings, logs, verifier artifacts, or environment files.
+    """
+
+    root = Path(job_dir)
+    job_result_path = root / "result.json"
+    job_config_path = root / "config.json"
+    if not job_result_path.exists():
+        raise FileNotFoundError(f"missing Harbor job result: {job_result_path}")
+    if not job_config_path.exists():
+        raise FileNotFoundError(f"missing Harbor job config: {job_config_path}")
+
+    job_result = json.loads(job_result_path.read_text())
+    job_config = json.loads(job_config_path.read_text())
+    if not isinstance(job_result, Mapping):
+        raise ValueError("Harbor job result must be a JSON object")
+    if not isinstance(job_config, Mapping):
+        raise ValueError("Harbor job config must be a JSON object")
+
+    attempts_by_task: dict[str, list[dict[str, str]]] = {}
+    for child in sorted(root.iterdir()):
+        result_path = child / "result.json"
+        if not child.is_dir() or not result_path.exists():
+            continue
+        trial = json.loads(result_path.read_text())
+        if not isinstance(trial, Mapping):
+            continue
+        task_id = _harbor_trial_task_id(child, trial)
+        attempts_by_task.setdefault(task_id, []).append(
+            {"status": _harbor_trial_status(trial)}
+        )
+
+    tasks = [
+        {"task_id": task_id, "attempts": attempts}
+        for task_id, attempts in sorted(attempts_by_task.items())
+    ]
+
+    n_total_trials = int(job_result.get("n_total_trials") or len(tasks))
+    missing = max(n_total_trials - len(tasks), 0)
+    if missing:
+        job_label = _clean_task_id(job_config.get("job_name") or job_result.get("id"))
+        for index in range(1, missing + 1):
+            tasks.append(
+                {
+                    "task_id": f"{job_label}.unknown-not-started-{index}",
+                    "status": "not_started",
+                }
+            )
+
+    return {
+        "source": {
+            "type": "harbor-job",
+            "jobName": _harbor_job_config_value(job_config, "job_name"),
+            "jobId": str(job_result.get("id") or uuid4()),
+            "finished": job_result.get("finished_at") is not None,
+            "startedAt": job_result.get("started_at"),
+            "finishedAt": job_result.get("finished_at"),
+            "nTotalTrials": n_total_trials,
+            "nCompletedTrials": len(attempts_by_task),
+        },
+        "tasks": tasks,
+    }
+
+
+def _public_payload_sha256(payload: Mapping[str, Any]) -> str:
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(raw).hexdigest()
 
 
 def summarize_payload(
@@ -494,6 +663,10 @@ def _settings_from_args(args: argparse.Namespace) -> TerminalBenchRunSettings:
 
 
 def _payload_from_args(args: argparse.Namespace) -> tuple[dict[str, Any], str | None]:
+    if args.harbor_job_dir:
+        payload = harbor_job_to_summary_payload(Path(args.harbor_job_dir))
+        return payload, _public_payload_sha256(payload)
+
     if args.input:
         raw = Path(args.input).read_bytes()
         return json.loads(raw), hashlib.sha256(raw).hexdigest()
@@ -524,6 +697,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         description="Build a public-safe Terminal-Bench summary receipt."
     )
     parser.add_argument("--input", help="Sanitized Harbor/Terminal-Bench JSON summary")
+    parser.add_argument(
+        "--harbor-job-dir",
+        help=(
+            "Harbor job directory to sanitize into a Terminal-Bench summary input. "
+            "Only result/config JSON files are read."
+        ),
+    )
     parser.add_argument("--output-dir", default=".hydralisk/terminal-bench-summary")
     parser.add_argument("--json-name", default="terminal-bench-summary.json")
     parser.add_argument("--markdown-name", default="terminal-bench-summary.md")
