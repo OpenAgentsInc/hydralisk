@@ -1,0 +1,204 @@
+{
+  "schema": "hydralisk.integration_receipt.v1",
+  "publicSafe": true,
+  "generatedAt": "2026-06-25T00:18:35Z",
+  "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/92",
+  "lane": {
+    "id": "glm-5.2-reap-504b-g4",
+    "status": "private_canary",
+    "servable": true,
+    "publicEndpoint": false,
+    "productionSlaPromised": false,
+    "customerRoutingPromised": false,
+    "billingPromised": false
+  },
+  "model": {
+    "repository": "0xSero/GLM-5.2-504B",
+    "revision": "cb6b1e0451b9d560cda864f84187869c9a679712",
+    "revisionRef": "0xSero/GLM-5.2-504B@cb6b1e0451b9d560cda864f84187869c9a679712",
+    "license": "MIT",
+    "architecture": "GlmMoeDsaForCausalLM",
+    "modelType": "glm_moe_dsa",
+    "contextWindowTokens": 1048576,
+    "layers": 78,
+    "denseLayers": 3,
+    "moeLayers": 75,
+    "mtpLayers": 1,
+    "routedExperts": 168,
+    "expertsPerToken": 8,
+    "sharedExperts": 1,
+    "quantization": "ModelOpt NVFP4 / modelopt_fp4",
+    "pruning": "REAP",
+    "recovery": "Router-KD",
+    "sources": {
+      "modelCard": "https://huggingface.co/0xSero/GLM-5.2-504B",
+      "report": "https://huggingface.co/0xSero/GLM-5.2-504B/blob/main/REPORT.md",
+      "sm120ServingReference": "https://github.com/0xSero/glm-5.2-sm120"
+    }
+  },
+  "checkpoint": {
+    "modelDir": "/opt/hydralisk/models/glm-5.2-504b",
+    "hfCacheDir": "/var/lib/hydralisk/huggingface",
+    "complete": true,
+    "expectedSafetensorShardCount": 63,
+    "localSafetensorShardCount": 63,
+    "localSafetensorShardBytes": 308829060264,
+    "indexMetadataTotalSizeBytes": 318247808128,
+    "weightMapEntries": 154433,
+    "missingShardCount": 0,
+    "unexpectedShardCount": 0,
+    "manifestRef": "docs/evidence/2026-06-24-glm-52-reap-504b-staging-manifest.json"
+  },
+  "hardware": {
+    "provider": "gce",
+    "project": "openagentsgemini",
+    "primaryTarget": {
+      "machineType": "g4-standard-192",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 4,
+      "status": "capacity_blocked_at_admission"
+    },
+    "admittedFallback": {
+      "instance": "hydralisk-glm52-reap-504b-g4-8g-b-20260624214500",
+      "zone": "us-central1-b",
+      "machineType": "g4-standard-384",
+      "accelerator": "nvidia-rtx-pro-6000",
+      "gpuCount": 8,
+      "activeGpuIds": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "publicIp": false,
+      "networkIp": "10.128.0.38",
+      "provisioning": "Spot",
+      "terminationAction": "Stop",
+      "bootDisk": {
+        "type": "hyperdisk-balanced",
+        "sizeGb": 1500,
+        "autoDelete": false
+      }
+    }
+  },
+  "runtime": {
+    "engine": "vllm",
+    "engineVersion": "0.11.2.dev279+black.benediction.b12xpr11.cu132.20260608",
+    "imageTag": "voipmonitor/vllm:black-benediction-b12xpr11-vllmbb6c5b7-b12xd90d89c-fi3395b41aa8d-dg324aced12c-cu132-20260608",
+    "imageDigest": "sha256:ce23a9b075bd7138ce3b12ee29609b98606e5050e2def4a29bbb917ad96e5997",
+    "imageRef": "voipmonitor/vllm@sha256:ce23a9b075bd7138ce3b12ee29609b98606e5050e2def4a29bbb917ad96e5997",
+    "torchVersion": "2.12.0+cu132",
+    "flashinferPythonVersion": "0.6.12+cu132",
+    "servedModel": "glm-5.2-reap-504b-g4",
+    "rawBind": "127.0.0.1:8000",
+    "privateProxyBind": "127.0.0.1:8080",
+    "dockerRestartPolicy": "unless-stopped",
+    "proxySystemdUnit": "hydralisk-glm52-reap-private-proxy.service",
+    "launch": {
+      "tensorParallelSize": 4,
+      "decodeContextParallelSize": 4,
+      "quantization": "modelopt_fp4",
+      "kvCacheDtype": "fp8",
+      "attentionBackend": "B12X_MLA_SPARSE",
+      "moeBackend": "b12x",
+      "toolCallParser": "glm47",
+      "reasoningParser": "glm45",
+      "maxModelLen": 250000,
+      "maxNumSeqs": 2,
+      "maxNumBatchedTokens": 4096,
+      "gpuMemoryUtilization": 0.95,
+      "mtpDefault": false
+    }
+  },
+  "samplerDefaults": {
+    "minP": 0.05,
+    "repetitionPenalty": 1.05,
+    "maxTokens": 1024,
+    "enableThinking": false
+  },
+  "results": {
+    "loadSmoke": {
+      "status": "passed",
+      "runId": "20260624224500",
+      "promptTokens": 22,
+      "completionTokens": 9,
+      "totalTokens": 31,
+      "firstVisibleTokenSeconds": 0.2376,
+      "totalRequestSeconds": 0.461
+    },
+    "tuning": {
+      "status": "passed",
+      "admittedContextTokens": 250000,
+      "fullContextConcurrency": 1,
+      "shortConcurrentRequestsTested": 2,
+      "mtpDefault": false
+    },
+    "privateProxy": {
+      "status": "passed",
+      "runId": "20260624235325",
+      "systemdActive": true,
+      "healthReady": true,
+      "modelsReady": true,
+      "metricsReady": true,
+      "smokeRunRef": "hydralisk-run-91b8c576959c4e6d8633626c7adf9d36",
+      "smokeHttpStatus": 200,
+      "smokeWallMs": 25845,
+      "metricsAfterSmoke": {
+        "requests": 1,
+        "responses": 1,
+        "errors": 0,
+        "inflightCurrent": 0
+      }
+    },
+    "terminalBench20Pilot": {
+      "status": "preliminary_pilot_partial",
+      "dataset": "terminal-bench@2.0",
+      "runner": "harbor",
+      "runnerVersion": "0.15.0",
+      "agent": "terminus-2",
+      "totalTasks": 89,
+      "solved": 60,
+      "failingSoFar": 25,
+      "environmentBroken": 2,
+      "notStarted": 2,
+      "attempted": 87,
+      "properlyAttempted": 85,
+      "solvedOverAttemptedPercent": 69.0,
+      "solvedOverProperlyAttemptedPercent": 70.6,
+      "finalLeaderboardClaim": false
+    }
+  },
+  "evidenceRefs": [
+    "docs/evidence/2026-06-24-glm-52-reap-504b-profile.md",
+    "docs/evidence/2026-06-24-glm-52-reap-504b-g4-admission.md",
+    "docs/evidence/2026-06-24-glm-52-reap-504b-staging.md",
+    "docs/evidence/2026-06-24-glm-52-reap-504b-load-smoke.md",
+    "docs/evidence/2026-06-24-glm-52-reap-504b-private-endpoint.md",
+    "docs/evidence/2026-06-24-glm-52-reap-504b-tuning.md",
+    "docs/evidence/2026-06-24-glm-52-reap-504b-terminal-bench-20.md",
+    "docs/evidence/2026-06-24-glm-52-reap-504b-fallback-matrix.md",
+    "docs/evidence/2026-06-24-glm-52-reap-504b-operator-hardening.md"
+  ],
+  "runbookRef": "docs/glm-5.2-reap-504b-g4-runbook.md",
+  "limitations": [
+    "Standalone 4x g4-standard-192 capacity was blocked during admission.",
+    "Current 4-GPU runtime proof uses four selected GPUs inside an 8-GPU fallback host.",
+    "Private proxy is not a public endpoint.",
+    "No production SLA, billing, customer routing, settlement, payout, or product claim is admitted by this receipt.",
+    "Terminal-Bench result is a preliminary pilot summary with remaining queued/not-started work, not a final leaderboard claim.",
+    "Two concurrent full-250K requests are not admitted.",
+    "MTP is not enabled by default."
+  ],
+  "publicSafety": {
+    "containsSecrets": false,
+    "containsPrompts": false,
+    "containsResponses": false,
+    "containsHiddenReasoning": false,
+    "containsPrivateSource": false,
+    "containsWeights": false,
+    "containsCheckpoints": false,
+    "containsCompiledEngines": false,
+    "containsProfilerDumps": false,
+    "containsRawBenchmarkLogs": false
+  }
+}

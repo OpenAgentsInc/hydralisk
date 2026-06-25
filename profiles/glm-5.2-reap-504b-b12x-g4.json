@@ -225,6 +225,20 @@
     ],
     "spotRecoveryBoundary": "Service restart from durable disk was validated live. Full Spot VM eviction/stop-start is documented but not forced during the operator hardening gate because capacity re-admission can fail independently of the serving stack."
   },
+  "integrationReceipt": {
+    "status": "private_canary",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/92",
+    "runbookRef": "docs/glm-5.2-reap-504b-g4-runbook.md",
+    "receiptRef": "docs/evidence/2026-06-24-glm-52-reap-504b-integration-receipt.json",
+    "generatedAt": "2026-06-25T00:18:35Z",
+    "servable": true,
+    "publicEndpoint": false,
+    "productionSlaPromised": false,
+    "customerRoutingPromised": false,
+    "billingPromised": false,
+    "terminalBenchStatus": "preliminary_pilot_partial",
+    "claimBoundary": "Private Hydralisk canary only: no public SLA, no public endpoint, no product routing/billing claim, no standalone 4x G4 capacity claim, and no final Terminal-Bench leaderboard claim."
+  },
   "admission": {
     "status": "primary_4x_capacity_blocked_8x_fallback_admitted",
     "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/83",

@@ -78,6 +78,9 @@ Initial targets:
   policy, a systemd-managed private proxy, public-safe metrics, durable model
   and cache paths, and a stop/start recovery runbook in
   [docs/evidence/2026-06-24-glm-52-reap-504b-operator-hardening.md](docs/evidence/2026-06-24-glm-52-reap-504b-operator-hardening.md).
+  The consolidated runbook and public-safe integration receipt mark the lane
+  as `private_canary`, not a public endpoint or product SLA:
+  [docs/glm-5.2-reap-504b-g4-runbook.md](docs/glm-5.2-reap-504b-g4-runbook.md).
 - DeepSeek-V4-Flash as a Google GPU admission experiment: G4 capacity was
   admitted on 2026-06-24 with 2 x RTX PRO 6000. The current blocker is now
   past the original vLLM `0.23.0` Blackwell FP8 scaled-mm failure: direct
@@ -293,6 +296,7 @@ First execution roadmap:
 - [`docs/gpt-oss-20b-khala-live-roadmap.md`](docs/gpt-oss-20b-khala-live-roadmap.md)
 - [`docs/gce-l4-vllm-runbook.md`](docs/gce-l4-vllm-runbook.md)
 - [`docs/glm-5.2-sglang-preflight-runbook.md`](docs/glm-5.2-sglang-preflight-runbook.md)
+- [`docs/glm-5.2-reap-504b-g4-runbook.md`](docs/glm-5.2-reap-504b-g4-runbook.md)
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-profile.md`](docs/evidence/2026-06-24-glm-52-reap-504b-profile.md)
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-g4-admission.md`](docs/evidence/2026-06-24-glm-52-reap-504b-g4-admission.md)
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-staging.md`](docs/evidence/2026-06-24-glm-52-reap-504b-staging.md)
@@ -302,6 +306,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-terminal-bench-20.md`](docs/evidence/2026-06-24-glm-52-reap-504b-terminal-bench-20.md)
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-fallback-matrix.md`](docs/evidence/2026-06-24-glm-52-reap-504b-fallback-matrix.md)
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-operator-hardening.md`](docs/evidence/2026-06-24-glm-52-reap-504b-operator-hardening.md)
+- [`docs/evidence/2026-06-24-glm-52-reap-504b-integration-receipt.json`](docs/evidence/2026-06-24-glm-52-reap-504b-integration-receipt.json)
 - [`docs/deepseek-v4-flash-gce-preflight.md`](docs/deepseek-v4-flash-gce-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md`](docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md)
