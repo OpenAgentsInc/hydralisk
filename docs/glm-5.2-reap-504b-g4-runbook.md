@@ -20,9 +20,10 @@ compiled engines, profiler dumps, raw benchmark folders, or large logs.
 
 This is the Hydralisk private canary lane for serving
 `0xSero/GLM-5.2-504B` REAP/NVFP4 on OpenAgents Google Cloud infrastructure.
-The current evidence proves a 4-GPU runtime envelope using four selected RTX
-PRO 6000 GPUs inside an admitted 8-GPU G4 fallback host. It does not yet prove
-fresh standalone 4x `g4-standard-192` capacity is currently obtainable.
+The current evidence proves a 4-GPU runtime envelope in two admitted shapes:
+four selected RTX PRO 6000 GPUs inside an 8-GPU G4 fallback host, and a second
+standalone 4 x G4 Spot replica. It does not yet prove on-demand or
+reservation-backed `g4-standard-192` capacity is currently obtainable.
 
 Final status for this packet:
 
@@ -31,7 +32,7 @@ Final status for this packet:
 - `eval_passed`: preliminary Terminal-Bench pilot only, not a final leaderboard
   claim
 - `blocked`: public production promise, billing, customer routing, and
-  standalone 4x G4 admission
+  on-demand or reservation-backed 4x G4 durability
 
 ## Upstream Model Facts
 
@@ -91,7 +92,7 @@ Primary intended shape:
 - Machine: `g4-standard-192`
 - Accelerator: 4 x `nvidia-rtx-pro-6000`
 
-Current admitted fallback:
+First admitted fallback:
 
 - Instance: `hydralisk-glm52-reap-504b-g4-8g-b-20260624214500`
 - Zone: `us-central1-b`
@@ -104,6 +105,23 @@ Current admitted fallback:
 - Termination action: Stop
 - Boot disk: 1500 GB Hyperdisk Balanced
 - Boot disk auto-delete: false
+
+Second admitted standalone canary:
+
+- Instance: `hydralisk-glm52-reap-504b-g4-4g-b-20260625154532`
+- Zone: `us-central1-b`
+- Machine: `g4-standard-192`
+- Accelerator: 4 x `nvidia-rtx-pro-6000`
+- Public HTTPS origin: reserved static address, value not tracked
+- Network IP: private VPC address, value not tracked
+- Provisioning: Spot
+- Termination action: Stop
+- Max run duration: 604800 seconds
+- Boot disk auto-delete: false
+- Model staging: read-only mount of a cloned model disk from the first canary
+
+Second endpoint evidence:
+[`docs/evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md`](evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md)
 
 Admission evidence:
 [`docs/evidence/2026-06-24-glm-52-reap-504b-g4-admission.md`](evidence/2026-06-24-glm-52-reap-504b-g4-admission.md)
@@ -120,6 +138,10 @@ ACTION=start RUN_ID=<run-id> \
 Prefer the 4x target when capacity is available. Use the 8x fallback only when
 the 4x `g4-standard-192` shape is capacity-blocked, and keep the claim boundary
 explicit.
+
+The 2026-06-25 second-endpoint attempt found on-demand 4x and 8x G4 capacity
+exhausted in the tested zones, then admitted a 4x Spot host. Treat that as
+useful burst capacity, not durable production capacity.
 
 2. Stage the pinned checkpoint onto durable disk.
 
@@ -138,6 +160,13 @@ hf download 0xSero/GLM-5.2-504B \
 
 Use out-of-band Hugging Face credentials only if the environment requires
 them. Do not commit those credentials or raw transfer logs.
+
+For same-zone replica bring-up, an operator may clone an existing Hydralisk
+model disk instead of downloading the checkpoint again. Mount the clone
+read-only on the new VM and symlink `/opt/hydralisk/models/glm-5.2-504b` to the
+cloned model directory. This is a staging shortcut only; each replica still
+needs an independent proxy token, public origin, watchdog identity, and
+public-safe smoke evidence.
 
 3. Verify staging.
 
@@ -226,6 +255,9 @@ ACTION=install-systemd RUN_ID=<run-id> \
 The proxy should bind to a private listener on the host, requires a bearer
 token for `/v1/models` and generation routes, and exposes public-safe `/health`,
 `/hydralisk/v1/capabilities`, `/hydralisk/v1/metrics`, and receipt lookup.
+When the public HTTPS front runs on the same VM and forwards to the private
+proxy, bind the proxy to the VM's private interface rather than loopback. Keep
+the private address out of tracked docs.
 
 7. Check and smoke the private proxy.
 
@@ -253,7 +285,9 @@ it to the GLM host, adds a tag-targeted `80/443` firewall rule, installs Caddy,
 and fronts only `/health`, `/v1/*`, and `/hydralisk/*`. Raw vLLM remains
 host-local. The actual origin URL and bearer token belong only in secret
 stores; tracked docs and issue comments should use the shape
-`https://<operator-secret-hostname>`.
+`https://<operator-secret-hostname>`. The generated Caddyfile uses an ordered
+`route` block so the allowlisted reverse proxy is evaluated before the
+fail-closed `404` fallback.
 
 Public HTTPS evidence:
 [`docs/evidence/2026-06-25-glm-52-reap-504b-public-https-origin.md`](evidence/2026-06-25-glm-52-reap-504b-public-https-origin.md)
@@ -288,8 +322,17 @@ ALLOW_MODEL_KEEPWARM_SMOKE=1 ACTION=smoke RUN_ID=<run-id> \
 If Spot capacity is unavailable, the watchdog retries on schedule; it cannot
 guarantee zonal stock.
 
+For more than one GLM replica, set distinct watchdog and keep-warm names with
+the script environment variables (`WATCHDOG_SERVICE_ACCOUNT_NAME`,
+`WATCHDOG_ROLE_ID`, `WATCHDOG_RUN_JOB`, `WATCHDOG_SCHEDULER_JOB`,
+`KEEPWARM_SERVICE`, `KEEPWARM_TIMER`, and `KEEPWARM_LOG_DIR`). Reusing the
+default names would collapse multiple replicas into one control-plane target.
+
 Durable canary evidence:
 [`docs/evidence/2026-06-25-glm-52-reap-504b-durable-canary.md`](evidence/2026-06-25-glm-52-reap-504b-durable-canary.md)
+
+Second standalone endpoint evidence:
+[`docs/evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md`](evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md)
 
 10. Run Terminal-Bench only through the private proxy and public-safe summary
 reducer.
@@ -390,6 +433,22 @@ Durable canary:
 - Evidence:
   [`docs/evidence/2026-06-25-glm-52-reap-504b-durable-canary.md`](evidence/2026-06-25-glm-52-reap-504b-durable-canary.md)
 
+Second standalone endpoint:
+
+- Status: pass for a second Spot 4 x G4 endpoint
+- On-demand admission: capacity-exhausted in tested 4x and 8x zones
+- Spot admission: `g4-standard-192`, 4 x RTX PRO 6000
+- Model staging: cloned model disk mounted read-only
+- Public HTTPS origin: pass, bearer-gated, value not tracked
+- Durable canary: distinct watchdog and keep-warm resources installed
+- Warm smoke: HTTP 200, 0.428 seconds wall, 25 total tokens
+- Single-request streaming median: 0.281 seconds TTFT, 46.7 completion tok/s
+  including TTFT, 49.4 completion tok/s excluding TTFT on the 160-token case
+- Same-endpoint concurrency: one request passed, one was rejected with 429,
+  matching the singleflight policy
+- Evidence:
+  [`docs/evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md`](evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md)
+
 Terminal-Bench 2.0 pilot:
 
 - Total tasks: 89
@@ -407,7 +466,8 @@ Terminal-Bench 2.0 pilot:
 - Ungated public endpoint
 - Billing, credits, customer routing, settlement, or payout
 - OpenAgents product-surface claim outside Hydralisk evidence
-- Standalone 4x G4 capacity availability
+- Repeatable standalone 4x G4 capacity availability
+- On-demand 4x G4 capacity availability
 - Two concurrent full-250K requests
 - Terminal-Bench leaderboard finality
 - Customer or third-party traffic

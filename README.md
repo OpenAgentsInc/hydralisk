@@ -66,7 +66,7 @@ Initial targets:
   `0xSero/GLM-5.2-504B` REAP/NVFP4 on 4 x GCE G4 RTX PRO 6000 with the
   b12x/vLLM SM120 recipe; the older `zai-org/GLM-5.2-FP8` SGLang G4 profile
   remains a blocked FP8 evidence lane, not the REAP serving plan.
-  As of 2026-06-25, that REAP lane has a private Hydralisk proxy on the
+  As of 2026-06-25, the first REAP lane has a private Hydralisk proxy on the
   admitted G4 fallback host, with raw vLLM still bound to localhost, bearer
   auth required, fail-closed profile evidence checks, and GLM sampler defaults
   injected by the proxy. The tuned speed envelope is 250K
@@ -74,7 +74,7 @@ Initial targets:
   speculative decoding with default `min_p` omitted for vLLM compatibility; two
   concurrent full-250K requests are not admitted. See
   [docs/evidence/2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md](docs/evidence/2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md).
-  The lane now also has a Worker-reachable authenticated HTTPS origin shape for
+  The first lane also has a Worker-reachable authenticated HTTPS origin shape for
   Khala arming, with the concrete URL and bearer token kept out of tracked
   files:
   [docs/evidence/2026-06-25-glm-52-reap-504b-public-https-origin.md](docs/evidence/2026-06-25-glm-52-reap-504b-public-https-origin.md).
@@ -83,6 +83,14 @@ Initial targets:
   post-benchmark use, and Cloud Scheduler triggers a Cloud Run watchdog that
   conditionally starts the VM after STOP:
   [docs/evidence/2026-06-25-glm-52-reap-504b-durable-canary.md](docs/evidence/2026-06-25-glm-52-reap-504b-durable-canary.md).
+  A second independent 4 x G4 Spot endpoint was admitted on 2026-06-25 while
+  the first lane was reserved for the Harbor Terminal-Bench run. It uses the
+  same MTP-2/no-`min_p` profile, a cloned model disk, an authenticated HTTPS
+  origin, distinct watchdog/keep-warm resources, and singleflight admission.
+  Its warmed median proxy benchmark is about `0.281s` TTFT and `46.7`
+  completion tok/s including TTFT for 160-token streamed outputs; same-endpoint
+  concurrency still admits one request and rejects the other with 429. See
+  [docs/evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md](docs/evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md).
   The private lane is now operator-hardened with a raw vLLM Docker restart
   policy, a systemd-managed private proxy, public-safe metrics, durable model
   and cache paths, and a stop/start recovery runbook in

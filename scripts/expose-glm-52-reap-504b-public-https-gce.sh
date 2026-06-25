@@ -217,13 +217,15 @@ $PUBLIC_HOSTNAME {
     path /health /v1/* /hydralisk/*
   }
 
-  reverse_proxy @hydralisk_origin $PROXY_UPSTREAM {
-    transport http {
-      versions 1.1
+  route {
+    reverse_proxy @hydralisk_origin $PROXY_UPSTREAM {
+      transport http {
+        versions 1.1
+      }
     }
-  }
 
-  respond 404
+    respond 404
+  }
 }
 EOF
 
