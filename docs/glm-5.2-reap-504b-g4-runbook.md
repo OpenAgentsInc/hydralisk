@@ -258,7 +258,40 @@ stores; tracked docs and issue comments should use the shape
 Public HTTPS evidence:
 [`docs/evidence/2026-06-25-glm-52-reap-504b-public-https-origin.md`](evidence/2026-06-25-glm-52-reap-504b-public-https-origin.md)
 
-9. Run Terminal-Bench only through the private proxy and public-safe summary
+9. Install the durable canary watchdog and keep-warm path when the lane should
+stay up for Khala.
+
+```bash
+ACTION=setup RUN_ID=<run-id> \
+  scripts/install-glm-52-reap-504b-durable-canary-gce.sh
+
+ACTION=smoke RUN_ID=<run-id> \
+  scripts/install-glm-52-reap-504b-durable-canary-gce.sh
+```
+
+This keeps the current Spot host labeled honestly as a canary, but removes the
+manual restart gap: the VM has an external Cloud Scheduler -> Cloud Run
+watchdog that starts it after STOP, and the host has enabled Docker, proxy, and
+Caddy. Keep-warm units are installed, but the timer should stay disabled during
+decision-grade Terminal-Bench runs because warm probes contend with the
+singleflight model lane. After the benchmark owner clears the run, enable warm
+probes explicitly:
+
+```bash
+ENABLE_KEEPWARM_TIMER=1 ACTION=setup-keepwarm RUN_ID=<run-id> \
+  scripts/install-glm-52-reap-504b-durable-canary-gce.sh
+
+ALLOW_MODEL_KEEPWARM_SMOKE=1 ACTION=smoke RUN_ID=<run-id> \
+  scripts/install-glm-52-reap-504b-durable-canary-gce.sh
+```
+
+If Spot capacity is unavailable, the watchdog retries on schedule; it cannot
+guarantee zonal stock.
+
+Durable canary evidence:
+[`docs/evidence/2026-06-25-glm-52-reap-504b-durable-canary.md`](evidence/2026-06-25-glm-52-reap-504b-durable-canary.md)
+
+10. Run Terminal-Bench only through the private proxy and public-safe summary
 reducer.
 
 ```bash
@@ -342,6 +375,20 @@ Public HTTPS origin:
 - Completion wall time: 0.988 seconds
 - Total tokens: 13
 - Endpoint value and bearer token: not tracked
+
+Durable canary:
+
+- Status: Spot auto-restart canary
+- Max run duration in current instance scheduling: not present
+- Boot disk auto-delete: false
+- Raw vLLM restart policy: `unless-stopped`
+- Docker, Caddy, and proxy: enabled
+- Keep-warm timer: installed; intentionally disabled during decision-grade
+  Terminal-Bench runs, then enabled every 4 minutes after the run
+- External watchdog: Cloud Scheduler every 5 minutes triggering a Cloud Run job
+  that conditionally starts the VM only when it is not running
+- Evidence:
+  [`docs/evidence/2026-06-25-glm-52-reap-504b-durable-canary.md`](evidence/2026-06-25-glm-52-reap-504b-durable-canary.md)
 
 Terminal-Bench 2.0 pilot:
 

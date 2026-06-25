@@ -78,6 +78,11 @@ Initial targets:
   Khala arming, with the concrete URL and bearer token kept out of tracked
   files:
   [docs/evidence/2026-06-25-glm-52-reap-504b-public-https-origin.md](docs/evidence/2026-06-25-glm-52-reap-504b-public-https-origin.md).
+  Durability is admitted as a Spot auto-restart canary: the boot disk is
+  preserved, host services are enabled, keep-warm units are installed for
+  post-benchmark use, and Cloud Scheduler triggers a Cloud Run watchdog that
+  conditionally starts the VM after STOP:
+  [docs/evidence/2026-06-25-glm-52-reap-504b-durable-canary.md](docs/evidence/2026-06-25-glm-52-reap-504b-durable-canary.md).
   The private lane is now operator-hardened with a raw vLLM Docker restart
   policy, a systemd-managed private proxy, public-safe metrics, durable model
   and cache paths, and a stop/start recovery runbook in
