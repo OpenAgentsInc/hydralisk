@@ -308,6 +308,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-operator-hardening.md`](docs/evidence/2026-06-24-glm-52-reap-504b-operator-hardening.md)
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-integration-receipt.json`](docs/evidence/2026-06-24-glm-52-reap-504b-integration-receipt.json)
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-tracking-closure.md`](docs/evidence/2026-06-24-glm-52-reap-504b-tracking-closure.md)
+- [`docs/evidence/2026-06-25-glm-52-reap-504b-khala-canary-status.md`](docs/evidence/2026-06-25-glm-52-reap-504b-khala-canary-status.md)
 - [`docs/deepseek-v4-flash-gce-preflight.md`](docs/deepseek-v4-flash-gce-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md`](docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md)
