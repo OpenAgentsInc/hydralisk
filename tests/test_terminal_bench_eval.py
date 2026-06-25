@@ -74,13 +74,14 @@ def test_terminal_bench_summary_separates_task_level_statuses() -> None:
 def test_terminal_bench_markdown_is_public_safe_summary() -> None:
     receipt = summarize_payload(
         {"total": 2, "solved": 1, "failing": 1, "envBroken": 0, "notStarted": 0},
-        settings=TerminalBenchRunSettings(),
+        settings=TerminalBenchRunSettings(min_p=None),
     )
 
     rendered = render_markdown(receipt)
 
     assert "Terminal-Bench 2.0 eval gate" in rendered
     assert "Solved / total" in rendered
+    assert "`min_p=omitted`" in rendered
     assert "raw prompts" in rendered
     assert "messages" not in rendered.lower()
 
@@ -102,12 +103,14 @@ def test_terminal_bench_cli_writes_json_and_markdown(tmp_path) -> None:
             "0",
             "--env-broken-task",
             "qemu-startup",
+            "--omit-min-p",
         ]
     )
 
     assert status == 0
     payload = json.loads((tmp_path / "terminal-bench-summary.json").read_text())
     assert payload["counts"]["properlyAttempted"] == 3
+    assert payload["sampler"]["minP"] is None
     assert "qemu-startup" in (tmp_path / "terminal-bench-summary.md").read_text()
 
 

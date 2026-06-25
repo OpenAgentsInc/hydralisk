@@ -60,7 +60,7 @@ class TerminalBenchRunSettings:
     max_attempts: int = 5
     timeout_seconds: int = 3600
     retry_policy: str = "pass@1 plus up to 4 queued retries for pass@5"
-    min_p: float = 0.05
+    min_p: float | None = 0.05
     repetition_penalty: float = 1.05
     max_tokens: int = 1024
     enable_thinking: bool = False
@@ -574,7 +574,7 @@ logs, weights, checkpoints, compiled engines, or profiler dumps.
 
 ## Sampler
 
-- `min_p={sampler["minP"]}`
+- `min_p={_render_sampler_value(sampler["minP"])}`
 - `repetition_penalty={sampler["repetitionPenalty"]}`
 - `max_tokens={sampler["maxTokens"]}`
 - `enable_thinking={str(sampler["enableThinking"]).lower()}`
@@ -636,6 +636,12 @@ def _render_id_list(ids: Iterable[str]) -> str:
     return "\n".join(f"- `{value}`" for value in values)
 
 
+def _render_sampler_value(value: object) -> str:
+    if value is None:
+        return "omitted"
+    return str(value)
+
+
 def _settings_from_args(args: argparse.Namespace) -> TerminalBenchRunSettings:
     return TerminalBenchRunSettings(
         benchmark_ref=args.benchmark_ref,
@@ -654,7 +660,7 @@ def _settings_from_args(args: argparse.Namespace) -> TerminalBenchRunSettings:
         max_attempts=args.max_attempts,
         timeout_seconds=args.timeout_seconds,
         retry_policy=args.retry_policy,
-        min_p=args.min_p,
+        min_p=None if args.omit_min_p else args.min_p,
         repetition_penalty=args.repetition_penalty,
         max_tokens=args.max_tokens,
         enable_thinking=args.enable_thinking,
@@ -742,6 +748,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="pass@1 plus up to 4 queued retries for pass@5",
     )
     parser.add_argument("--min-p", type=float, default=0.05)
+    parser.add_argument(
+        "--omit-min-p",
+        action="store_true",
+        help="Record min_p as intentionally omitted, e.g. for vLLM speculative decoding.",
+    )
     parser.add_argument("--repetition-penalty", type=float, default=1.05)
     parser.add_argument("--max-tokens", type=int, default=1024)
     parser.add_argument("--enable-thinking", action="store_true")

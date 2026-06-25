@@ -98,6 +98,9 @@ uv run hydralisk-terminal-bench-summary \
   --timeout-seconds 3600
 ```
 
+For the admitted MTP-2/no-`min_p` canary profile, add `--omit-min-p` so the
+receipt records `sampler.minP: null` rather than a fabricated numeric value.
+
 Do not commit Harbor raw run folders, raw task prompts, terminal transcripts,
 agent messages, hidden reasoning, model output, or container logs.
 

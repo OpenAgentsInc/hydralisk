@@ -275,6 +275,7 @@ uv run hydralisk-terminal-bench-summary \
   --json-name <public-safe-receipt>.json \
   --markdown-name <public-safe-report>.md \
   --runner-version 0.15.0 \
+  --omit-min-p \
   --claim-status decision_grade_candidate
 ```
 
