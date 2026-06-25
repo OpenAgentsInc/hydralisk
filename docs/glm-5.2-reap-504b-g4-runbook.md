@@ -322,11 +322,13 @@ ALLOW_MODEL_KEEPWARM_SMOKE=1 ACTION=smoke RUN_ID=<run-id> \
 If Spot capacity is unavailable, the watchdog retries on schedule; it cannot
 guarantee zonal stock.
 
-For more than one GLM replica, set distinct watchdog and keep-warm names with
-the script environment variables (`WATCHDOG_SERVICE_ACCOUNT_NAME`,
-`WATCHDOG_ROLE_ID`, `WATCHDOG_RUN_JOB`, `WATCHDOG_SCHEDULER_JOB`,
-`KEEPWARM_SERVICE`, `KEEPWARM_TIMER`, and `KEEPWARM_LOG_DIR`). Reusing the
-default names would collapse multiple replicas into one control-plane target.
+For more than one GLM replica, set distinct global watchdog names with the
+script environment variables (`WATCHDOG_SERVICE_ACCOUNT_NAME`,
+`WATCHDOG_ROLE_ID`, `WATCHDOG_RUN_JOB`, and `WATCHDOG_SCHEDULER_JOB`). The
+keep-warm systemd units are host-local, so their default unit names are safe on
+separate VMs; use a distinct `KEEPWARM_LOG_DIR` when you need operator log paths
+to make the replica identity obvious. Reusing the default watchdog names would
+collapse multiple replicas into one global control-plane target.
 
 Durable canary evidence:
 [`docs/evidence/2026-06-25-glm-52-reap-504b-durable-canary.md`](evidence/2026-06-25-glm-52-reap-504b-durable-canary.md)
@@ -440,7 +442,8 @@ Second standalone endpoint:
 - Spot admission: `g4-standard-192`, 4 x RTX PRO 6000
 - Model staging: cloned model disk mounted read-only
 - Public HTTPS origin: pass, bearer-gated, value not tracked
-- Durable canary: distinct watchdog and keep-warm resources installed
+- Durable canary: distinct global watchdog installed; host-local keep-warm
+  timer enabled on the second VM
 - Warm smoke: HTTP 200, 0.428 seconds wall, 25 total tokens
 - Single-request streaming median: 0.281 seconds TTFT, 46.7 completion tok/s
   including TTFT, 49.4 completion tok/s excluding TTFT on the 160-token case

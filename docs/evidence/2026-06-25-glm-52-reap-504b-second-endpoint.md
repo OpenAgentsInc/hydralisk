@@ -27,8 +27,8 @@ This is the current capacity boundary:
 - The second endpoint is available for inference serving from the Hydralisk
   side.
 - It is a Spot 4 x G4 canary, not on-demand or reservation-backed capacity.
-- It is warmed and watched by its own keep-warm and Cloud Scheduler watchdog
-  resources.
+- It is warmed by its host-local keep-warm timer and watched by its own Cloud
+  Scheduler watchdog resources.
 - It remains singleflight. Same-endpoint concurrency is intentionally rejected
   with 429 so one request keeps the full fast lane.
 - Multiple-developer reliability requires routing across independent replicas,
@@ -136,14 +136,17 @@ Public HTTPS smoke after the route fix:
 
 ## Keep-Warm And Watchdog
 
-The second endpoint uses distinct control-plane names so it does not collide
-with the first canary:
+The second endpoint uses distinct global watchdog names so it does not collide
+with the first canary. The keep-warm service and timer are host-local, so they
+use the default unit names on the second VM while writing to a second-endpoint
+log directory:
 
 - Cloud Run job: `hydralisk-glm52-reap-watchdog-second`
 - Cloud Scheduler job: `hydralisk-glm52-reap-watchdog-second-5m`
 - Watchdog service account:
   `hydralisk-glm52-reap-wd2@openagentsgemini.iam.gserviceaccount.com`
 - Watchdog custom role: `hydraliskGlm52Watchdog2`
+- Keep-warm timer: `hydralisk-glm52-reap-keepwarm.timer`
 - Keep-warm log directory:
   `/var/log/hydralisk/glm52-reap-keepwarm-second`
 
@@ -160,6 +163,16 @@ Latest explicit durable smoke:
 Keep-warm is enabled on this second endpoint because it is not participating
 in the live Harbor Terminal-Bench run. Keep-warm remains disabled on the first
 endpoint until that benchmark owner clears the lane.
+
+Fresh control-plane check after publishing this evidence:
+
+- Instance status: `RUNNING`
+- Docker: enabled and active
+- Caddy: enabled and active
+- Private proxy: enabled and active
+- Keep-warm timer: enabled, next run scheduled every 4 minutes
+- Latest keep-warm timestamp: `2026-06-25T16:20:30Z`
+- Latest keep-warm HTTP status: 200
 
 ## Streaming Benchmark
 
@@ -224,7 +237,7 @@ Admitted:
 - Second independent 4 x G4 GLM-5.2 REAP endpoint.
 - Authenticated public HTTPS origin shape for Worker integration.
 - Warmed private-proxy throughput around 47 completion tok/s including TTFT.
-- Distinct keep-warm and watchdog resources.
+- Distinct global watchdog resources plus host-local keep-warm on the second VM.
 - Public-safe evidence for a cloned-disk staging path.
 
 Not admitted:

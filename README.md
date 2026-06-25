@@ -86,7 +86,7 @@ Initial targets:
   A second independent 4 x G4 Spot endpoint was admitted on 2026-06-25 while
   the first lane was reserved for the Harbor Terminal-Bench run. It uses the
   same MTP-2/no-`min_p` profile, a cloned model disk, an authenticated HTTPS
-  origin, distinct watchdog/keep-warm resources, and singleflight admission.
+  origin, a distinct watchdog, host-local keep-warm, and singleflight admission.
   Its warmed median proxy benchmark is about `0.281s` TTFT and `46.7`
   completion tok/s including TTFT for 160-token streamed outputs; same-endpoint
   concurrency still admits one request and rejects the other with 429. See
