@@ -123,6 +123,9 @@ Second admitted standalone canary:
 Second endpoint evidence:
 [`docs/evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md`](evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md)
 
+Capacity plan:
+[`docs/evidence/2026-06-25-glm-52-reap-504b-capacity-plan.md`](evidence/2026-06-25-glm-52-reap-504b-capacity-plan.md)
+
 Admission evidence:
 [`docs/evidence/2026-06-24-glm-52-reap-504b-g4-admission.md`](evidence/2026-06-24-glm-52-reap-504b-g4-admission.md)
 
@@ -365,6 +368,9 @@ Durable canary evidence:
 Second standalone endpoint evidence:
 [`docs/evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md`](evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md)
 
+Multi-replica capacity plan:
+[`docs/evidence/2026-06-25-glm-52-reap-504b-capacity-plan.md`](evidence/2026-06-25-glm-52-reap-504b-capacity-plan.md)
+
 10. Run Terminal-Bench only through the private proxy and public-safe summary
 reducer.
 
@@ -480,6 +486,16 @@ Second standalone endpoint:
   matching the singleflight policy
 - Evidence:
   [`docs/evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md`](evidence/2026-06-25-glm-52-reap-504b-second-endpoint.md)
+
+Multi-replica capacity:
+
+- Planning unit: one warmed 4 x G4 GLM replica = one fast interactive slot
+- Useful scale path: independent 4 x replicas behind Khala routing, not an 8 x
+  tensor-parallel lane for per-request speed
+- Durable floor: at least two reserved/DWS/on-demand slots when procurement is
+  available; Spot remains the cheap interruptible burst lane
+- Evidence:
+  [`docs/evidence/2026-06-25-glm-52-reap-504b-capacity-plan.md`](evidence/2026-06-25-glm-52-reap-504b-capacity-plan.md)
 
 Terminal-Bench 2.0 pilot:
 

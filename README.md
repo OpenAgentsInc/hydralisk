@@ -102,6 +102,10 @@ Initial targets:
   verification, vLLM launch, proxy/HTTPS setup, distinct watchdog/keep-warm
   resources, public-safe evidence, and cleanup instructions:
   [docs/evidence/2026-06-25-glm-52-reap-504b-replica-provisioner.md](docs/evidence/2026-06-25-glm-52-reap-504b-replica-provisioner.md).
+  Multi-replica capacity should be modeled as one warmed 4 x G4 replica per
+  fast interactive slot, with Spot reserved for cheap interruptible burst and
+  DWS/reservation/on-demand procurement used for the durable Khala floor. See
+  [docs/evidence/2026-06-25-glm-52-reap-504b-capacity-plan.md](docs/evidence/2026-06-25-glm-52-reap-504b-capacity-plan.md).
   The private lane is now operator-hardened with a raw vLLM Docker restart
   policy, a systemd-managed private proxy, public-safe metrics, durable model
   and cache paths, and a stop/start recovery runbook in
@@ -340,6 +344,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md`](docs/evidence/2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md)
 - [`docs/evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md`](docs/evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md)
 - [`docs/evidence/2026-06-25-glm-52-reap-504b-replica-provisioner.md`](docs/evidence/2026-06-25-glm-52-reap-504b-replica-provisioner.md)
+- [`docs/evidence/2026-06-25-glm-52-reap-504b-capacity-plan.md`](docs/evidence/2026-06-25-glm-52-reap-504b-capacity-plan.md)
 - [`docs/deepseek-v4-flash-gce-preflight.md`](docs/deepseek-v4-flash-gce-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md`](docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md)
