@@ -97,6 +97,11 @@ Initial targets:
   reserved/draining flags without endpoint URLs, IPs, bearer tokens, prompts,
   responses, weights, or raw logs:
   [docs/evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md](docs/evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md).
+  A repeatable replica provisioner now wraps the second-endpoint bring-up path:
+  G4 admission, same-zone model-disk clone or download staging, read-only mount
+  verification, vLLM launch, proxy/HTTPS setup, distinct watchdog/keep-warm
+  resources, public-safe evidence, and cleanup instructions:
+  [docs/evidence/2026-06-25-glm-52-reap-504b-replica-provisioner.md](docs/evidence/2026-06-25-glm-52-reap-504b-replica-provisioner.md).
   The private lane is now operator-hardened with a raw vLLM Docker restart
   policy, a systemd-managed private proxy, public-safe metrics, durable model
   and cache paths, and a stop/start recovery runbook in
@@ -334,6 +339,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-25-glm-52-reap-504b-khala-canary-status.md`](docs/evidence/2026-06-25-glm-52-reap-504b-khala-canary-status.md)
 - [`docs/evidence/2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md`](docs/evidence/2026-06-25-glm-52-reap-504b-mtp2-speed-gate.md)
 - [`docs/evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md`](docs/evidence/2026-06-25-glm-52-reap-504b-replica-routing-metadata.md)
+- [`docs/evidence/2026-06-25-glm-52-reap-504b-replica-provisioner.md`](docs/evidence/2026-06-25-glm-52-reap-504b-replica-provisioner.md)
 - [`docs/deepseek-v4-flash-gce-preflight.md`](docs/deepseek-v4-flash-gce-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md`](docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md)

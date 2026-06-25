@@ -168,6 +168,23 @@ cloned model directory. This is a staging shortcut only; each replica still
 needs an independent proxy token, public origin, watchdog identity, and
 public-safe smoke evidence.
 
+The repeatable wrapper for new replicas is:
+
+```bash
+REPLICA_REF=glm52-reap-replica-c \
+SOURCE_MODEL_DISK=<operator-known-source-disk-name> \
+ACTION=plan \
+  scripts/provision-glm-52-reap-504b-replica-gce.sh
+```
+
+`ACTION=run` executes the full path: new G4 admission, same-zone model-disk
+clone or fresh download, read-only mount verification, vLLM launch, private
+proxy install, public HTTPS setup, distinct watchdog/keep-warm resources,
+public-safe evidence, and cleanup instructions. It requires
+`DO_NOT_TOUCH_EXISTING_LANES=1`, rejects primary-lane watchdog names, and fails
+if the output evidence directory or cloned model disk already exists. See:
+[`docs/evidence/2026-06-25-glm-52-reap-504b-replica-provisioner.md`](evidence/2026-06-25-glm-52-reap-504b-replica-provisioner.md)
+
 3. Verify staging.
 
 ```bash
