@@ -42,11 +42,12 @@ committed to Git.
 - `GET /v1/models`
 - `POST /v1/chat/completions`
 - `GET /hydralisk/v1/capabilities`
+- `GET /hydralisk/v1/metrics`
 - `GET /hydralisk/v1/receipts/{runRef}`
 
 `/v1/models` and `/v1/chat/completions` require the bearer token. `/health`,
-capabilities, and receipt reads remain public-safe and do not expose secrets or
-raw prompt/response content.
+capabilities, metrics, and receipt reads remain public-safe and do not expose
+secrets or raw prompt/response content.
 
 ## Model ids
 

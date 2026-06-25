@@ -74,6 +74,10 @@ Initial targets:
   and MTP disabled by default; two concurrent full-250K requests are not
   admitted. See
   [docs/evidence/2026-06-24-glm-52-reap-504b-tuning.md](docs/evidence/2026-06-24-glm-52-reap-504b-tuning.md).
+  The private lane is now operator-hardened with a raw vLLM Docker restart
+  policy, a systemd-managed private proxy, public-safe metrics, durable model
+  and cache paths, and a stop/start recovery runbook in
+  [docs/evidence/2026-06-24-glm-52-reap-504b-operator-hardening.md](docs/evidence/2026-06-24-glm-52-reap-504b-operator-hardening.md).
 - DeepSeek-V4-Flash as a Google GPU admission experiment: G4 capacity was
   admitted on 2026-06-24 with 2 x RTX PRO 6000. The current blocker is now
   past the original vLLM `0.23.0` Blackwell FP8 scaled-mm failure: direct
@@ -297,6 +301,7 @@ First execution roadmap:
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-tuning.md`](docs/evidence/2026-06-24-glm-52-reap-504b-tuning.md)
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-terminal-bench-20.md`](docs/evidence/2026-06-24-glm-52-reap-504b-terminal-bench-20.md)
 - [`docs/evidence/2026-06-24-glm-52-reap-504b-fallback-matrix.md`](docs/evidence/2026-06-24-glm-52-reap-504b-fallback-matrix.md)
+- [`docs/evidence/2026-06-24-glm-52-reap-504b-operator-hardening.md`](docs/evidence/2026-06-24-glm-52-reap-504b-operator-hardening.md)
 - [`docs/deepseek-v4-flash-gce-preflight.md`](docs/deepseek-v4-flash-gce-preflight.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md`](docs/evidence/2026-06-24-deepseek-v4-flash-gce-load-smoke.md)
 - [`docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md`](docs/evidence/2026-06-24-deepseek-v4-flash-g4-backend-matrix.md)

@@ -44,10 +44,12 @@ class _InflightGate:
         self.limit = limit
         self.queue_timeout_seconds = max(queue_timeout_seconds, 0.0)
         self._semaphore = asyncio.Semaphore(limit) if limit else None
+        self.current = 0
 
     async def acquire(self) -> _InflightLease:
         if self._semaphore is None:
-            return _InflightLease(lambda: None)
+            self.current += 1
+            return _InflightLease(self._release_unbounded)
         if self.queue_timeout_seconds == 0 and self._semaphore.locked():
             self._raise_saturated()
         try:
@@ -57,7 +59,16 @@ class _InflightGate:
             )
         except TimeoutError:
             self._raise_saturated()
-        return _InflightLease(self._semaphore.release)
+        self.current += 1
+        return _InflightLease(self._release_bounded)
+
+    def _release_unbounded(self) -> None:
+        self.current = max(0, self.current - 1)
+
+    def _release_bounded(self) -> None:
+        self.current = max(0, self.current - 1)
+        if self._semaphore is not None:
+            self._semaphore.release()
 
     def _raise_saturated(self) -> None:
         raise HTTPException(
@@ -76,6 +87,110 @@ class _InflightGate:
         )
 
 
+class _ProxyMetrics:
+    def __init__(self) -> None:
+        self.started_at = datetime.now(timezone.utc)
+        self._lock = asyncio.Lock()
+        self.requests_total = 0
+        self.responses_total = 0
+        self.errors_total = 0
+        self.latency_count = 0
+        self.latency_total_ms = 0
+        self.latency_max_ms = 0
+        self.by_route: dict[str, dict[str, int]] = {}
+        self.by_status: dict[str, int] = {}
+
+    async def record_started(self, route: str) -> None:
+        async with self._lock:
+            self.requests_total += 1
+            route_metrics = self.by_route.setdefault(
+                route,
+                {
+                    "requests": 0,
+                    "responses": 0,
+                    "errors": 0,
+                },
+            )
+            route_metrics["requests"] += 1
+
+    async def record_finished(
+        self,
+        route: str,
+        *,
+        status_code: int,
+        wall_ms: int,
+        error: bool = False,
+    ) -> None:
+        status_key = str(status_code)
+        async with self._lock:
+            self.responses_total += 1
+            self.by_status[status_key] = self.by_status.get(status_key, 0) + 1
+            self.latency_count += 1
+            self.latency_total_ms += max(wall_ms, 0)
+            self.latency_max_ms = max(self.latency_max_ms, max(wall_ms, 0))
+            route_metrics = self.by_route.setdefault(
+                route,
+                {
+                    "requests": 0,
+                    "responses": 0,
+                    "errors": 0,
+                },
+            )
+            route_metrics["responses"] += 1
+            if error or status_code >= 400:
+                self.errors_total += 1
+                route_metrics["errors"] += 1
+
+    async def snapshot(
+        self,
+        *,
+        config: HydraliskSettings,
+        inflight_gate: _InflightGate,
+    ) -> dict[str, Any]:
+        async with self._lock:
+            average_latency = (
+                self.latency_total_ms / self.latency_count
+                if self.latency_count
+                else None
+            )
+            return {
+                "schema": "hydralisk.serve.metrics.v1",
+                "publicSafe": True,
+                "startedAt": self.started_at.isoformat(),
+                "checkedAt": datetime.now(timezone.utc).isoformat(),
+                "servedModel": config.served_model,
+                "engine": config.engine,
+                "engineVersion": config.engine_version,
+                "modelProfileRef": config.model_profile_ref,
+                "evidenceRef": config.evidence_ref,
+                "gpu": {
+                    "class": config.gpu_class,
+                    "name": config.gpu_name,
+                    "count": config.gpu_count,
+                },
+                "inflight": {
+                    "current": inflight_gate.current,
+                    "limit": inflight_gate.limit,
+                    "queueTimeoutSeconds": inflight_gate.queue_timeout_seconds,
+                    "singleFlight": inflight_gate.limit == 1,
+                },
+                "requests": {
+                    "total": self.requests_total,
+                    "responses": self.responses_total,
+                    "errors": self.errors_total,
+                    "byRoute": dict(sorted(self.by_route.items())),
+                    "byStatus": dict(sorted(self.by_status.items())),
+                },
+                "latencyMs": {
+                    "count": self.latency_count,
+                    "average": round(average_latency, 3)
+                    if average_latency is not None
+                    else None,
+                    "max": self.latency_max_ms,
+                },
+            }
+
+
 def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
     config = settings or load_settings()
     receipts = ReceiptStore(config.receipt_dir)
@@ -83,6 +198,7 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
         limit=config.max_inflight_requests,
         queue_timeout_seconds=config.inflight_queue_timeout_seconds,
     )
+    metrics = _ProxyMetrics()
     app = FastAPI(
         title="Hydralisk GPT-OSS 20B Proxy",
         version="0.1.0",
@@ -90,6 +206,7 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.hydralisk_inflight_gate = inflight_gate
+    app.state.hydralisk_metrics = metrics
 
     async def require_bearer(request: Request) -> None:
         if config.bearer_token is None and not config.allow_insecure_dev:
@@ -153,6 +270,10 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
     async def capabilities() -> dict[str, Any]:
         return build_capabilities(config)
 
+    @app.get("/hydralisk/v1/metrics")
+    async def metrics_endpoint() -> dict[str, Any]:
+        return await metrics.snapshot(config=config, inflight_gate=inflight_gate)
+
     @app.get("/hydralisk/v1/receipts/{run_ref}")
     async def receipt(run_ref: str) -> dict[str, Any]:
         stored = receipts.read(run_ref)
@@ -210,6 +331,8 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
 
         if upstream_payload.get("stream") is True:
             _request_stream_usage(upstream_payload)
+            await metrics.record_started("chat_completions")
+            stream_started = perf_counter()
             try:
                 return await _stream_to_upstream(
                     url=config.upstream_chat_url,
@@ -226,17 +349,26 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
                         "x-hydralisk-served-alias": admitted_model,
                     },
                     release_inflight=inflight_lease.release,
+                    metrics=metrics,
+                    metrics_route="chat_completions",
                 )
             except Exception:
+                await metrics.record_finished(
+                    "chat_completions",
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    wall_ms=int((perf_counter() - stream_started) * 1000),
+                    error=True,
+                )
                 inflight_lease.release()
                 raise
 
+        await metrics.record_started("chat_completions")
         started = perf_counter()
         try:
             async with httpx.AsyncClient(timeout=config.request_timeout_seconds) as client:
                 upstream = await client.post(config.upstream_chat_url, json=upstream_payload)
             wall_ms = int((perf_counter() - started) * 1000)
-            return _json_upstream_response(
+            response = _json_upstream_response(
                 upstream,
                 run_ref=run_ref,
                 admitted_model=admitted_model,
@@ -245,6 +377,20 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
                 wall_ms=wall_ms,
                 policy_context=policy_context,
             )
+            await metrics.record_finished(
+                "chat_completions",
+                status_code=response.status_code,
+                wall_ms=wall_ms,
+            )
+            return response
+        except Exception:
+            await metrics.record_finished(
+                "chat_completions",
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                wall_ms=int((perf_counter() - started) * 1000),
+                error=True,
+            )
+            raise
         finally:
             inflight_lease.release()
 
@@ -263,6 +409,8 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
 
         if upstream_payload.get("stream") is True:
             _request_stream_usage(upstream_payload)
+            await metrics.record_started("responses")
+            stream_started = perf_counter()
             try:
                 return await _stream_to_upstream(
                     url=config.upstream_responses_url,
@@ -279,17 +427,26 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
                         "x-hydralisk-served-alias": admitted_model,
                     },
                     release_inflight=inflight_lease.release,
+                    metrics=metrics,
+                    metrics_route="responses",
                 )
             except Exception:
+                await metrics.record_finished(
+                    "responses",
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    wall_ms=int((perf_counter() - stream_started) * 1000),
+                    error=True,
+                )
                 inflight_lease.release()
                 raise
 
+        await metrics.record_started("responses")
         started = perf_counter()
         try:
             async with httpx.AsyncClient(timeout=config.request_timeout_seconds) as client:
                 upstream = await client.post(config.upstream_responses_url, json=upstream_payload)
             wall_ms = int((perf_counter() - started) * 1000)
-            return _json_upstream_response(
+            response = _json_upstream_response(
                 upstream,
                 run_ref=run_ref,
                 admitted_model=admitted_model,
@@ -298,6 +455,20 @@ def create_app(settings: HydraliskSettings | None = None) -> FastAPI:
                 wall_ms=wall_ms,
                 policy_context=policy_context,
             )
+            await metrics.record_finished(
+                "responses",
+                status_code=response.status_code,
+                wall_ms=wall_ms,
+            )
+            return response
+        except Exception:
+            await metrics.record_finished(
+                "responses",
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                wall_ms=int((perf_counter() - started) * 1000),
+                error=True,
+            )
+            raise
         finally:
             inflight_lease.release()
 
@@ -525,6 +696,8 @@ async def _stream_to_upstream(
     policy_context: dict[str, Any] | None,
     headers: dict[str, str],
     release_inflight: Callable[[], None] | None = None,
+    metrics: _ProxyMetrics | None = None,
+    metrics_route: str | None = None,
 ) -> StreamingResponse:
     client = httpx.AsyncClient(timeout=None)
     started = perf_counter()
@@ -537,6 +710,12 @@ async def _stream_to_upstream(
         if release_inflight is not None:
             release_inflight()
         wall_ms = int((perf_counter() - started) * 1000)
+        if metrics is not None and metrics_route is not None:
+            await metrics.record_finished(
+                metrics_route,
+                status_code=upstream.status_code,
+                wall_ms=wall_ms,
+            )
         receipts.write(
             build_receipt(
                 run_ref=run_ref,
@@ -598,6 +777,13 @@ async def _stream_to_upstream(
             await client.aclose()
             if release_inflight is not None:
                 release_inflight()
+            if metrics is not None and metrics_route is not None:
+                await metrics.record_finished(
+                    metrics_route,
+                    status_code=upstream.status_code,
+                    wall_ms=wall_ms,
+                    error=bool(blockers),
+                )
 
     response_headers = {
         "cache-control": "no-cache",

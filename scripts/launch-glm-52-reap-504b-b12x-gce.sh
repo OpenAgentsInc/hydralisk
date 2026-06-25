@@ -13,6 +13,7 @@ CONTAINER_NAME="${CONTAINER_NAME:-hydralisk-glm52-reap-504b}"
 IMAGE_TAG="${IMAGE_TAG:-voipmonitor/vllm:black-benediction-b12xpr11-vllmbb6c5b7-b12xd90d89c-fi3395b41aa8d-dg324aced12c-cu132-20260608}"
 IMAGE_DIGEST="${IMAGE_DIGEST:-sha256:ce23a9b075bd7138ce3b12ee29609b98606e5050e2def4a29bbb917ad96e5997}"
 IMAGE_REF="${IMAGE_REF:-voipmonitor/vllm@${IMAGE_DIGEST}}"
+DOCKER_RESTART_POLICY="${DOCKER_RESTART_POLICY:-unless-stopped}"
 REMOTE_LOG_DIR="${REMOTE_LOG_DIR:-/var/log/hydralisk/glm52-reap-504b-b12x-$RUN_ID}"
 OUTPUT_DIR="${OUTPUT_DIR:-$PWD/.hydralisk/glm52-reap-504b-b12x-$RUN_ID}"
 
@@ -77,6 +78,7 @@ write_launch_env() {
 IMAGE_TAG=$IMAGE_TAG
 IMAGE_DIGEST=$IMAGE_DIGEST
 IMAGE_REF=$IMAGE_REF
+DOCKER_RESTART_POLICY=$DOCKER_RESTART_POLICY
 MODEL_DIR=$MODEL_DIR
 SERVED_MODEL_NAME=$SERVED_MODEL_NAME
 GPU_DEVICES=$GPU_DEVICES
@@ -220,7 +222,7 @@ PY
   launch_command="${VLLM_ARGV[*]}"
   # The b12x image can carry an empty NCCL_GRAPH_FILE; unset it so NCCL
   # does not try to open a blank XML graph path during communicator init.
-  sudo docker run --rm --gpus all --ipc=host --network host \
+  sudo docker run --restart "$DOCKER_RESTART_POLICY" --gpus all --ipc=host --network host \
     --name "$CONTAINER_NAME" \
     --cap-add SYS_NICE \
     --shm-size 64g \
@@ -259,6 +261,8 @@ status_action() {
     printf "checkedAt=%s\n" "$(date -u +%FT%TZ)"
     printf "containerStatus="
     sudo docker inspect -f '{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null || true
+    printf "restartPolicy="
+    sudo docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' "$CONTAINER_NAME" 2>/dev/null || true
     printf "modelsEndpoint="
     if curl -fsS "http://$HOST:$PORT/v1/models" >/tmp/hydralisk-glm52-models.json 2>/tmp/hydralisk-glm52-models.stderr; then
       printf "ready\n"
@@ -269,7 +273,27 @@ status_action() {
     printf "gpuMemoryBegin\n"
     nvidia-smi --query-gpu=index,memory.used,memory.free --format=csv,noheader,nounits || true
     printf "gpuMemoryEnd\n"
+    printf "diskLifecycleBegin\n"
+    printf "modelDir=%s\n" "$MODEL_DIR"
+    printf "hfCacheDir=/var/lib/hydralisk/huggingface\n"
+    printf "logDir=%s\n" "$REMOTE_LOG_DIR"
+    df -h "$MODEL_DIR" /var/lib/hydralisk/huggingface "$REMOTE_LOG_DIR" 2>/dev/null || true
+    printf "diskLifecycleEnd\n"
   } > "$REMOTE_LOG_DIR/status-public.txt" 2>&1
+}
+
+apply_restart_policy_action() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "error: docker is required to apply restart policy" >&2
+    exit 2
+  fi
+  write_launch_env
+  write_launch_command
+  sudo docker update --restart "$DOCKER_RESTART_POLICY" "$CONTAINER_NAME" >/dev/null
+  printf 'status=restart_policy_applied\nappliedAt=%s\ncontainer=%s\nrestartPolicy=%s\n' \
+    "$(date -u +%FT%TZ)" "$CONTAINER_NAME" "$DOCKER_RESTART_POLICY" \
+    > "$REMOTE_LOG_DIR/server.status"
+  status_action
 }
 
 stop_action() {
@@ -280,6 +304,7 @@ stop_action() {
 case "$ACTION" in
   prepare) prepare_action ;;
   start) start_action ;;
+  apply-restart-policy) apply_restart_policy_action ;;
   status) status_action ;;
   stop) stop_action ;;
   *) echo "bad ACTION: $ACTION" >&2; exit 2 ;;
@@ -313,7 +338,7 @@ run_gcloud compute ssh "$TARGET_INSTANCE" \
   --project "$PROJECT_ID" \
   --zone "$TARGET_ZONE" \
   --quiet \
-  --command="ACTION='$ACTION' REMOTE_LOG_DIR='$REMOTE_LOG_DIR' MODEL_DIR='$MODEL_DIR' SERVED_MODEL_NAME='$SERVED_MODEL_NAME' CONTAINER_NAME='$CONTAINER_NAME' IMAGE_TAG='$IMAGE_TAG' IMAGE_DIGEST='$IMAGE_DIGEST' IMAGE_REF='$IMAGE_REF' GPU_DEVICES='$GPU_DEVICES' TP_SIZE='$TP_SIZE' DCP_SIZE='$DCP_SIZE' MAX_MODEL_LEN='$MAX_MODEL_LEN' MAX_NUM_SEQS='$MAX_NUM_SEQS' MAX_NUM_BATCHED_TOKENS='$MAX_NUM_BATCHED_TOKENS' GPU_MEMORY_UTILIZATION='$GPU_MEMORY_UTILIZATION' HOST='$HOST' PORT='$PORT' MTP='$MTP' NUM_SPECULATIVE_TOKENS='$NUM_SPECULATIVE_TOKENS' NCCL_DEBUG='$NCCL_DEBUG' NCCL_SHM_DISABLE='$NCCL_SHM_DISABLE' INDEX_TOPK_PATTERN='$INDEX_TOPK_PATTERN' READY_TIMEOUT_SECONDS='$READY_TIMEOUT_SECONDS' bash /tmp/hydralisk-glm52-launch-$RUN_ID.sh"
+  --command="ACTION='$ACTION' REMOTE_LOG_DIR='$REMOTE_LOG_DIR' MODEL_DIR='$MODEL_DIR' SERVED_MODEL_NAME='$SERVED_MODEL_NAME' CONTAINER_NAME='$CONTAINER_NAME' IMAGE_TAG='$IMAGE_TAG' IMAGE_DIGEST='$IMAGE_DIGEST' IMAGE_REF='$IMAGE_REF' DOCKER_RESTART_POLICY='$DOCKER_RESTART_POLICY' GPU_DEVICES='$GPU_DEVICES' TP_SIZE='$TP_SIZE' DCP_SIZE='$DCP_SIZE' MAX_MODEL_LEN='$MAX_MODEL_LEN' MAX_NUM_SEQS='$MAX_NUM_SEQS' MAX_NUM_BATCHED_TOKENS='$MAX_NUM_BATCHED_TOKENS' GPU_MEMORY_UTILIZATION='$GPU_MEMORY_UTILIZATION' HOST='$HOST' PORT='$PORT' MTP='$MTP' NUM_SPECULATIVE_TOKENS='$NUM_SPECULATIVE_TOKENS' NCCL_DEBUG='$NCCL_DEBUG' NCCL_SHM_DISABLE='$NCCL_SHM_DISABLE' INDEX_TOPK_PATTERN='$INDEX_TOPK_PATTERN' READY_TIMEOUT_SECONDS='$READY_TIMEOUT_SECONDS' bash /tmp/hydralisk-glm52-launch-$RUN_ID.sh"
 
 copy_artifacts
 echo "OUTPUT_DIR=$OUTPUT_DIR"

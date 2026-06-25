@@ -96,6 +96,74 @@ def test_capabilities_include_singleflight_admission_policy() -> None:
     }
 
 
+def test_metrics_are_public_safe_and_count_proxy_requests(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            }
+
+    class FakeAsyncClient:
+        def __init__(self, timeout=None) -> None:
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json):
+            return FakeResponse()
+
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", FakeAsyncClient)
+    client = TestClient(
+        create_app(
+            HydraliskSettings(
+                allow_insecure_dev=True,
+                receipt_dir=tmp_path,
+                max_inflight_requests=1,
+            )
+        )
+    )
+
+    initial = client.get("/hydralisk/v1/metrics")
+    proxied = client.post(
+        "/v1/chat/completions",
+        json={"model": "openai/gpt-oss-20b", "messages": []},
+    )
+    updated = client.get("/hydralisk/v1/metrics")
+
+    assert initial.status_code == 200
+    assert initial.json()["schema"] == "hydralisk.serve.metrics.v1"
+    assert initial.json()["requests"]["total"] == 0
+    assert proxied.status_code == 200
+    body = updated.json()
+    assert body["requests"]["total"] == 1
+    assert body["requests"]["responses"] == 1
+    assert body["requests"]["errors"] == 0
+    assert body["requests"]["byRoute"]["chat_completions"] == {
+        "requests": 1,
+        "responses": 1,
+        "errors": 0,
+    }
+    assert body["requests"]["byStatus"] == {"200": 1}
+    assert body["latencyMs"]["count"] == 1
+    assert body["inflight"]["current"] == 0
+    assert "token" not in str(body).lower()
+    assert "127.0.0.1" not in str(body)
+
+
 def test_private_models_endpoint_requires_bearer_and_reports_defaults() -> None:
     client = TestClient(
         create_app(
@@ -282,12 +350,15 @@ def test_authorized_security_policy_is_public_safe_in_capabilities() -> None:
 @pytest.mark.asyncio
 async def test_inflight_gate_rejects_when_saturated() -> None:
     gate = _InflightGate(limit=1, queue_timeout_seconds=0)
+    assert gate.current == 0
     lease = await gate.acquire()
+    assert gate.current == 1
     try:
         with pytest.raises(HTTPException) as exc_info:
             await gate.acquire()
     finally:
         lease.release()
+    assert gate.current == 0
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail["error"]["code"] == "hydralisk_inflight_saturated"
