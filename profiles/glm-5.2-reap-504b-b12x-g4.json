@@ -239,6 +239,25 @@
     "terminalBenchStatus": "preliminary_pilot_partial",
     "claimBoundary": "Private Hydralisk canary only: no public SLA, no public endpoint, no product routing/billing claim, no standalone 4x G4 capacity claim, and no final Terminal-Bench leaderboard claim."
   },
+  "trackingClosure": {
+    "status": "complete_private_canary_path",
+    "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/93",
+    "evidenceRef": "docs/evidence/2026-06-24-glm-52-reap-504b-tracking-closure.md",
+    "closedWorkItems": [
+      82,
+      83,
+      84,
+      85,
+      86,
+      87,
+      88,
+      89,
+      90,
+      91,
+      92
+    ],
+    "claimBoundary": "Tracking issue closes the private-canary integration path only; future standalone 4x admission, final Terminal-Bench, product routing, billing, and public SLA work require separate evidence."
+  },
   "admission": {
     "status": "primary_4x_capacity_blocked_8x_fallback_admitted",
     "issue": "https://github.com/OpenAgentsInc/hydralisk/issues/83",
