@@ -21,14 +21,15 @@ tmp="$(mktemp)"
   echo ""
 } > "$tmp"
 
-mapfile -t ROWS < <(gcloud compute instances list --project "$PROJECT_ID" \
+ROWS_FILE="$(mktemp)"
+gcloud compute instances list --project "$PROJECT_ID" \
   --filter="status=RUNNING AND name~glm52-reap-504b-g4" \
-  --format="value(name,zone,machineType.basename(),scheduling.provisioningModel)" 2>/dev/null | sort)
+  --format="value(name,zone,machineType.basename(),scheduling.provisioningModel)" 2>/dev/null | sort > "$ROWS_FILE"
 
 n=0
 healthy=0
-for row in "${ROWS[@]}"; do
-  IFS=$'\t' read -r inst zone machine prov <<< "$row"
+while IFS=$'\t' read -r inst zone machine prov; do
+  [[ -z "$inst" ]] && continue
   slug="$(echo "$inst" | sed 's/^hydralisk-glm52-reap-504b-//')"
   # Resolve external IP (public HTTPS origin uses <ip>.sslip.io)
   ip="$(gcloud compute instances describe "$inst" --project "$PROJECT_ID" --zone "$zone" \
@@ -41,7 +42,7 @@ for row in "${ROWS[@]}"; do
   base_url="https://${host}"
   # Read bearer from host (never printed)
   bearer="$(gcloud compute ssh "$inst" --project "$PROJECT_ID" --zone "$zone" --quiet \
-            --command="sudo cat ${PROXY_STATE_DIR}/bearer-token 2>/dev/null" 2>/dev/null | tr -d '\r\n')"
+            --command="sudo cat ${PROXY_STATE_DIR}/bearer-token 2>/dev/null" </dev/null 2>/dev/null | tr -d '\r\n')"
   if [[ -z "$bearer" ]]; then
     echo "skip $slug: no bearer token on host" >&2
     continue
@@ -67,7 +68,8 @@ for row in "${ROWS[@]}"; do
     echo ""
   } >> "$tmp"
   echo "roster: $slug ($zone $machine $prov) HEALTHY 200"
-done
+done < "$ROWS_FILE"
+rm -f "$ROWS_FILE"
 
 echo "REPLICA_COUNT=$healthy" >> "$tmp"
 install -m 600 "$tmp" "$OUT_FILE"
