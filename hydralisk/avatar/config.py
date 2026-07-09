@@ -70,6 +70,9 @@ class AvatarSettings:
     # A LiveTalking checkout whose MuseTalk modules the GPU backend reuses.
     musetalk_repo: Path | None = None
     musetalk_batch_size: int = 4
+    # Real-time L4 mode: run MuseTalk every Nth speaking frame and hold the
+    # last inpainted frame between GPU passes so WebRTC cadence stays realtime.
+    musetalk_frame_stride: int = 2
 
     # Session policy: one L4 serves one stream in v1.
     max_sessions: int = 1
@@ -125,6 +128,9 @@ def load_avatar_settings() -> AvatarSettings:
         avatar_data_dir=_path("HYDRALISK_AVATAR_DATA_DIR"),
         musetalk_repo=_path("HYDRALISK_AVATAR_MUSETALK_REPO"),
         musetalk_batch_size=_env_int("HYDRALISK_AVATAR_MUSETALK_BATCH_SIZE", 4),
+        musetalk_frame_stride=max(
+            1, _env_int("HYDRALISK_AVATAR_MUSETALK_FRAME_STRIDE", 2)
+        ),
         max_sessions=_env_int("HYDRALISK_AVATAR_MAX_SESSIONS", 1),
         keepalive_timeout_seconds=_env_float(
             "HYDRALISK_AVATAR_KEEPALIVE_TIMEOUT_SECONDS", 60.0

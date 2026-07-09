@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import numpy as np
 
+from hydralisk.avatar.clips import ClipFrameRef
 from hydralisk.avatar.musetalk_backend import MuseTalkRenderer, _feature2chunks
 from hydralisk.avatar.config import AvatarSettings
+from hydralisk.avatar.scheduler import FrameJob
+from hydralisk.avatar.state import AvatarState
 
 
 class _FakeCv2:
@@ -27,6 +30,16 @@ def _renderer() -> MuseTalkRenderer:
     r._cv2 = _FakeCv2()
     r._blending = _FakeBlending()
     return r
+
+
+def _job(*, speaking: bool = True, state: AvatarState = AvatarState.SPEAKING) -> FrameJob:
+    return FrameJob(
+        frame_number=0,
+        state=state,
+        clip=ClipFrameRef(clip_index=8, frame_index=0),
+        speaking=speaking,
+        audio_chunks=(np.zeros(500, dtype=np.int16),),
+    )
 
 
 def test_paste_back_zero_size_bbox_returns_identity() -> None:
@@ -77,3 +90,42 @@ def test_feature2chunks_supports_older_two_argument_signature() -> None:
     assert _feature2chunks(Processor(), feature_array=feature, fps=24) == [
         (feature, 24)
     ]
+
+
+def test_musetalk_stride_holds_last_inpainted_frame_between_gpu_passes() -> None:
+    r = object.__new__(MuseTalkRenderer)
+    r.settings = AvatarSettings(musetalk_frame_stride=2)
+    r._speaking_stride_counter = 1
+    last = np.full((16, 16, 3), 9, dtype=np.uint8)
+    base = np.full((16, 16, 3), 2, dtype=np.uint8)
+    r._last_speaking_frame = last
+    r._clips = {
+        8: {
+            "frames": [base],
+            "coords": [(1, 1, 4, 4)],
+        }
+    }
+
+    out = r.render(_job())
+
+    assert np.array_equal(out, last)
+    assert out is not last
+
+
+def test_musetalk_stride_resets_when_not_speaking() -> None:
+    r = object.__new__(MuseTalkRenderer)
+    r.settings = AvatarSettings(musetalk_frame_stride=2)
+    r._speaking_stride_counter = 3
+    r._last_speaking_frame = np.full((16, 16, 3), 9, dtype=np.uint8)
+    base = np.full((16, 16, 3), 2, dtype=np.uint8)
+    r._clips = {
+        8: {
+            "frames": [base],
+        }
+    }
+
+    out = r.render(_job(speaking=False, state=AvatarState.IDLE))
+
+    assert np.array_equal(out, base)
+    assert r._speaking_stride_counter == 0
+    assert r._last_speaking_frame is None

@@ -185,6 +185,8 @@ class MuseTalkRenderer:
         self._models: Any = None
         self._clips: dict[int, dict[str, Any]] = {}
         self._np = np
+        self._speaking_stride_counter = 0
+        self._last_speaking_frame: np.ndarray | None = None
 
     def start(self) -> None:
         if self._repo not in sys.path:
@@ -256,7 +258,18 @@ class MuseTalkRenderer:
         base = refs["frames"][frame_index]
 
         if not job.speaking or job.state is not AvatarState.SPEAKING:
+            self._speaking_stride_counter = 0
+            self._last_speaking_frame = None
             return base
+
+        self._speaking_stride_counter += 1
+        stride = max(1, self.settings.musetalk_frame_stride)
+        if (
+            stride > 1
+            and (self._speaking_stride_counter - 1) % stride != 0
+            and self._last_speaking_frame is not None
+        ):
+            return self._last_speaking_frame.copy()
 
         # SQ-4: refuse to lip-sync over a placeholder / invalid face bbox.
         # Prefer identity passthrough over a crash or a garbage mouth crop.
@@ -285,6 +298,7 @@ class MuseTalkRenderer:
                 models["audio_processor"],
                 feature_array=whisper_feature,
                 fps=self.settings.fps,
+                batch_size=self.settings.musetalk_batch_size,
             )
             feature = np.stack([chunks[0]]) if chunks else None
             if feature is None:
@@ -304,7 +318,9 @@ class MuseTalkRenderer:
                 ).sample
                 pred = models["vae"].decode_latents(pred_latents)
 
-            return self._paste_back(pred[0], refs, frame_index)
+            frame = self._paste_back(pred[0], refs, frame_index)
+            self._last_speaking_frame = frame
+            return frame
         except Exception:
             # Sustained GPU faults are handled by the session watchdog; a single
             # bad frame must never kill the tick.
