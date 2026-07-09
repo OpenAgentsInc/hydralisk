@@ -24,11 +24,15 @@ dev = [
 avatar = [
   "aiortc>=1.9.0,<2",
 ]
+tts-chirp = [
+  "google-cloud-texttospeech>=2.27.0,<3",
+]
 
 [project.scripts]
 hydralisk-avatar = "hydralisk.avatar.service:main"
 hydralisk-proxy = "hydralisk.serve.proxy:main"
 hydralisk-smoke = "hydralisk.serve.smoke:main"
+hydralisk-tts = "hydralisk.tts.service:main"
 hydralisk-deepseek-v4-preflight = "hydralisk.admission.deepseek_v4_flash:main"
 hydralisk-deepseek-v4-b12x-clamp-audit = "hydralisk.admission.deepseek_v4_b12x_clamp_audit:main"
 hydralisk-deepseek-v4-b12x-clamp-patch = "hydralisk.admission.deepseek_v4_b12x_clamp_patch:main"
