@@ -115,21 +115,47 @@ def test_session_lifecycle_and_receipt(tmp_path: Path) -> None:
         assert events[-1] == "avatar.session_summary"
 
 
-def test_session_limit_enforced(tmp_path: Path) -> None:
+def test_session_limit_evicts_peerless_then_blocks_watched(tmp_path: Path) -> None:
+    """SQ-4 #8621: a full slot with NO connected peer is evicted by the
+    next mint (a wedged slot must never block the next visitor); a slot a
+    viewer is actually watching is never evicted — the next mint 429s."""
     settings = _settings(tmp_path, max_sessions=1)
     with TestClient(create_app(settings)) as client:
         first = client.post("/avatar/sessions", headers=AUTH)
         assert first.status_code == 201
+        first_ref = first.json()["sessionRef"]
+
+        # Peer-less first session → evicted, second mint succeeds.
         second = client.post("/avatar/sessions", headers=AUTH)
-        assert second.status_code == 429
-        assert (
-            second.json()["detail"]["error"]["code"] == "avatar_session_limit"
-        )
-        # Stopping the first frees the slot.
-        ref = first.json()["sessionRef"]
-        client.post(f"/avatar/sessions/{ref}/stop", headers=AUTH)
+        assert second.status_code == 201
+        stopped = client.get(f"/avatar/sessions/{first_ref}", headers=AUTH)
+        assert stopped.json()["stopReason"] == "evicted_stale_no_peer"
+
+        # Simulate a connected viewer on the active session: eviction must
+        # refuse and the mint must 429.
+        manager = client.app.state.avatar_sessions
+        active = manager.get(second.json()["sessionRef"])
+
+        class _FakePc:
+            connectionState = "connected"
+            iceConnectionState = "connected"
+
+            async def close(self) -> None:
+                return None
+
+        active.egress.pc = _FakePc()
         third = client.post("/avatar/sessions", headers=AUTH)
-        assert third.status_code == 201
+        assert third.status_code == 429
+        assert (
+            third.json()["detail"]["error"]["code"] == "avatar_session_limit"
+        )
+
+        # Stopping the watched session frees the slot.
+        client.post(
+            f"/avatar/sessions/{second.json()['sessionRef']}/stop", headers=AUTH
+        )
+        fourth = client.post("/avatar/sessions", headers=AUTH)
+        assert fourth.status_code == 201
 
 
 def test_unknown_session_is_404(tmp_path: Path) -> None:

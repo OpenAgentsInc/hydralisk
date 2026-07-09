@@ -30,6 +30,7 @@ tts-chirp = [
 
 [project.scripts]
 hydralisk-avatar = "hydralisk.avatar.service:main"
+hydralisk-avatar-sim = "hydralisk.avatar.simulator:main"
 hydralisk-proxy = "hydralisk.serve.proxy:main"
 hydralisk-smoke = "hydralisk.serve.smoke:main"
 hydralisk-tts = "hydralisk.tts.service:main"
