@@ -320,6 +320,39 @@ def create_tts_app(
             },
         )
 
+    @app.post("/synthesize", dependencies=[Depends(require_bearer)])
+    async def compat_synthesize(request: Request) -> StreamingResponse:
+        """OAV-4 compat alias (apps/sarah owned-renderer.ts):
+
+        ``POST /synthesize {text, format: "pcm_s16le", sample_rate_hz: 24000}``
+        → binary PCM. The seam's PCM contract is fixed, so any other
+        requested format/rate is rejected rather than silently mis-served.
+        """
+        payload = await _json_object(request)
+        fmt = payload.get("format")
+        if fmt is not None and fmt != "pcm_s16le":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {
+                        "code": "unsupported_format",
+                        "message": "Only pcm_s16le is served.",
+                    }
+                },
+            )
+        rate = payload.get("sample_rate_hz")
+        if rate is not None and rate != PCM_SAMPLE_RATE_HZ:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {
+                        "code": "unsupported_sample_rate",
+                        "message": f"Only {PCM_SAMPLE_RATE_HZ} Hz is served.",
+                    }
+                },
+            )
+        return await synthesize(request)
+
     return app
 
 

@@ -227,3 +227,43 @@ def test_metrics_endpoint_reports_latency(tmp_path: Path) -> None:
     assert body["requests"]["errors"] == 0
     assert isinstance(body["latencyMs"]["lastMsToFirstChunk"], int)
     assert isinstance(body["latencyMs"]["lastTotalMs"], int)
+
+
+# --- OAV-4 compat alias: POST /synthesize (apps/sarah owned-renderer.ts) ----
+
+
+def test_compat_synthesize_alias(tmp_path: Path) -> None:
+    adapter = FakeAdapter()
+    client = TestClient(create_tts_app(_settings(tmp_path), adapter=adapter))
+    response = client.post(
+        "/synthesize",
+        headers={"Authorization": "Bearer tts-secret"},
+        json={"text": "hello", "format": "pcm_s16le", "sample_rate_hz": 24000},
+    )
+    assert response.status_code == 200
+    assert response.content == b"".join([b"\x00\x01" * 8, b"\x02\x03" * 4])
+    assert adapter.seen_texts == ["hello"]
+
+
+def test_compat_synthesize_requires_bearer(tmp_path: Path) -> None:
+    client = TestClient(create_tts_app(_settings(tmp_path), adapter=FakeAdapter()))
+    assert client.post("/synthesize", json={"text": "hello"}).status_code == 401
+
+
+def test_compat_synthesize_rejects_foreign_format(tmp_path: Path) -> None:
+    client = TestClient(create_tts_app(_settings(tmp_path), adapter=FakeAdapter()))
+    headers = {"Authorization": "Bearer tts-secret"}
+    assert (
+        client.post(
+            "/synthesize", headers=headers, json={"text": "x", "format": "mp3"}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/synthesize",
+            headers=headers,
+            json={"text": "x", "sample_rate_hz": 16000},
+        ).status_code
+        == 422
+    )

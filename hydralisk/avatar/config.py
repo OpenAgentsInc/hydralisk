@@ -76,6 +76,11 @@ class AvatarSettings:
 
     receipt_dir: Path = Path(".hydralisk/avatar-receipts")
 
+    # Public HTTPS base URL of this service (Caddy front), used to build the
+    # absolute capability-URL `webrtc.offer_url` returned by the OAV-4 compat
+    # mint. None keeps the offer_url relative.
+    public_base_url: str | None = None
+
     gpu_name: str = "NVIDIA L4"
     gpu_class: str = "l4"
     gpu_count: int = 1
@@ -125,6 +130,7 @@ def load_avatar_settings() -> AvatarSettings:
             _env("HYDRALISK_AVATAR_RECEIPT_DIR", ".hydralisk/avatar-receipts")
             or ".hydralisk/avatar-receipts"
         ),
+        public_base_url=_env("HYDRALISK_AVATAR_PUBLIC_BASE_URL"),
         gpu_name=_env("HYDRALISK_AVATAR_GPU_NAME", "NVIDIA L4") or "NVIDIA L4",
         gpu_class=_env("HYDRALISK_AVATAR_GPU_CLASS", "l4") or "l4",
         gpu_count=_env_int("HYDRALISK_AVATAR_GPU_COUNT", 1),

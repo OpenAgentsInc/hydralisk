@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 from typing import Any
 
 from fastapi import (
@@ -27,10 +28,12 @@ from fastapi import (
     FastAPI,
     HTTPException,
     Request,
+    Response,
     WebSocket,
     WebSocketDisconnect,
     status,
 )
+from fastapi.responses import PlainTextResponse
 import uvicorn
 
 from hydralisk.avatar.clips import CLIP_CATALOG, STATE_CLIP_CYCLE
@@ -171,12 +174,7 @@ def create_app(
             "publicSafe": True,
         }
 
-    @app.post(
-        "/avatar/sessions",
-        dependencies=[Depends(require_bearer)],
-        status_code=status.HTTP_201_CREATED,
-    )
-    async def create_session() -> dict[str, Any]:
+    def _mint_session() -> Any:
         renderer = renderer_factory()
         egress = None
         if webrtc_available():
@@ -186,7 +184,7 @@ def create_app(
         else:
             egress = NullEgress()
         try:
-            session = manager.create(renderer=renderer, egress=egress)
+            return manager.create(renderer=renderer, egress=egress)
         except SessionLimitError as error:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -197,6 +195,14 @@ def create_app(
                     }
                 },
             ) from None
+
+    @app.post(
+        "/avatar/sessions",
+        dependencies=[Depends(require_bearer)],
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def create_session() -> dict[str, Any]:
+        session = _mint_session()
         ref = session.session_ref
         return {
             "sessionRef": ref,
@@ -271,6 +277,158 @@ def create_app(
                 },
             )
         return await session.egress.handle_offer(sdp, offer_type)
+
+    # ------------------------------------------------------------------
+    # OAV-4 compat surface — the exact contract apps/sarah
+    # services/owned-renderer.ts codes to (openagents#8614):
+    #   POST   /sessions                    (bearer) -> {session_id, webrtc:{offer_url}}
+    #   POST   /sessions/{id}/control       (bearer) JSON {type:"speak"|...}
+    #   DELETE /sessions/{id}               (bearer)
+    #   POST   /sessions/{id}/webrtc-offer  (no bearer: capability URL; the
+    #          browser posts raw SDP cross-origin, so CORS is answered here)
+    # ------------------------------------------------------------------
+
+    _CORS_HEADERS = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "content-type",
+        "Access-Control-Max-Age": "86400",
+    }
+
+    def _offer_url(ref: str) -> str:
+        base = (config.public_base_url or "").rstrip("/")
+        return f"{base}/sessions/{ref}/webrtc-offer"
+
+    @app.post(
+        "/sessions",
+        dependencies=[Depends(require_bearer)],
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def compat_create_session(request: Request) -> dict[str, Any]:
+        # Optional JSON body ({conversation_ref}) is accepted and echoed.
+        conversation_ref: str | None = None
+        with contextlib.suppress(Exception):
+            body = await request.json()
+            if isinstance(body, dict) and isinstance(
+                body.get("conversation_ref"), str
+            ):
+                conversation_ref = body["conversation_ref"]
+        session = _mint_session()
+        ref = session.session_ref
+        payload: dict[str, Any] = {
+            "session_id": ref,
+            "state": session.machine.state.value,
+            "renderer": session.renderer.backend,
+            "webrtc": {
+                "available": webrtc_available(),
+                "offer_url": _offer_url(ref),
+            },
+            "protocol": PROTOCOL_VERSION,
+        }
+        if conversation_ref is not None:
+            payload["conversation_ref"] = conversation_ref
+        return payload
+
+    @app.post(
+        "/sessions/{session_ref}/control",
+        dependencies=[Depends(require_bearer)],
+    )
+    async def compat_control(
+        session_ref: str, request: Request
+    ) -> dict[str, Any]:
+        session = _get_session(session_ref)
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = None
+        if not isinstance(payload, dict):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {
+                        "code": "invalid_message",
+                        "message": "Body must be a JSON control object.",
+                    }
+                },
+            )
+        # The compat contract uses bare event names and `audio_b64`; the WS
+        # protocol uses the agent.* prefix and `audio`. Accept both.
+        event_type = payload.get("type")
+        if isinstance(event_type, str) and not event_type.startswith("agent."):
+            payload = {**payload, "type": f"agent.{event_type}"}
+        if "audio_b64" in payload and "audio" not in payload:
+            payload = {**payload, "audio": payload["audio_b64"]}
+            payload.pop("audio_b64", None)
+        try:
+            message = parse_control_message(json.dumps(payload))
+        except ProtocolError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {"code": error.code, "message": error.message}
+                },
+            ) from None
+        events = list(session.handle_control(message))
+        return {"ok": True, "events": events}
+
+    @app.delete("/sessions/{session_ref}", dependencies=[Depends(require_bearer)])
+    async def compat_delete(session_ref: str) -> dict[str, Any]:
+        session = manager.get(session_ref)
+        if session is None or session.stopped:
+            # Idempotent: reap/stop of an unknown or finished session is fine.
+            return {"stopped": True}
+        summary = await session.stop("client_stop")
+        return {"stopped": True, "summary": summary}
+
+    @app.options("/sessions/{session_ref}/webrtc-offer")
+    async def compat_webrtc_preflight(session_ref: str) -> Response:
+        return Response(status_code=204, headers=_CORS_HEADERS)
+
+    @app.post("/sessions/{session_ref}/webrtc-offer")
+    async def compat_webrtc_offer(
+        session_ref: str, request: Request
+    ) -> PlainTextResponse:
+        # No bearer: the unguessable session ref is the capability; the
+        # browser cannot hold the service token.
+        session = manager.get(session_ref)
+        if session is None or session.stopped:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": {
+                        "code": "avatar_session_not_found",
+                        "message": "No such avatar session.",
+                    }
+                },
+            )
+        if not isinstance(session.egress, WebRTCEgress):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": {
+                        "code": "webrtc_unavailable",
+                        "message": "aiortc is not installed on this host "
+                        "(install the 'avatar' extra).",
+                    }
+                },
+            )
+        sdp = (await request.body()).decode("utf-8", errors="replace").strip()
+        if not sdp:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {
+                        "code": "invalid_offer",
+                        "message": "Body must be a raw SDP offer.",
+                    }
+                },
+            )
+        answer = await session.egress.handle_offer(sdp, "offer")
+        return PlainTextResponse(
+            answer["sdp"],
+            media_type="application/sdp",
+            headers=_CORS_HEADERS,
+        )
 
     @app.websocket("/avatar/sessions/{session_ref}/control")
     async def control_socket(websocket: WebSocket, session_ref: str) -> None:
