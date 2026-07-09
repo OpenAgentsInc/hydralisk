@@ -151,8 +151,12 @@ class WebRTCEgress:
         )
         self.video_track = track_cls(kind="video", fps=fps, sample_rate=sample_rate)
         self.audio_track = track_cls(kind="audio", fps=fps, sample_rate=sample_rate)
-        self.pc.addTrack(self.video_track)
-        self.pc.addTrack(self.audio_track)
+        # Tracks are attached in handle_offer, AFTER setRemoteDescription:
+        # this peer only ever answers, and transceivers created by a
+        # pre-offer addTrack carry no offer direction, which breaks aiortc
+        # direction negotiation against a recvonly browser offer
+        # (and_direction -> "ValueError: None is not in list").
+        self._tracks_attached = False
 
     def push_video(self, frame: np.ndarray) -> None:
         from av import VideoFrame  # noqa: PLC0415
@@ -173,6 +177,19 @@ class WebRTCEgress:
 
         offer = RTCSessionDescription(sdp=sdp, type=offer_type)
         await self.pc.setRemoteDescription(offer)
+        if not self._tracks_attached:
+            by_kind = {"video": self.video_track, "audio": self.audio_track}
+            for transceiver in self.pc.getTransceivers():
+                track = by_kind.pop(transceiver.kind, None)
+                if track is not None:
+                    result = transceiver.sender.replaceTrack(track)
+                    if asyncio.iscoroutine(result):
+                        await result
+                    transceiver.direction = "sendonly"
+            # Kinds the offer did not include still egress on their own m-line.
+            for track in by_kind.values():
+                self.pc.addTrack(track)
+            self._tracks_attached = True
         answer = await self.pc.createAnswer()
         await self.pc.setLocalDescription(answer)
         local = self.pc.localDescription
