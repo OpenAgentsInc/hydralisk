@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import inspect
 from pathlib import Path
 import sys
 from typing import Any
@@ -133,6 +134,33 @@ def musetalk_blockers(settings: AvatarSettings) -> list[dict[str, str]]:
             )
 
     return blockers
+
+
+def _feature2chunks(
+    audio_processor: Any,
+    *,
+    feature_array: np.ndarray,
+    fps: int,
+    batch_size: int = 1,
+) -> list[Any]:
+    """Call LiveTalking's drifting feature2chunks API.
+
+    The upstream LiveTalking/MuseTalk surface has shipped with both
+    `feature2chunks(feature_array, fps)` and
+    `feature2chunks(feature_array, fps, batch_size, ...)`. Hydralisk renders
+    one avatar frame at a time, so a batch size of 1 is the correct adapter
+    value when the checkout requires it.
+    """
+    feature2chunks = audio_processor.feature2chunks
+    try:
+        params = inspect.signature(feature2chunks).parameters
+    except (TypeError, ValueError):  # pragma: no cover - defensive for C shims
+        params = {}
+
+    kwargs: dict[str, Any] = {"feature_array": feature_array, "fps": fps}
+    if "batch_size" in params:
+        kwargs["batch_size"] = batch_size
+    return feature2chunks(**kwargs)
 
 
 class MuseTalkRenderer:
@@ -253,8 +281,10 @@ class MuseTalkRenderer:
             ) if hasattr(models["audio_processor"], "audio2feat_from_array") else (
                 models["audio_processor"].audio2feat(audio_float)
             )
-            chunks = models["audio_processor"].feature2chunks(
-                feature_array=whisper_feature, fps=self.settings.fps
+            chunks = _feature2chunks(
+                models["audio_processor"],
+                feature_array=whisper_feature,
+                fps=self.settings.fps,
             )
             feature = np.stack([chunks[0]]) if chunks else None
             if feature is None:

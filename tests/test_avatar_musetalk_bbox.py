@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from hydralisk.avatar.musetalk_backend import MuseTalkRenderer
+from hydralisk.avatar.musetalk_backend import MuseTalkRenderer, _feature2chunks
 from hydralisk.avatar.config import AvatarSettings
 
 
@@ -55,3 +55,25 @@ def test_paste_back_negative_span_returns_identity() -> None:
     }
     out = r._paste_back(np.zeros((4, 4, 3), dtype=np.uint8), refs, 0)
     assert np.array_equal(out, base)
+
+
+def test_feature2chunks_passes_batch_size_when_required() -> None:
+    class Processor:
+        def feature2chunks(self, feature_array, fps, batch_size):  # noqa: ANN001
+            return [(feature_array, fps, batch_size)]
+
+    feature = np.zeros((1, 4), dtype=np.float32)
+    assert _feature2chunks(Processor(), feature_array=feature, fps=24) == [
+        (feature, 24, 1)
+    ]
+
+
+def test_feature2chunks_supports_older_two_argument_signature() -> None:
+    class Processor:
+        def feature2chunks(self, feature_array, fps):  # noqa: ANN001
+            return [(feature_array, fps)]
+
+    feature = np.zeros((1, 4), dtype=np.float32)
+    assert _feature2chunks(Processor(), feature_array=feature, fps=24) == [
+        (feature, 24)
+    ]
