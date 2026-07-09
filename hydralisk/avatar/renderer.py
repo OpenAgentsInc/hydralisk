@@ -12,6 +12,7 @@ Frames are HxWx3 uint8 BGR (OpenCV/LiveTalking convention).
 
 from __future__ import annotations
 
+import threading
 from typing import Protocol
 
 import numpy as np
@@ -105,15 +106,20 @@ class SharedRenderer:
     def __init__(self, inner: Renderer) -> None:
         self._inner = inner
         self._started = False
+        self._start_lock = threading.Lock()
 
     @property
     def backend(self) -> str:
         return self._inner.backend
 
     def start(self) -> None:
-        if not self._started:
-            self._inner.start()
-            self._started = True
+        # Serialized: the service warm-up thread and the first session's
+        # start race here; without the lock both run the (minutes-long)
+        # backend warm-up concurrently.
+        with self._start_lock:
+            if not self._started:
+                self._inner.start()
+                self._started = True
 
     def render(self, job: FrameJob) -> np.ndarray:
         return self._inner.render(job)
