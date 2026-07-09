@@ -148,6 +148,10 @@ class AvatarSession:
         pacer = FramePacer(self.settings.fps, time.monotonic())
         frame_number = 0
         timeout = self.settings.keepalive_timeout_seconds
+        # Renderer construction/warmup can consume most of a keepalive
+        # window before the first frame; the client's clock starts when the
+        # mint returns, so ours starts when the loop does.
+        self.last_control_monotonic = time.monotonic()
         try:
             while not self._stop_event.is_set():
                 self.tick()

@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import time
 from typing import Any
 
 from fastapi import (
@@ -442,6 +443,9 @@ def create_app(
                     }
                 },
             )
+        # The SDP offer is proof of a live client: count it as control
+        # traffic so the keepalive reaper cannot race the WebRTC connect.
+        session.last_control_monotonic = time.monotonic()
         sdp = (await request.body()).decode("utf-8", errors="replace").strip()
         if not sdp:
             raise HTTPException(
