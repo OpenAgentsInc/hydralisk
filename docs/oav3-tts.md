@@ -158,12 +158,51 @@ Steps (repeatable):
 
 ### 3.3 Measured clone latency (L4)
 
-Measurement pending: at the time of this commit OAV-1's ModelScope snapshot
-download of `CosyVoice2-0.5B` was still in flight on `sarah-avatar-gpu-1`; a
-wait-and-measure job (`~/oav3/wait_and_measure.sh`, streaming zero-shot with
-the primary Sarah reference) is queued on the host and this section is updated
-with the real L4 numbers when it completes. GPU first-chunk latency is
-**unmeasured** until then — do not quote the published ~150 ms figure as ours.
+Measured live on `sarah-avatar-gpu-1` (1× L4, torch 2.3.1+cu121,
+`CosyVoice2-0.5B` HF snapshot, stock PyTorch — no fp16/JIT/TRT/vLLM
+acceleration), streaming zero-shot with the primary Sarah reference,
+89-char utterance, 2026-07-09:
+
+Per-call zero-shot (prompt processed every call):
+
+| run | msToFirstChunk | totalMs | audio out | RTF |
+|---|---:|---:|---:|---:|
+| 0 (first inference, triton autotune) | 6839 | 12360 | 6.56 s | 1.884 |
+| 1 | 8221 | 8229 | 5.96 s | 1.381 |
+| 2 | 6980 | 8185 | 7.84 s | 1.044 |
+| 3 | 6025 | 6942 | 7.00 s | 0.992 |
+
+Precomputed speaker (`add_zero_shot_spk("sarah")` once, 1.86 s, then
+`zero_shot_spk_id="sarah"` per call — the production shape):
+
+| run | msToFirstChunk | totalMs | audio out | RTF |
+|---|---:|---:|---:|---:|
+| 0 | 3053 | 7303 | 6.88 s | 1.061 |
+| 1 | 5836 | 6774 | 7.64 s | 0.887 |
+| 2 | 5379 | 6169 | 7.08 s | 0.871 |
+| 3 | 5377 | 6274 | 7.04 s | 0.891 |
+| 4 | 5117 | 5123 | 6.32 s | 0.811 |
+
+**Honest read:** the clone works, but the stock PyTorch path on L4 is not a
+real-time streaming lane. Warm RTF is ~0.81–0.89 (just under real time) and
+time-to-first-chunk is 3–5.8 s; on several runs the "stream" delivered nearly
+all audio in one late chunk. The published ~150 ms first-packet figure
+assumes CosyVoice's accelerated bidirectional-streaming deployment (fp16 +
+JIT/TensorRT flow, vLLM-served LLM — see `vllm_example.py` and
+`runtime/triton_trtllm` in the CosyVoice repo), not this baseline. Until that
+acceleration lane is built and measured, **Chirp 3 HD remains the live
+low-latency path** and CosyVoice is the offline/clone-quality lane (fine for
+OAV-5 pre-rendered takes today).
+
+Clone-quality note (measured proxy, not a human listen): the L4 clone sample
+of an unseen sentence STT-transcribes back to exactly the input text at 0.92
+confidence, 24 kHz output, levels consistent with the reference
+(mean −19.3 dB). Sample at `/tmp/oav3_sarah_clone_sample.wav` on the host;
+human A/B against the Chirp interim still pending.
+
+Next steps for the CosyVoice lane (in order): `fp16=True` + `load_jit` /
+`load_trt` on the flow model, vLLM for the CosyVoice LLM, then re-gate against
+the ~150 ms-class target before pointing OAV-2 at `HYDRALISK_TTS_ADAPTER=cosyvoice`.
 
 ## 4. What OAV-2 consumes
 
