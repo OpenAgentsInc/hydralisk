@@ -132,12 +132,23 @@ class WebRTCEgress:
             raise RuntimeError(
                 "aiortc/av are not installed; install the 'avatar' extra"
             )
-        from aiortc import RTCPeerConnection  # noqa: PLC0415
+        from aiortc import (  # noqa: PLC0415
+            RTCConfiguration,
+            RTCIceServer,
+            RTCPeerConnection,
+        )
 
         track_cls = _track_class()
         self.fps = fps
         self.sample_rate = sample_rate
-        self.pc = RTCPeerConnection()
+        # A public STUN server so the host-side peer discovers its NAT 1:1
+        # public address (GCE NICs only carry the internal IP; without srflx
+        # candidates arbitrary browsers cannot reach the media path).
+        self.pc = RTCPeerConnection(
+            configuration=RTCConfiguration(
+                iceServers=[RTCIceServer(urls=["stun:stun.l.google.com:19302"])]
+            )
+        )
         self.video_track = track_cls(kind="video", fps=fps, sample_rate=sample_rate)
         self.audio_track = track_cls(kind="audio", fps=fps, sample_rate=sample_rate)
         self.pc.addTrack(self.video_track)
