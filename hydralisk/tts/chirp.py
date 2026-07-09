@@ -21,6 +21,7 @@ from collections.abc import AsyncIterator
 import os
 from typing import Any
 
+from hydralisk.tts.normalize import normalize_spoken
 from hydralisk.tts.seam import PCM_SAMPLE_RATE_HZ, VoiceRef
 
 SARAH_INTERIM_VOICE = VoiceRef(
@@ -74,6 +75,7 @@ class ChirpStreamingAdapter:
     ) -> AsyncIterator[bytes]:
         if not text.strip():
             return
+        text = normalize_spoken(text)
         texttospeech = _load_texttospeech()
         voice = voice_ref or self.default_voice
         client = await self._get_client()

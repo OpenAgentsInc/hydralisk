@@ -25,6 +25,7 @@ from typing import Any
 
 import numpy as np
 
+from hydralisk.tts.normalize import normalize_spoken
 from hydralisk.tts.seam import PCM_SAMPLE_RATE_HZ, VoiceRef
 
 ADAPTER_REF = "cosyvoice-zero-shot-streaming"
@@ -126,6 +127,7 @@ class CosyVoiceCloneAdapter:
     ) -> AsyncIterator[bytes]:
         if not text.strip():
             return
+        text = normalize_spoken(text)
         voice = voice_ref or self.default_voice
         if voice.voice_id != self.reference.voice.voice_id:
             raise ValueError(
