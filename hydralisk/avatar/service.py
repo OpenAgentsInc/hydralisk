@@ -164,6 +164,13 @@ def create_app(
             "controlEvents": [item.value for item in ControlType],
             "video": {
                 "fps": config.fps,
+                # SQ-4: when honest_fps_label is set (or fps is deliberately
+                # below 24), advertise the paced fps so clients never assume 24
+                # while the L4 delivers ~20.
+                "honestFps": bool(
+                    config.honest_fps_label or config.fps != 24
+                ),
+                "targetFps": 24,
                 "width": config.width,
                 "height": config.height,
                 "codecPath": "webrtc",

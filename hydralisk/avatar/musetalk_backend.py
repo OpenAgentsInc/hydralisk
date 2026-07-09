@@ -230,58 +230,84 @@ class MuseTalkRenderer:
         if not job.speaking or job.state is not AvatarState.SPEAKING:
             return base
 
+        # SQ-4: refuse to lip-sync over a placeholder / invalid face bbox.
+        # Prefer identity passthrough over a crash or a garbage mouth crop.
+        try:
+            x1, y1, x2, y2 = (int(v) for v in refs["coords"][frame_index])
+            if x2 <= x1 or y2 <= y1:
+                return base
+        except (TypeError, ValueError, IndexError):
+            return base
+
         import torch  # noqa: PLC0415
 
         models = self._models
-        pcm = np.concatenate(job.audio_chunks)
-        pcm16k = resample_pcm(
-            pcm, self.settings.sample_rate, self.settings.feature_sample_rate
-        )
-        audio_float = pcm_int16_to_float32(pcm16k)
-        whisper_feature = models["audio_processor"].audio2feat_from_array(
-            audio_float
-        ) if hasattr(models["audio_processor"], "audio2feat_from_array") else (
-            models["audio_processor"].audio2feat(audio_float)
-        )
-        chunks = models["audio_processor"].feature2chunks(
-            feature_array=whisper_feature, fps=self.settings.fps
-        )
-        feature = np.stack([chunks[0]]) if chunks else None
-        if feature is None:
-            return base
-
-        with torch.no_grad():
-            latent = refs["latents"][frame_index % len(refs["latents"])]
-            audio_batch = torch.from_numpy(feature).to(
-                device=models["unet"].device, dtype=models["unet"].model.dtype
+        try:
+            pcm = np.concatenate(job.audio_chunks)
+            pcm16k = resample_pcm(
+                pcm, self.settings.sample_rate, self.settings.feature_sample_rate
             )
-            audio_batch = models["pe"](audio_batch)
-            latent_batch = latent.to(dtype=models["unet"].model.dtype)
-            pred_latents = models["unet"].model(
-                latent_batch,
-                models["timesteps"],
-                encoder_hidden_states=audio_batch,
-            ).sample
-            pred = models["vae"].decode_latents(pred_latents)
+            audio_float = pcm_int16_to_float32(pcm16k)
+            whisper_feature = models["audio_processor"].audio2feat_from_array(
+                audio_float
+            ) if hasattr(models["audio_processor"], "audio2feat_from_array") else (
+                models["audio_processor"].audio2feat(audio_float)
+            )
+            chunks = models["audio_processor"].feature2chunks(
+                feature_array=whisper_feature, fps=self.settings.fps
+            )
+            feature = np.stack([chunks[0]]) if chunks else None
+            if feature is None:
+                return base
 
-        return self._paste_back(pred[0], refs, frame_index)
+            with torch.no_grad():
+                latent = refs["latents"][frame_index % len(refs["latents"])]
+                audio_batch = torch.from_numpy(feature).to(
+                    device=models["unet"].device, dtype=models["unet"].model.dtype
+                )
+                audio_batch = models["pe"](audio_batch)
+                latent_batch = latent.to(dtype=models["unet"].model.dtype)
+                pred_latents = models["unet"].model(
+                    latent_batch,
+                    models["timesteps"],
+                    encoder_hidden_states=audio_batch,
+                ).sample
+                pred = models["vae"].decode_latents(pred_latents)
+
+            return self._paste_back(pred[0], refs, frame_index)
+        except Exception:
+            # Sustained GPU faults are handled by the session watchdog; a single
+            # bad frame must never kill the tick.
+            return base
 
     def _paste_back(
         self, pred_frame: np.ndarray, refs: dict[str, Any], idx: int
     ) -> np.ndarray:
         # LiveTalking MuseReal.paste_back_frame (Apache-2.0).
-        x1, y1, x2, y2 = refs["coords"][idx]
+        # SQ-4 (#8621): placeholder / undetected-face bboxes must fail closed
+        # to the untouched source frame — never crash the render loop on a
+        # zero-size crop (the owner-observed MuseTalk placeholder-bbox class).
         ori_frame = refs["frames"][idx].copy()
-        res_frame = self._cv2.resize(
-            pred_frame.astype(np.uint8), (x2 - x1, y2 - y1)
-        )
-        return self._blending.get_image_blending(
-            ori_frame,
-            res_frame,
-            refs["coords"][idx],
-            refs["masks"][idx],
-            refs["mask_coords"][idx],
-        )
+        try:
+            x1, y1, x2, y2 = (int(v) for v in refs["coords"][idx])
+        except (TypeError, ValueError, IndexError):
+            return ori_frame
+        if x2 <= x1 or y2 <= y1:
+            return ori_frame
+        try:
+            res_frame = self._cv2.resize(
+                pred_frame.astype(np.uint8), (x2 - x1, y2 - y1)
+            )
+            return self._blending.get_image_blending(
+                ori_frame,
+                res_frame,
+                refs["coords"][idx],
+                refs["masks"][idx],
+                refs["mask_coords"][idx],
+            )
+        except Exception:
+            # Any blend/resize fault → silent identity frame (last-good class).
+            return ori_frame
 
     def close(self) -> None:
         self._models = None

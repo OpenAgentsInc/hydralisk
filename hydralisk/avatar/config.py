@@ -47,7 +47,11 @@ class AvatarSettings:
     allow_insecure_dev: bool = False
 
     # Output stream geometry (the footage is 1280x720 @ 24 fps).
+    # SQ-4 (#8621): when the L4 cannot sustain 24, set HYDRALISK_AVATAR_FPS=20
+    # and HYDRALISK_AVATAR_HONEST_FPS_LABEL=1 so capabilities report the real
+    # paced fps instead of advertising 24 while delivering ~20.
     fps: int = 24
+    honest_fps_label: bool = False
     width: int = 1280
     height: int = 720
 
@@ -109,6 +113,7 @@ def load_avatar_settings() -> AvatarSettings:
         bearer_token=_env("HYDRALISK_AVATAR_BEARER_TOKEN"),
         allow_insecure_dev=_env_flag("HYDRALISK_AVATAR_ALLOW_INSECURE_DEV"),
         fps=_env_int("HYDRALISK_AVATAR_FPS", 24),
+        honest_fps_label=_env_flag("HYDRALISK_AVATAR_HONEST_FPS_LABEL"),
         width=_env_int("HYDRALISK_AVATAR_WIDTH", 1280),
         height=_env_int("HYDRALISK_AVATAR_HEIGHT", 720),
         sample_rate=_env_int("HYDRALISK_AVATAR_SAMPLE_RATE", 24000),
