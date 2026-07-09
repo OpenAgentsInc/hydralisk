@@ -67,7 +67,14 @@ class AvatarSession:
 
     def _peer_connected(self) -> bool:
         pc = getattr(self.egress, "pc", None)
-        return getattr(pc, "connectionState", None) == "connected"
+        if pc is None:
+            return False
+        # aiortc can hold connectionState at "connecting" while ICE is fully
+        # connected/completed — trust either signal. A watched session was
+        # evicted mid-conversation because of this (2026-07-09 live failure).
+        if getattr(pc, "connectionState", None) == "connected":
+            return True
+        return getattr(pc, "iceConnectionState", None) in ("connected", "completed")
 
     @property
     def peer_connected(self) -> bool:
