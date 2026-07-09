@@ -18,8 +18,15 @@ dev = [
   "pytest>=8.3.0,<9",
   "pytest-asyncio>=1.1.0,<2",
 ]
+# WebRTC egress for the avatar render service (OAV-2). GPU-side deps
+# (torch, opencv, MuseTalk weights) are installed per the runbook in
+# docs/avatar-render-service-runbook.md, never pinned here.
+avatar = [
+  "aiortc>=1.9.0,<2",
+]
 
 [project.scripts]
+hydralisk-avatar = "hydralisk.avatar.service:main"
 hydralisk-proxy = "hydralisk.serve.proxy:main"
 hydralisk-smoke = "hydralisk.serve.smoke:main"
 hydralisk-deepseek-v4-preflight = "hydralisk.admission.deepseek_v4_flash:main"

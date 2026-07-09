@@ -46,6 +46,23 @@ uv run hydralisk-smoke \
 Use [docs/gce-l4-vllm-runbook.md](docs/gce-l4-vllm-runbook.md) for the GCE L4
 setup, systemd services, start/stop, rollback, and public-safe evidence rules.
 
+## Sarah Avatar Render Service (OAV-2)
+
+`hydralisk/avatar/` is the owned real-time avatar render service for the
+Sarah surface: idle/listening/speaking state machine over the catalogued
+footage clips, MuseTalk mouth-inpainting backend (env-gated on GPU +
+weights), WebRTC egress (aiortc), and a bearer-authed HTTP + WebSocket
+control API mirroring the LiveAvatar LITE turn cycle. It imports, tests,
+and runs a CPU no-op renderer without any GPU.
+
+```bash
+export HYDRALISK_AVATAR_BEARER_TOKEN=local-dev-token
+uv run hydralisk-avatar   # port 8020
+```
+
+See [docs/avatar-render-service-runbook.md](docs/avatar-render-service-runbook.md)
+for the control-API contract, GPU host bring-up, and smoke procedure.
+
 ## Boundaries
 
 Hydralisk exists beside Psionic, not inside it. Psionic is the Rust-native ML
