@@ -80,3 +80,38 @@ def test_select_renderer_auto_falls_back_with_blockers() -> None:
     # The unset config paths are always reported.
     assert "musetalk_repo_unset" in codes
     assert "avatar_data_unset" in codes
+
+
+# --- shared warm renderer (openagents#8612 first-smoke defect) ---------------
+
+
+def test_shared_renderer_survives_session_close() -> None:
+    from hydralisk.avatar.renderer import CpuNoopRenderer, SharedRenderer
+
+    class CountingRenderer(CpuNoopRenderer):
+        def __init__(self) -> None:
+            super().__init__(64, 36)
+            self.starts = 0
+            self.closes = 0
+
+        def start(self) -> None:
+            self.starts += 1
+            super().start()
+
+        def close(self) -> None:
+            self.closes += 1
+            super().close()
+
+    inner = CountingRenderer()
+    shared = SharedRenderer(inner)
+    shared.start()
+    shared.start()
+    assert inner.starts == 1  # idempotent warm-up
+
+    shared.close()  # a session ending must NOT cool the backend
+    assert inner.closes == 0
+    shared.start()
+    assert inner.starts == 1  # still warm
+
+    shared.shutdown()  # only the service shutdown reaches the inner close
+    assert inner.closes == 1

@@ -91,6 +91,43 @@ class CpuNoopRenderer:
         self._started = False
 
 
+class SharedRenderer:
+    """Keep one warm renderer across sessions.
+
+    MuseTalk start() loads the U-Net/VAE/whisper weights and every
+    preprocessed clip reference (thousands of frame/mask reads) — minutes of
+    work that must happen once per SERVICE, not once per session. This
+    wrapper makes start() idempotent and close() a no-op; the service owns
+    the real lifecycle (openagents#8612 first-smoke defect: framesRendered=1
+    because each session re-warmed the backend inside the render loop).
+    """
+
+    def __init__(self, inner: Renderer) -> None:
+        self._inner = inner
+        self._started = False
+
+    @property
+    def backend(self) -> str:
+        return self._inner.backend
+
+    def start(self) -> None:
+        if not self._started:
+            self._inner.start()
+            self._started = True
+
+    def render(self, job: FrameJob) -> np.ndarray:
+        return self._inner.render(job)
+
+    def close(self) -> None:
+        # Sessions come and go; the warm backend stays. The service
+        # shuts the inner renderer down at process exit.
+        return None
+
+    def shutdown(self) -> None:
+        self._inner.close()
+        self._started = False
+
+
 def select_renderer(
     settings: AvatarSettings,
 ) -> tuple[Renderer, list[dict[str, str]]]:

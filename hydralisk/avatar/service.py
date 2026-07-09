@@ -47,7 +47,7 @@ from hydralisk.avatar.protocol import (
     parse_control_message,
     state_event,
 )
-from hydralisk.avatar.renderer import select_renderer
+from hydralisk.avatar.renderer import SharedRenderer, select_renderer
 from hydralisk.avatar.session import SessionLimitError, SessionManager
 
 CAPABILITIES_SCHEMA = "hydralisk.avatar.capabilities.v1"
@@ -62,15 +62,34 @@ def create_app(
     manager = SessionManager(config)
 
     if renderer_factory is None:
+        # One warm renderer per service: MuseTalk warm-up (weights + every
+        # clip reference) is minutes of work and must not run per session.
+        shared_holder: dict[str, SharedRenderer] = {}
 
         def renderer_factory() -> Any:  # noqa: PLW0127 — default factory
-            renderer, _ = select_renderer(config)
-            return renderer
+            shared = shared_holder.get("renderer")
+            if shared is None:
+                renderer, _ = select_renderer(config)
+                shared = SharedRenderer(renderer)
+                shared_holder["renderer"] = shared
+            return shared
 
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI) -> Any:
+        # Warm the shared renderer off the event loop so the first session
+        # mints fast and the render loop never blocks on backend warm-up.
+        warm_task = asyncio.create_task(
+            asyncio.to_thread(lambda: renderer_factory().start())
+        )
         yield
+        warm_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await warm_task
         await manager.stop_all("service_shutdown")
+        renderer = renderer_factory()
+        shutdown = getattr(renderer, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
 
     app = FastAPI(
         title="Hydralisk Avatar Render Service",
