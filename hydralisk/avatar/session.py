@@ -65,6 +65,10 @@ class AvatarSession:
         self._stop_event = asyncio.Event()
         self._loop_task: asyncio.Task | None = None
 
+    def _peer_connected(self) -> bool:
+        pc = getattr(self.egress, "pc", None)
+        return getattr(pc, "connectionState", None) == "connected"
+
     # ---------------------------------------------------------- control
 
     def handle_control(self, message: ControlMessage) -> list[dict[str, Any]]:
@@ -156,6 +160,12 @@ class AvatarSession:
             while not self._stop_event.is_set():
                 self.tick()
                 frame_number += 1
+                # A connected WebRTC peer is client liveness: a viewer who
+                # only watches sends no control traffic and must not be
+                # reaped mid-session (SQ-4 #8621). The timeout clock runs
+                # only while no peer is connected.
+                if self._peer_connected():
+                    self.last_control_monotonic = time.monotonic()
                 if (
                     timeout > 0
                     and time.monotonic() - self.last_control_monotonic > timeout
