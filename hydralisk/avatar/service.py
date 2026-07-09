@@ -295,7 +295,18 @@ def create_app(
                     }
                 },
             )
-        return await session.egress.handle_offer(sdp, offer_type)
+        try:
+            return await session.egress.handle_offer(sdp, offer_type)
+        except Exception as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {
+                        "code": "offer_rejected",
+                        "message": f"SDP negotiation failed: {error}"[:300],
+                    }
+                },
+            ) from None
 
     # ------------------------------------------------------------------
     # OAV-4 compat surface — the exact contract apps/sarah
@@ -442,7 +453,18 @@ def create_app(
                     }
                 },
             )
-        answer = await session.egress.handle_offer(sdp, "offer")
+        try:
+            answer = await session.egress.handle_offer(sdp, "offer")
+        except Exception as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {
+                        "code": "offer_rejected",
+                        "message": f"SDP negotiation failed: {error}"[:300],
+                    }
+                },
+            ) from None
         return PlainTextResponse(
             answer["sdp"],
             media_type="application/sdp",
