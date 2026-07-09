@@ -116,6 +116,12 @@ available, everything below is staged but unexecuted.
    intentionally not pinned in `pyproject.toml` — the L4 host owns its
    torch/cu12x wheel set, and CI never installs them.
 
+   After the GPU stack is installed, **do not run `uv sync` as the normal
+   code-update path**: it reconciles the venv back to `pyproject.toml` and
+   removes torch/cv2/MuseTalk packages by design. For a code-only Hydralisk
+   update on the live avatar host, pull the git commit and refresh the package
+   with `uv pip install -e .`, then restart `hydralisk-avatar.service`.
+
 6. Scale-to-zero: same posture as the GLM lanes — the VM stops when idle;
    session mint from the OAV-4 seam is the wake trigger (Cloud Run
    watchdog or MIG-min-0 pattern per the existing GCE runbooks).
@@ -144,6 +150,12 @@ Success bar (spec §4): first inpainted frame ≤ 300 ms after the first
 audio chunk clears the ~200 ms jitter buffer; sustained 24 fps; interrupt
 crossfades to listening within `HYDRALISK_AVATAR_CROSSFADE_FRAMES` (6
 frames = 250 ms).
+
+For the current one-L4 posture, the MuseTalk backend defaults to
+`HYDRALISK_AVATAR_MUSETALK_FRAME_STRIDE=2`: every other speaking frame is
+inpainted, with the last inpainted frame held between GPU passes so WebRTC
+stays paced at 24fps. Set the stride to `1` only for offline/high-quality
+diagnostics where realtime cadence is not the gate.
 
 ## Honest status
 
