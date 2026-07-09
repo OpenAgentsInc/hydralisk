@@ -222,6 +222,7 @@ def create_app(
         status_code=status.HTTP_201_CREATED,
     )
     async def create_session() -> dict[str, Any]:
+        await manager.evict_one_stale()
         session = _mint_session()
         ref = session.session_ref
         return {
@@ -344,6 +345,7 @@ def create_app(
                 body.get("conversation_ref"), str
             ):
                 conversation_ref = body["conversation_ref"]
+        await manager.evict_one_stale()
         session = _mint_session()
         ref = session.session_ref
         payload: dict[str, Any] = {

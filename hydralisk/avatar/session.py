@@ -69,6 +69,10 @@ class AvatarSession:
         pc = getattr(self.egress, "pc", None)
         return getattr(pc, "connectionState", None) == "connected"
 
+    @property
+    def peer_connected(self) -> bool:
+        return self._peer_connected()
+
     # ---------------------------------------------------------- control
 
     def handle_control(self, message: ControlMessage) -> list[dict[str, Any]]:
@@ -284,6 +288,21 @@ class SessionManager:
 
     def get(self, session_ref: str) -> AvatarSession | None:
         return self.sessions.get(session_ref)
+
+    async def evict_one_stale(self) -> str | None:
+        """Free a slot by stopping the oldest active session with no
+        connected WebRTC peer (abandoned mint, closed tab before connect).
+        Never evicts a session a viewer is actually watching (SQ-4 #8621:
+        a wedged single slot must not block the next real visitor)."""
+        if len(self.active_sessions) < self.settings.max_sessions:
+            return None
+        for session in sorted(
+            self.active_sessions, key=lambda item: item.created_monotonic
+        ):
+            if not session.peer_connected:
+                await session.stop("evicted_stale_no_peer")
+                return session.session_ref
+        return None
 
     async def stop(self, session_ref: str, reason: str) -> dict[str, Any] | None:
         session = self.sessions.get(session_ref)
